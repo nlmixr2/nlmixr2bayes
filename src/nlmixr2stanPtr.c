@@ -44,6 +44,136 @@ int nlmixr2stan_cond_batch(const double *eta, int nid, int neta,
   return nlmixr2FoceiCondBatchP(eta, nid, neta, nlmixr2stanCores, value, grad);
 }
 
+/* ---- tier-2 state: theta base vector + mu-reference map -------------------
+ * Stan samples only the model thetas; the loaded problem's parameter vector
+ * is length npars = ntheta + <omega block>.  The omega tail stays at the
+ * link-time values (the conditional likelihood does not depend on it; the
+ * gradient assembly subtracts the same Omega^-1 term nlmixr2est added, so
+ * the pair stays exact).  muRef[k] holds the 1-based theta index that
+ * mu-references eta k (0 = none): for such a theta,
+ * d/dtheta_p log p(y_i|eta_i) equals the eta_k gradient. */
+static double *nlmixr2stanThetaBase = NULL;
+static int nlmixr2stanNpars = 0;
+static int *nlmixr2stanMuRef = NULL;
+static int nlmixr2stanNeta = 0;
+
+SEXP _nlmixr2stan_setThetaBase(SEXP thetaS) {
+  int n = (int) Rf_xlength(thetaS), i;
+  if (TYPEOF(thetaS) != REALSXP || n < 1) Rf_error("'theta' must be a numeric vector");
+  if (nlmixr2stanThetaBase != NULL) { R_Free(nlmixr2stanThetaBase); nlmixr2stanThetaBase = NULL; }
+  nlmixr2stanThetaBase = R_Calloc((size_t) n, double);
+  for (i = 0; i < n; i++) nlmixr2stanThetaBase[i] = REAL(thetaS)[i];
+  nlmixr2stanNpars = n;
+  return Rf_ScalarInteger(n);
+}
+
+SEXP _nlmixr2stan_setMuRef(SEXP idxS) {
+  int n = (int) Rf_xlength(idxS), i;
+  if (TYPEOF(idxS) != INTSXP) Rf_error("'muRef' must be an integer vector");
+  if (nlmixr2stanMuRef != NULL) { R_Free(nlmixr2stanMuRef); nlmixr2stanMuRef = NULL; }
+  nlmixr2stanMuRef = R_Calloc((size_t) (n > 0 ? n : 1), int);
+  for (i = 0; i < n; i++) nlmixr2stanMuRef[i] = INTEGER(idxS)[i];
+  nlmixr2stanNeta = n;
+  return Rf_ScalarInteger(n);
+}
+
+SEXP _nlmixr2stan_clearThetaBase(void) {
+  if (nlmixr2stanThetaBase != NULL) { R_Free(nlmixr2stanThetaBase); nlmixr2stanThetaBase = NULL; }
+  if (nlmixr2stanMuRef != NULL) { R_Free(nlmixr2stanMuRef); nlmixr2stanMuRef = NULL; }
+  nlmixr2stanNpars = 0;
+  nlmixr2stanNeta = 0;
+  return R_NilValue;
+}
+
+/* Tier 2: write theta (natural scale, first ntheta slots of the base
+ * vector), then value + d/d(eta) + d/d(theta) of the conditional at the
+ * supplied etas.  gradTheta is nid x ntheta row-major: the sensitivity
+ * columns come from nlmixr2est's forward sensitivities, the mu-referenced
+ * columns from the eta gradient via the identity above.  Returns >=0
+ * (number of non-finite subjects) or <0 on hard failure; -101 when the
+ * tier-2 state was never installed, -102 on a theta-set failure, -103 when
+ * the theta-sensitivity model is not wired but non-mu thetas exist. */
+int nlmixr2stan_cond_batch_theta(const double *theta, int ntheta,
+                                 const double *eta, int nid, int neta,
+                                 double *value, double *gradEta,
+                                 double *gradTheta) {
+  int rc, rcT, i, k, p;
+  size_t j;
+  if (nlmixr2FoceiCondBatchP == NULL) return -100;
+  if (nlmixr2stanThetaBase == NULL || nlmixr2stanMuRef == NULL ||
+      ntheta > nlmixr2stanNpars || neta != nlmixr2stanNeta) return -101;
+  for (j = 0; j < (size_t) ntheta; j++) nlmixr2stanThetaBase[j] = theta[j];
+  rc = nlmixr2FoceiSetThetaP(nlmixr2stanThetaBase, nlmixr2stanNpars);
+  if (rc != 0) return -102;
+  rc = nlmixr2FoceiCondBatchP(eta, nid, neta, nlmixr2stanCores, value, gradEta);
+  if (rc < 0) return rc;
+  /* forward-sensitivity theta columns (zero-filled by the callee); -4 =
+   * model not wired, tolerable only when no sensitivity thetas exist */
+  rcT = nlmixr2FoceiCondThetaGradP(eta, nid, neta, nlmixr2stanCores, gradTheta);
+  if (rcT == -4) {
+    if (nlmixr2FoceiThetaSensIdxP(NULL, 0) != 0) return -103;
+    for (j = 0; j < (size_t) nid * ntheta; j++) gradTheta[j] = 0.0;
+  } else if (rcT < 0) {
+    return rcT;
+  }
+  /* mu-referenced columns: d/dtheta_p = d/deta_k of the conditional */
+  for (i = 0; i < nid; i++) {
+    for (k = 0; k < neta; k++) {
+      p = nlmixr2stanMuRef[k];
+      if (p >= 1 && p <= ntheta) {
+        gradTheta[(size_t) i * ntheta + (p - 1)] +=
+          gradEta[(size_t) i * neta + k];
+      }
+    }
+  }
+  return rc;
+}
+
+/* R-callable mirror (col-major in/out) for tests and the FD oracle */
+SEXP _nlmixr2stan_condBatchTheta(SEXP thetaS, SEXP etaS) {
+  int nid, neta, ntheta, i, j, rc;
+  double *eta, *value, *gradEta, *gradTheta, *in;
+  SEXP dim, val, ge, gt, ret, nm;
+  dim = Rf_getAttrib(etaS, R_DimSymbol);
+  if (TYPEOF(etaS) != REALSXP || Rf_length(dim) != 2) Rf_error("'eta' must be a numeric matrix");
+  if (TYPEOF(thetaS) != REALSXP) Rf_error("'theta' must be a numeric vector");
+  nid = INTEGER(dim)[0];
+  neta = INTEGER(dim)[1];
+  ntheta = (int) Rf_xlength(thetaS);
+  in = REAL(etaS);
+  eta = (double *) R_alloc((size_t) nid * neta, sizeof(double));
+  value = (double *) R_alloc((size_t) nid, sizeof(double));
+  gradEta = (double *) R_alloc((size_t) nid * neta, sizeof(double));
+  gradTheta = (double *) R_alloc((size_t) nid * ntheta, sizeof(double));
+  for (i = 0; i < nid; i++) {
+    for (j = 0; j < neta; j++) eta[(size_t) i * neta + j] = in[i + (size_t) j * nid];
+  }
+  rc = nlmixr2stan_cond_batch_theta(REAL(thetaS), ntheta, eta, nid, neta,
+                                    value, gradEta, gradTheta);
+  if (rc < 0) Rf_error("nlmixr2stan_cond_batch_theta failed with status %d", rc);
+  val = PROTECT(Rf_allocVector(REALSXP, nid));
+  ge = PROTECT(Rf_allocMatrix(REALSXP, nid, neta));
+  gt = PROTECT(Rf_allocMatrix(REALSXP, nid, ntheta));
+  for (i = 0; i < nid; i++) {
+    REAL(val)[i] = value[i];
+    for (j = 0; j < neta; j++) REAL(ge)[i + (size_t) j * nid] = gradEta[(size_t) i * neta + j];
+    for (j = 0; j < ntheta; j++) REAL(gt)[i + (size_t) j * nid] = gradTheta[(size_t) i * ntheta + j];
+  }
+  ret = PROTECT(Rf_allocVector(VECSXP, 4));
+  SET_VECTOR_ELT(ret, 0, val);
+  SET_VECTOR_ELT(ret, 1, ge);
+  SET_VECTOR_ELT(ret, 2, gt);
+  SET_VECTOR_ELT(ret, 3, Rf_ScalarInteger(rc));
+  nm = PROTECT(Rf_allocVector(STRSXP, 4));
+  SET_STRING_ELT(nm, 0, Rf_mkChar("value"));
+  SET_STRING_ELT(nm, 1, Rf_mkChar("gradEta"));
+  SET_STRING_ELT(nm, 2, Rf_mkChar("gradTheta"));
+  SET_STRING_ELT(nm, 3, Rf_mkChar("nBad"));
+  Rf_setAttrib(ret, R_NamesSymbol, nm);
+  UNPROTECT(5);
+  return ret;
+}
+
 /* ---- R-callable mirrors over the same entry points ------------------------
  * These are what the R layer and the tests use, so the exact C path the Stan
  * model will take is validated (finite differences, foceiLikRun agreement)

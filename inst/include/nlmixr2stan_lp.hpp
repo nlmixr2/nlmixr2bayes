@@ -106,4 +106,108 @@ nlmixr2_cond_all(const Eigen::Matrix<stan::math::var, Eigen::Dynamic,
   }
   return out;
 }
+
+// ============================================================================
+// Tier 2: theta sampled too.  nlmixr2stan_cond_batch_theta writes the
+// natural-scale theta into the loaded problem (the omega tail of the
+// parameter vector stays at its link-time values; the conditional does not
+// depend on it) and returns value + d/d(eta) + d/d(theta), the theta columns
+// combining nlmixr2est's forward sensitivities (non-mu structural and
+// residual thetas) with the mu-reference identity d/dtheta_p = d/deta_k.
+
+typedef int (*nlmixr2stan_cond_batch_theta_t)(const double *theta, int ntheta,
+                                              const double *eta, int nid,
+                                              int neta, double *value,
+                                              double *gradEta,
+                                              double *gradTheta);
+
+inline nlmixr2stan_cond_batch_theta_t nlmixr2stan__fnTheta() {
+  static nlmixr2stan_cond_batch_theta_t fn = 0;
+  if (fn == 0) {
+    fn = reinterpret_cast<nlmixr2stan_cond_batch_theta_t>(
+      R_GetCCallable("nlmixr2stan", "nlmixr2stan_cond_batch_theta"));
+  }
+  return fn;
+}
+
+inline int nlmixr2stan__batchTheta(const double *theta, int ntheta,
+                                   const double *eta, int nid, int neta,
+                                   double *value, double *gradEta,
+                                   double *gradTheta,
+                                   std::ostream *pstream__) {
+  (void)pstream__;
+  const int rc = nlmixr2stan__fnTheta()(theta, ntheta, eta, nid, neta,
+                                        value, gradEta, gradTheta);
+  if (rc < 0) {
+    stan::math::throw_domain_error("nlmixr2_cond_all2", "nlmixr2est status",
+                                   rc, "was ", " (<0 is a hard failure)");
+  }
+  return rc;
+}
+
+// --- double overload --------------------------------------------------------
+inline Eigen::Matrix<double, Eigen::Dynamic, 1>
+nlmixr2_cond_all2(const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>& eta,
+                  const Eigen::Matrix<double, Eigen::Dynamic, 1>& theta,
+                  std::ostream* pstream__) {
+  const int nid = static_cast<int>(eta.rows());
+  const int neta = static_cast<int>(eta.cols());
+  const int nth = static_cast<int>(theta.size());
+  std::vector<double> e(static_cast<size_t>(nid) * neta);
+  std::vector<double> th(static_cast<size_t>(nth));
+  std::vector<double> v(static_cast<size_t>(nid));
+  std::vector<double> ge(static_cast<size_t>(nid) * neta);
+  std::vector<double> gt(static_cast<size_t>(nid) * nth);
+  for (int i = 0; i < nid; ++i) {
+    for (int j = 0; j < neta; ++j) {
+      e[static_cast<size_t>(i) * neta + j] = eta(i, j);
+    }
+  }
+  for (int j = 0; j < nth; ++j) th[j] = theta(j);
+  nlmixr2stan__batchTheta(th.data(), nth, e.data(), nid, neta,
+                          v.data(), ge.data(), gt.data(), pstream__);
+  Eigen::Matrix<double, Eigen::Dynamic, 1> out(nid);
+  for (int i = 0; i < nid; ++i) out(i) = v[i];
+  return out;
+}
+
+// --- var overload: one vari per subject carrying neta + ntheta partials -----
+inline Eigen::Matrix<stan::math::var, Eigen::Dynamic, 1>
+nlmixr2_cond_all2(const Eigen::Matrix<stan::math::var, Eigen::Dynamic,
+                                      Eigen::Dynamic>& eta,
+                  const Eigen::Matrix<stan::math::var, Eigen::Dynamic, 1>& theta,
+                  std::ostream* pstream__) {
+  using stan::math::var;
+  const int nid = static_cast<int>(eta.rows());
+  const int neta = static_cast<int>(eta.cols());
+  const int nth = static_cast<int>(theta.size());
+  std::vector<double> e(static_cast<size_t>(nid) * neta);
+  std::vector<double> th(static_cast<size_t>(nth));
+  std::vector<double> v(static_cast<size_t>(nid));
+  std::vector<double> ge(static_cast<size_t>(nid) * neta);
+  std::vector<double> gt(static_cast<size_t>(nid) * nth);
+  for (int i = 0; i < nid; ++i) {
+    for (int j = 0; j < neta; ++j) {
+      e[static_cast<size_t>(i) * neta + j] = eta(i, j).val();
+    }
+  }
+  for (int j = 0; j < nth; ++j) th[j] = theta(j).val();
+  nlmixr2stan__batchTheta(th.data(), nth, e.data(), nid, neta,
+                          v.data(), ge.data(), gt.data(), pstream__);
+  Eigen::Matrix<var, Eigen::Dynamic, 1> out(nid);
+  std::vector<var> ops(static_cast<size_t>(neta + nth));
+  std::vector<double> gi(static_cast<size_t>(neta + nth));
+  for (int j = 0; j < nth; ++j) ops[neta + j] = theta(j);
+  for (int i = 0; i < nid; ++i) {
+    for (int j = 0; j < neta; ++j) {
+      ops[j] = eta(i, j);
+      gi[j] = ge[static_cast<size_t>(i) * neta + j];
+    }
+    for (int j = 0; j < nth; ++j) {
+      gi[neta + j] = gt[static_cast<size_t>(i) * nth + j];
+    }
+    out(i) = stan::math::precomputed_gradients(v[i], ops, gi);
+  }
+  return out;
+}
 #endif

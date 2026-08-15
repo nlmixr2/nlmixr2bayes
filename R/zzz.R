@@ -1,5 +1,8 @@
 #' @useDynLib nlmixr2stan, .registration=TRUE
 #' @importFrom stats setNames
+#' @importFrom methods is
+#' @importFrom nlmixr2est nlmixr2Est getValidNlmixrCtl nmObjGetControl nmObjHandleControlObject
+#' @importFrom rxode2 rxUiDeparse
 NULL
 
 .onLoad <- function(libname, pkgname) {
