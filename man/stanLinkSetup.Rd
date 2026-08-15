@@ -10,6 +10,7 @@ stanLinkSetup(
   likelihood = c("focei", "foce"),
   rxControl = rxode2::rxControl(),
   thetaSens = FALSE,
+  literalFix = TRUE,
   cores = rxode2::getRxThreads()
 )
 }
@@ -26,6 +27,11 @@ capability flags)}
 
 \item{thetaSens}{also wire the theta-sensitivity model (`d/d(theta)` of the
 conditional at fixed eta)}
+
+\item{literalFix}{inline fixed population parameters as model literals (the
+nlmixr2est literal-fix hook); keep this matched with the est method's
+`stanControl(literalFix=)` so the linked problem and the generated Stan
+program agree on the parameter vector}
 
 \item{cores}{subject-parallel thread count for each likelihood evaluation}
 }

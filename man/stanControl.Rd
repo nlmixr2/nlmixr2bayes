@@ -35,7 +35,7 @@ stanControl(
   addProp = c("combined2", "combined1"),
   sumProd = FALSE,
   optExpression = TRUE,
-  literalFix = FALSE,
+  literalFix = TRUE,
   calcTables = TRUE,
   compress = TRUE,
   ci = 0.95,
