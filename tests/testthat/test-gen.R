@@ -76,3 +76,29 @@ test_that("the generated program parses with stanc", {
                       model_name = "gen_parse")
   expect_true(is.list(.sc))
 })
+
+test_that("a multivariate prior with a fixed member is refused, not dropped", {
+  skip_on_cran()
+  .f <- function() {
+    ini({
+      tcl <- 1
+      tv <- fix(3)
+      add.sd <- c(0, 0.5)
+      eta.cl ~ 0.1
+      prior(tcl, tv) ~ multiNormal(c(1, 3), lotri(tcl + tv ~ c(1, 0.01, 1)))
+      prior(add.sd) ~ dcauchy(0, 2.5)
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  expect_error(
+    suppressMessages(
+      nlmixr2est::nlmixr2(.f, .linkData(), est = "stan",
+                          control = stanControl(run = FALSE))),
+    "fixed")
+})
+

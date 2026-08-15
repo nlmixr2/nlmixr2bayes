@@ -152,6 +152,18 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
     tryCatch(.linkSetOmegaInv(.omInv), error = function(e) NULL)
   }
   # ---- sample -------------------------------------------------------------
+  # jitter draws for the inits come from R's RNG; leave the user's RNG state
+  # as we found it
+  .oldSeed <- if (exists(".Random.seed", envir = globalenv())) {
+    get(".Random.seed", envir = globalenv())
+  } else NULL
+  on.exit({
+    if (!is.null(.oldSeed)) {
+      assign(".Random.seed", .oldSeed, envir = globalenv())
+    } else if (exists(".Random.seed", envir = globalenv())) {
+      rm(".Random.seed", envir = globalenv())
+    }
+  }, add = TRUE)
   set.seed(control$seed)
   .init <- if (identical(control$init, "ini")) {
     .stanInit(.map, .gen$blockSpecs, .nid, control)
@@ -164,6 +176,13 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
                          control = list(adapt_delta = control$adapt_delta,
                                         max_treedepth = control$max_treedepth))
   .dx <- .stanDiagnostics(.sf, control)
+  # Free the link BEFORE finalize: nlmixr2CreateOutputFromUi (and the
+  # setOfv("FOCEi") row) run zero-iteration focei fits whose setup tears down
+  # and rebuilds the process-global inner problem -- our link would be stale
+  # underneath them either way, and nothing after sampling evaluates it.  The
+  # on.exit registrations above stay as no-op safety.
+  .Call(`_nlmixr2stan_clearThetaBase`)
+  stanLinkFree()
   .stanFinalizeEnv(.ret, ui, env, .sf, .map, .gen, .dx, control)
 }
 

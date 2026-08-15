@@ -158,9 +158,12 @@
     if (.r$kind == "multivariate") {
       .members <- strsplit(.r$members, ",")[[1]]
       if (any(map$theta$fix[match(.members, map$theta$name)])) {
-        .notes <- c(.notes, paste0("multivariate prior on ", .r$members,
-                                   " skipped: member fixed"))
-        next
+        # dropping the statement would silently leave the FREE members with a
+        # flat prior; representing it would need the conditional normal given
+        # the fixed member -- refuse rather than mis-state the model
+        stop("the multivariate prior on (", .r$members, ") includes a fixed ",
+             "parameter; est=\"stan\" cannot honor it -- unfix the parameter ",
+             "or use univariate priors", call. = FALSE)
       }
     } else if (isTRUE(map$theta$fix[match(.r$name, map$theta$name)])) {
       .notes <- c(.notes, paste0("prior on fixed parameter '", .r$name,
