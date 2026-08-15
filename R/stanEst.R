@@ -99,15 +99,6 @@
          "them or update nlmixr2est (>= the nlmixr2/nlmixr2est#946 fix)",
          call. = FALSE)
   }
-  # mu-referenced covariates: the covariate-coefficient theta gradient needs
-  # the per-subject covariate values, which the linkage does not carry yet
-  .mrc <- ui$muRefCovariateDataFrame
-  if (is.data.frame(.mrc) && nrow(.mrc) > 0L) {
-    stop("est=\"stan\" does not yet support mu-referenced covariates (",
-         paste(unique(.mrc$covariateParameter), collapse = ", "),
-         "): the covariate-coefficient gradient is not wired",
-         call. = FALSE)
-  }
   # D10: no priors at all is an error, with the exact lines to add --
   # Bayesian inference with silently-invented priors produces a
   # publishable-looking wrong answer
@@ -167,6 +158,10 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
   .gen <- .stanGenerate(ui, .map, .pri, control)
   .nid <- length(.ret$idLvl)
   .gen$data$N <- .nid
+  # per-subject mu-referenced covariate values for the coefficient gradient
+  # scatter (d/dtheta_p = cov_i * d/deta_k); checked here so a time-varying
+  # covariate is refused even under run=FALSE
+  .covVal <- .stanMuRefCovValues(.map, .ret$dataSav)
   for (.n in .gen$notes) cli::cli_inform(paste0("est=\"stan\": ", .n))
   if (!is.null(control$stanFile)) {
     writeLines(.gen$code, control$stanFile)
@@ -188,7 +183,8 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
   .sm <- stanCompile(.gen$code, cache = control$cache,
                      cacheDir = control$cacheDir, verbose = control$verbose)
   .needSens <- any(!.map$theta$fix &
-                     !(seq_len(nrow(.map$theta)) %in% .map$muRefIdx))
+                     !(seq_len(nrow(.map$theta)) %in%
+                         c(.map$muRefIdx, .map$muRefCov$thetaIdx)))
   .h <- stanLinkSetup(ui, env$data, likelihood = control$likelihood,
                       rxControl = control$rxControl,
                       thetaSens = .needSens, literalFix = control$literalFix,
@@ -205,6 +201,19 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
   # the mu-reference map for the theta-gradient assembly
   .Call(`_nlmixr2stan_setThetaBase`, as.double(.h$initPar))
   .Call(`_nlmixr2stan_setMuRef`, as.integer(.map$muRefIdx))
+  # covariate-coefficient scatter: d/dtheta_p = cov_i * d/deta_k.  Only for
+  # coefficients the theta-sensitivity model does NOT already carry -- when
+  # upstream classifies the coefficient as a plain structural theta it gets
+  # an exact forward sensitivity, and adding the (equal) scatter on top
+  # would double the column.  (etaIdx is 1-based in the map, 0-based in the
+  # shim; covVal columns follow muRefCov rows.)
+  .mrcS <- which(!(.map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
+  if (length(.mrcS) > 0L) {
+    .Call(`_nlmixr2stan_setMuRefCov`,
+          as.integer(.map$muRefCov$thetaIdx[.mrcS]),
+          as.integer(.map$muRefCov$etaIdx[.mrcS] - 1L),
+          .covVal[, .mrcS, drop = FALSE])
+  }
   # gradient conditioning: keep nlmixr2est's Omega^-1 commensurate with the
   # model's initial Omega (the conditional value is Omega-free)
   .omInv <- tryCatch(solve(ui$omega), error = function(e) NULL)

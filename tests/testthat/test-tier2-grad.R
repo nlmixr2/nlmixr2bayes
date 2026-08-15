@@ -164,3 +164,111 @@ test_that("dosed models work; dose-handling theta gradients carry the jump", {
                         control = stanControl(run = FALSE)))
   expect_s3_class(.code, "nlmixr2stanCode")
 })
+
+test_that("mu-referenced covariate coefficient gradients FD-agree", {
+  skip_on_cran()
+  .covMod <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3
+      wt.cl <- 0.75
+      add.sd <- 0.5
+      eta.cl ~ 0.1
+      prior(tcl) ~ dnorm(1, 2)
+      prior(add.sd) ~ dcauchy(0, 2.5)
+    })
+    model({
+      cl <- exp(tcl + wt.cl * WT + eta.cl)
+      v <- exp(tv)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  set.seed(7)
+  .wt <- c(0.15, -0.1, 0.05, -0.2) # already centered/log-scaled
+  .d <- do.call(rbind, lapply(1:4, function(id) {
+    data.frame(ID = id, TIME = c(0.5, 1, 2, 4, 8),
+               DV = 5 * exp(-0.05 * c(0.5, 1, 2, 4, 8)) +
+                 stats::rnorm(5, 0, 0.5),
+               WT = .wt[id], AMT = 0, EVID = 0)
+  }))
+  # the map resolves the coefficient to its (theta, eta) pair, and the
+  # per-subject values come out in id order (the EVID=9 NA rows ignored)
+  .ui <- rxode2::rxode2(.covMod)
+  .map <- nlmixr2stan:::.stanMap(.ui)
+  expect_equal(.map$muRefCov$thetaIdx, 3L)
+  expect_equal(.map$muRefCov$etaIdx, 1L)
+  .env <- new.env(parent = emptyenv())
+  .env$table <- nlmixr2est::tableControl()
+  nlmixr2est::.foceiPreProcessData(.d, .env, .ui, rxode2::rxControl())
+  .cv <- nlmixr2stan:::.stanMuRefCovValues(.map, .env$dataSav)
+  expect_equal(as.numeric(.cv), .wt)
+  # a time-varying covariate cannot factor through the scatter identity
+  .dTv <- .d
+  .dTv$WT[.dTv$ID == 1][3] <- 0.4
+  .envTv <- new.env(parent = emptyenv())
+  .envTv$table <- nlmixr2est::tableControl()
+  nlmixr2est::.foceiPreProcessData(.dTv, .envTv, .ui, rxode2::rxControl())
+  expect_error(nlmixr2stan:::.stanMuRefCovValues(.map, .envTv$dataSav),
+               "varies within subject")
+  # --- regime 1: the theta-sensitivity model carries the coefficient -------
+  # upstream classifies wt.cl as a plain structural theta, so it gets an
+  # exact forward sensitivity; est="stan" must NOT also scatter (2x bug)
+  h <- stanLinkSetup(.covMod, .d, thetaSens = TRUE, cores = 1L)
+  on.exit({
+    .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+    stanLinkFree()
+  }, add = TRUE)
+  expect_true(3L %in% h$thetaSensIdx)
+  .Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(h$initPar))
+  .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, as.integer(.map$muRefIdx))
+  # the est-side rule: no scatter for sensitivity-covered coefficients
+  expect_length(which(!(.map$muRefCov$thetaIdx %in% h$thetaSensIdx)), 0L)
+  .bt <- function(theta, e) {
+    .Call(nlmixr2stan:::`_nlmixr2stan_condBatchTheta`, as.double(theta),
+          as.matrix(e))
+  }
+  set.seed(11)
+  eta <- matrix(stats::rnorm(4, 0, 0.2), 4, 1)
+  th <- c(1.05, 2.95, 0.7, 0.55)
+  got <- .bt(th, eta)
+  expect_equal(got$nBad, 0L)
+  # the chain-rule identity d/d(wt.cl) = WT_i * d/d(eta.cl) holds for the
+  # forward-sensitivity column too (same derivative, independent route)
+  expect_equal(got$gradTheta[, 3], .wt * got$gradEta[, 1], tolerance = 1e-4)
+  # and every theta column FD-agrees, the covariate coefficient included
+  .h <- 1e-5
+  fdT <- matrix(0, 4, length(th))
+  for (t in seq_along(th)) {
+    up <- th
+    up[t] <- up[t] + .h
+    dn <- th
+    dn[t] <- dn[t] - .h
+    fdT[, t] <- (.bt(up, eta)$value - .bt(dn, eta)$value) / (2 * .h)
+  }
+  expect_equal(as.numeric(got$gradTheta), as.numeric(fdT), tolerance = 1e-3)
+  stanLinkFree()
+  .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+  # --- regime 2: no theta-sensitivity model; the scatter is the source -----
+  h2 <- stanLinkSetup(.covMod, .d, thetaSens = FALSE, cores = 1L)
+  .Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(h2$initPar))
+  .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, as.integer(.map$muRefIdx))
+  .Call(nlmixr2stan:::`_nlmixr2stan_setMuRefCov`,
+        as.integer(.map$muRefCov$thetaIdx),
+        as.integer(.map$muRefCov$etaIdx - 1L), .cv)
+  got2 <- .bt(th, eta)
+  expect_equal(got2$nBad, 0L)
+  # tcl (mu-ref) and wt.cl (scatter) columns match regime 1's; tv/add.sd
+  # are zero here (no sensitivity model), which is why est="stan" loads one
+  # whenever such thetas are estimated
+  expect_equal(got2$gradTheta[, 1], got$gradTheta[, 1], tolerance = 1e-8)
+  expect_equal(got2$gradTheta[, 3], .wt * got2$gradEta[, 1],
+               tolerance = 1e-12)
+  expect_equal(as.numeric(got2$gradTheta[, 3]), as.numeric(fdT[, 3]),
+               tolerance = 1e-3)
+  # est="stan" accepts the model end-to-end (codegen path)
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.covMod, .d, est = "stan",
+                        control = stanControl(run = FALSE)))
+  expect_s3_class(.code, "nlmixr2stanCode")
+})

@@ -44,10 +44,23 @@ via `precomputed_gradients` (nothing is re-derived by autodiff):
    nlmixr2est;
 2. plus `d/d(theta)` of the conditional at fixed eta (forward sensitivities
    for non-mu structural and residual thetas; the mu-reference identity
-   `d/dtheta_p = d/deta_k` for the rest), so Stan samples theta + Omega +
-   etas jointly.  Stan owns the full, normalized eta prior (non-centred,
-   `eta = z L'`), so its autodiff composes the supplied gradients through the
-   Omega parameterization for free.
+   `d/dtheta_p = d/deta_k` for the rest, extended to mu-referenced
+   covariate coefficients as `d/dtheta_p = cov_i * d/deta_k` when the
+   sensitivity model does not already carry them), so Stan samples theta +
+   Omega + etas jointly.  Stan owns the full, normalized eta prior
+   (non-centred, `eta = z L'`), so its autodiff composes the supplied
+   gradients through the Omega parameterization for free.
+
+The bridge is **first-order only**: `precomputed_gradients()` builds a
+reverse-mode `var`, and Stan Math has no forward-mode (`fvar`) counterpart
+for externally supplied partials, so anything needing higher-order autodiff
+of the target through the external term — Riemannian HMC's metric, the
+embedded-Laplace (`laplace_marginal`) machinery — is out of scope.  That
+costs nothing in practice: NUTS, ADVI, optimization and Pathfinder are all
+first-order, and a Laplace-*marginalized* target is exactly what
+nlmixr2est's own (NONMEM-validated) FOCEi/Laplace machinery computes
+natively — linking that marginal would be the sensible route, not pushing
+second-order AD through the bridge.
 
 Prior distributions come from the `ini({})` block (lotri/rxode2), whose
 distribution catalogue is deliberately one-to-one with Stan's — see
@@ -93,14 +106,16 @@ mismatch itself locked in as a test upstream.
 
 Supported: ODE and `linCmt()` models, normal residual models
 (add/prop/combined and transforms with fixed lambda), mu-referenced and
-non-mu etas, all 39 real-valued prior distributions in the lotri catalogue
-(univariate, multivariate normal families, LKJ/Wishart on omega blocks).
+non-mu etas, mu-referenced covariates (subject-constant), all 39
+real-valued prior distributions in the lotri catalogue (univariate,
+multivariate normal families, LKJ/Wishart on omega blocks).
 
 Refused with an explanatory error (not silently wrong): estimated
 transform-both-sides lambda (the linked conditional omits the DV-transform
-Jacobian), mu-referenced covariates (the covariate-coefficient gradient is
-not wired yet), mixture models, IOV, and the 8 discrete distributions
-(every `ini({})` parameter is real-valued).
+Jacobian), a time-varying covariate on a mu-referenced coefficient (the
+`cov_i * d/deta` factorization needs the covariate constant within
+subject), mixture models, IOV, and the 8 discrete distributions (every
+`ini({})` parameter is real-valued).
 
 This package requires nlmixr2est with the FOCEi conditional-likelihood C API
 (nlmixr2est#937, #939, #941).  See the issue tracker for the roadmap

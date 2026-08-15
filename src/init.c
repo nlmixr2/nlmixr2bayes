@@ -11,6 +11,7 @@ SEXP _nlmixr2stan_setOmegaInv(SEXP m);
 SEXP _nlmixr2stan_condBatch(SEXP etaS);
 SEXP _nlmixr2stan_setThetaBase(SEXP thetaS);
 SEXP _nlmixr2stan_setMuRef(SEXP idxS);
+SEXP _nlmixr2stan_setMuRefCov(SEXP thetaIdxS, SEXP etaIdxS, SEXP covValS);
 SEXP _nlmixr2stan_clearThetaBase(void);
 SEXP _nlmixr2stan_condBatchTheta(SEXP thetaS, SEXP etaS);
 int nlmixr2stan_cond_batch(const double *eta, int nid, int neta,
@@ -30,6 +31,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2stan_condBatch", (DL_FUNC) &_nlmixr2stan_condBatch, 1},
   {"_nlmixr2stan_setThetaBase", (DL_FUNC) &_nlmixr2stan_setThetaBase, 1},
   {"_nlmixr2stan_setMuRef", (DL_FUNC) &_nlmixr2stan_setMuRef, 1},
+  {"_nlmixr2stan_setMuRefCov", (DL_FUNC) &_nlmixr2stan_setMuRefCov, 3},
   {"_nlmixr2stan_clearThetaBase", (DL_FUNC) &_nlmixr2stan_clearThetaBase, 0},
   {"_nlmixr2stan_condBatchTheta", (DL_FUNC) &_nlmixr2stan_condBatchTheta, 2},
   {NULL, NULL, 0}

@@ -62,7 +62,33 @@
       }
     }
   }
-  list(theta = .theta, eta = .eta, blocks = .blocks, muRefIdx = .muRefIdx)
+  # mu-referenced covariate coefficients: for mu_k = theta_p0 + theta_p*cov +
+  # eta_k the chain rule gives d/dtheta_p = cov_i * d/deta_k, so each
+  # coefficient needs its theta index, the eta it rides on, and (later, from
+  # the data) the per-subject covariate value
+  .mrc <- ui$muRefCovariateDataFrame
+  .muRefCov <- data.frame(thetaIdx = integer(0), etaIdx = integer(0),
+                          covariate = character(0), name = character(0),
+                          stringsAsFactors = FALSE)
+  if (is.data.frame(.mrc) && nrow(.mrc) > 0L) {
+    for (.i in seq_len(nrow(.mrc))) {
+      .p <- match(.mrc$covariateParameter[.i], .theta$name)
+      .w <- which(.muRef$theta == .mrc$theta[.i])
+      .k <- if (length(.w) == 1L) match(.muRef$eta[.w], .eta$name) else NA_integer_
+      if (is.na(.p) || is.na(.k)) {
+        stop("cannot resolve the mu-referenced covariate coefficient '",
+             .mrc$covariateParameter[.i], "' (covariate '",
+             .mrc$covariate[.i], "') to a theta/eta pair", call. = FALSE) # nocov
+      }
+      .muRefCov <- rbind(.muRefCov,
+                         data.frame(thetaIdx = .p, etaIdx = .k,
+                                    covariate = .mrc$covariate[.i],
+                                    name = .mrc$covariateParameter[.i],
+                                    stringsAsFactors = FALSE))
+    }
+  }
+  list(theta = .theta, eta = .eta, blocks = .blocks, muRefIdx = .muRefIdx,
+       muRefCov = .muRefCov)
 }
 
 #' Every estimated theta must have a gradient source: mu-reference or the
@@ -72,8 +98,10 @@
 .stanAssertThetaGradCover <- function(map, thetaSensIdx) {
   .free <- which(!map$theta$fix)
   .muCovered <- map$muRefIdx[map$muRefIdx > 0L]
+  .covCovered <- map$muRefCov$thetaIdx
   .sensCovered <- thetaSensIdx
-  .uncovered <- setdiff(.free, union(.muCovered, .sensCovered))
+  .uncovered <- setdiff(.free, Reduce(union, list(.muCovered, .covCovered,
+                                                  .sensCovered)))
   if (length(.uncovered) > 0L) {
     stop("no gradient source (mu-reference or theta sensitivity) for ",
          "estimated parameter(s) ",
@@ -81,4 +109,42 @@
          call. = FALSE)
   }
   invisible(TRUE)
+}
+
+#' Per-subject values of the mu-referenced covariates, nid x nrow(muRefCov)
+#' in idLvl order.  The scatter identity d/dtheta_p = cov_i * d/deta_k only
+#' factors when the covariate is constant within subject, so a time-varying
+#' covariate is refused (the rows nlmixr2est's preprocessing adds, e.g. the
+#' EVID=9 initialization row, carry NA and are ignored).
+#' @noRd
+.stanMuRefCovValues <- function(map, dataSav) {
+  .mrc <- map$muRefCov
+  if (nrow(.mrc) == 0L) return(matrix(0, 0L, 0L))
+  .id <- dataSav$ID
+  .nid <- length(unique(.id))
+  .val <- matrix(0, .nid, nrow(.mrc))
+  for (.j in seq_len(nrow(.mrc))) {
+    .cn <- .mrc$covariate[.j]
+    if (!.cn %in% names(dataSav)) {
+      stop("mu-referenced covariate '", .cn, "' is not a data column",
+           call. = FALSE) # nocov
+    }
+    .cv <- dataSav[[.cn]]
+    for (.i in seq_len(.nid)) {
+      .u <- unique(.cv[.id == .i & !is.na(.cv)])
+      if (length(.u) == 0L) {
+        stop("mu-referenced covariate '", .cn, "' has no value for ",
+             "subject ", .i, call. = FALSE)
+      }
+      if (length(.u) > 1L) {
+        stop("est=\"stan\" needs mu-referenced covariates constant within ",
+             "subject and '", .cn, "' varies within subject ", .i,
+             ": the coefficient gradient d/d(", .mrc$name[.j],
+             ") = ", .cn, " * d/d(eta) only factors for a ",
+             "subject-constant covariate", call. = FALSE)
+      }
+      .val[.i, .j] <- .u
+    }
+  }
+  .val
 }

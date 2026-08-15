@@ -56,6 +56,15 @@ static double *nlmixr2stanThetaBase = NULL;
 static int nlmixr2stanNpars = 0;
 static int *nlmixr2stanMuRef = NULL;
 static int nlmixr2stanNeta = 0;
+/* mu-referenced covariate coefficients: for mu_k = ... + theta_p * cov + eta_k
+ * the chain rule gives d/dtheta_p = cov_i * d/deta_k.  covTheta[c] is the
+ * 1-based theta index, covEta[c] the 0-based eta index, covVal the nid-per-
+ * entry per-subject covariate values (entry-major: covVal[c*nid + i]). */
+static int nlmixr2stanNCov = 0;
+static int nlmixr2stanCovNid = 0;
+static int *nlmixr2stanCovTheta = NULL;
+static int *nlmixr2stanCovEta = NULL;
+static double *nlmixr2stanCovVal = NULL;
 
 SEXP _nlmixr2stan_setThetaBase(SEXP thetaS) {
   int n = (int) Rf_xlength(thetaS), i;
@@ -77,11 +86,51 @@ SEXP _nlmixr2stan_setMuRef(SEXP idxS) {
   return Rf_ScalarInteger(n);
 }
 
+/* thetaIdxS: 1-based theta index per entry; etaIdxS: 0-based eta index per
+ * entry; covValS: nid x nCov (col-major, which IS entry-major here) */
+SEXP _nlmixr2stan_setMuRefCov(SEXP thetaIdxS, SEXP etaIdxS, SEXP covValS) {
+  int nc = (int) Rf_xlength(thetaIdxS), nid, i;
+  SEXP dim;
+  if (TYPEOF(thetaIdxS) != INTSXP || TYPEOF(etaIdxS) != INTSXP ||
+      (int) Rf_xlength(etaIdxS) != nc) {
+    Rf_error("'thetaIdx'/'etaIdx' must be integer vectors of equal length");
+  }
+  dim = Rf_getAttrib(covValS, R_DimSymbol);
+  if (TYPEOF(covValS) != REALSXP || Rf_length(dim) != 2 ||
+      INTEGER(dim)[1] != nc) {
+    Rf_error("'covVal' must be a numeric nid x length(thetaIdx) matrix");
+  }
+  nid = INTEGER(dim)[0];
+  if (nlmixr2stanCovTheta != NULL) { R_Free(nlmixr2stanCovTheta); nlmixr2stanCovTheta = NULL; }
+  if (nlmixr2stanCovEta != NULL) { R_Free(nlmixr2stanCovEta); nlmixr2stanCovEta = NULL; }
+  if (nlmixr2stanCovVal != NULL) { R_Free(nlmixr2stanCovVal); nlmixr2stanCovVal = NULL; }
+  nlmixr2stanNCov = 0;
+  nlmixr2stanCovNid = 0;
+  if (nc > 0) {
+    nlmixr2stanCovTheta = R_Calloc((size_t) nc, int);
+    nlmixr2stanCovEta = R_Calloc((size_t) nc, int);
+    nlmixr2stanCovVal = R_Calloc((size_t) nc * nid, double);
+    for (i = 0; i < nc; i++) {
+      nlmixr2stanCovTheta[i] = INTEGER(thetaIdxS)[i];
+      nlmixr2stanCovEta[i] = INTEGER(etaIdxS)[i];
+    }
+    for (i = 0; i < nc * nid; i++) nlmixr2stanCovVal[i] = REAL(covValS)[i];
+    nlmixr2stanNCov = nc;
+    nlmixr2stanCovNid = nid;
+  }
+  return Rf_ScalarInteger(nc);
+}
+
 SEXP _nlmixr2stan_clearThetaBase(void) {
   if (nlmixr2stanThetaBase != NULL) { R_Free(nlmixr2stanThetaBase); nlmixr2stanThetaBase = NULL; }
   if (nlmixr2stanMuRef != NULL) { R_Free(nlmixr2stanMuRef); nlmixr2stanMuRef = NULL; }
+  if (nlmixr2stanCovTheta != NULL) { R_Free(nlmixr2stanCovTheta); nlmixr2stanCovTheta = NULL; }
+  if (nlmixr2stanCovEta != NULL) { R_Free(nlmixr2stanCovEta); nlmixr2stanCovEta = NULL; }
+  if (nlmixr2stanCovVal != NULL) { R_Free(nlmixr2stanCovVal); nlmixr2stanCovVal = NULL; }
   nlmixr2stanNpars = 0;
   nlmixr2stanNeta = 0;
+  nlmixr2stanNCov = 0;
+  nlmixr2stanCovNid = 0;
   return R_NilValue;
 }
 
@@ -122,6 +171,21 @@ int nlmixr2stan_cond_batch_theta(const double *theta, int ntheta,
       p = nlmixr2stanMuRef[k];
       if (p >= 1 && p <= ntheta) {
         gradTheta[(size_t) i * ntheta + (p - 1)] +=
+          gradEta[(size_t) i * neta + k];
+      }
+    }
+  }
+  /* mu-referenced covariate coefficients: d/dtheta_p = cov_i * d/deta_k */
+  if (nlmixr2stanNCov > 0) {
+    int c;
+    if (nlmixr2stanCovNid != nid) return -104;
+    for (c = 0; c < nlmixr2stanNCov; c++) {
+      p = nlmixr2stanCovTheta[c];
+      k = nlmixr2stanCovEta[c];
+      if (p < 1 || p > ntheta || k < 0 || k >= neta) return -105;
+      for (i = 0; i < nid; i++) {
+        gradTheta[(size_t) i * ntheta + (p - 1)] +=
+          nlmixr2stanCovVal[(size_t) c * nid + i] *
           gradEta[(size_t) i * neta + k];
       }
     }
