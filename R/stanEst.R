@@ -25,6 +25,19 @@
   .lines
 }
 
+#' Does the linked nlmixr2est build the theta forward-sensitivity model with
+#' rxode2's analytic event ("jump") sensitivities?  With nlmixr2/nlmixr2est#946
+#' (PR #947) the model is compiled per the control's `eventSens` and its event
+#' shape installed around the gradient batch, so a dose-handling theta's
+#' derivative carries the jump condition at the event.  Both sides ship as
+#' version 7.0.3, so the capability is probed structurally: the fix introduced
+#' the `eventSens` argument on the model builder.
+#' @noRd
+.stanHasEventThetaSens <- function() {
+  .f <- get0(".impmapThetaSensModel", envir = asNamespace("nlmixr2est"))
+  is.function(.f) && "eventSens" %in% names(formals(.f))
+}
+
 #' Estimated thetas that enter dose handling (alag/f/dur/rate), transitively
 #' through intermediate assignments
 #' @noRd
@@ -71,17 +84,20 @@
          "lambda or drop the transform", call. = FALSE)
   }
   # estimated dose-handling parameters: the derivative through the event
-  # needs a jump condition, and the linked theta forward-sensitivity model
-  # does not carry it -- the sensitivity index ADVERTISES such a theta but
-  # its column is silently zero, which a gradient-based sampler experiences
-  # as a value/gradient mismatch.  Caught by the FD gate; refused here.
+  # needs a jump condition.  nlmixr2est with nlmixr2/nlmixr2est#946 compiles
+  # the theta forward-sensitivity model with rxode2's analytic event ("jump")
+  # sensitivities, so the column is real (FD-verified); an OLDER nlmixr2est
+  # advertises the theta in the sensitivity index but leaves its column
+  # silently zero, which a gradient-based sampler experiences as a
+  # value/gradient mismatch -- refused rather than sampled wrong.
   .evTh <- .stanEventThetas(ui)
-  if (length(.evTh) > 0L) {
-    stop("est=\"stan\" cannot yet estimate dose-handling parameter(s) ",
+  if (length(.evTh) > 0L && !.stanHasEventThetaSens()) {
+    stop("est=\"stan\" cannot estimate dose-handling parameter(s) ",
          paste0("'", .evTh, "'", collapse = ", "),
-         " (alag/f/dur/rate): the linked theta sensitivities do not ",
-         "propagate through the event jump; fix() them or wait for the ",
-         "event-sensitivity wiring", call. = FALSE)
+         " (alag/f/dur/rate) with this nlmixr2est: the linked theta ",
+         "sensitivities do not propagate through the event jump; fix() ",
+         "them or update nlmixr2est (>= the nlmixr2/nlmixr2est#946 fix)",
+         call. = FALSE)
   }
   # mu-referenced covariates: the covariate-coefficient theta gradient needs
   # the per-subject covariate values, which the linkage does not carry yet

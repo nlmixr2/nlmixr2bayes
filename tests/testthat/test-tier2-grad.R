@@ -63,7 +63,7 @@ test_that("cond_batch_theta refuses without the tier-2 state installed", {
                "status -101")
 })
 
-test_that("dosed models work; estimated dose-handling thetas are refused", {
+test_that("dosed models work; dose-handling theta gradients carry the jump", {
   skip_on_cran()
   .lagMod <- function() {
     ini({
@@ -107,17 +107,60 @@ test_that("dosed models work; estimated dose-handling thetas are refused", {
            nlmixr2stan:::.condBatch(eta - .h)$value) / (2 * .h)
   expect_equal(as.numeric(got$grad), as.numeric(fd), tolerance = 1e-4)
   stanLinkFree()
-  # but the ESTIMATED lag's theta derivative needs a jump condition the
-  # linked forward sensitivities do not carry (the FD gate caught the
-  # sensitivity column silently zero while the true derivative is not);
-  # est="stan" refuses rather than samples a value/gradient mismatch
-  expect_error(
-    suppressMessages(
-      nlmixr2est::nlmixr2(.lagMod, .d, est = "stan",
-                          control = stanControl(run = FALSE))),
-    "dose-handling")
-  # detection is transitive through intermediate assignments and clears
-  # when the parameter is fixed
+  # detection of dose-handling thetas is transitive through intermediate
+  # assignments
   expect_equal(nlmixr2stan:::.stanEventThetas(rxode2::rxode2(.lagMod)),
                "tlag")
+  if (!nlmixr2stan:::.stanHasEventThetaSens()) {
+    # an nlmixr2est without nlmixr2/nlmixr2est#946 advertises the ESTIMATED
+    # lag theta in the sensitivity index but leaves its column silently
+    # zero; est="stan" refuses rather than samples a value/gradient mismatch
+    expect_error(
+      suppressMessages(
+        nlmixr2est::nlmixr2(.lagMod, .d, est = "stan",
+                            control = stanControl(run = FALSE))),
+      "dose-handling")
+    skip("nlmixr2est lacks the #946 event-jump theta sensitivities")
+  }
+  # with the #946 fix the derivative through the event is real: the full
+  # tier-2 comparison -- value + d/d(eta) + d/d(theta) vs central
+  # differences, INCLUDING the alag theta whose dependence runs through the
+  # event time, not the ODE right-hand side
+  h2 <- stanLinkSetup(.lagMod, .d, thetaSens = TRUE, cores = 1L)
+  on.exit({
+    .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+    stanLinkFree()
+  }, add = TRUE)
+  # tcl mu-references eta.cl; tv, tlag, add.sd all carry sensitivities
+  expect_equal(h2$thetaSensIdx, c(2L, 3L, 4L))
+  .Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(h2$initPar))
+  .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, 1L)
+  .bt <- function(theta, e) {
+    .Call(nlmixr2stan:::`_nlmixr2stan_condBatchTheta`, as.double(theta),
+          as.matrix(e))
+  }
+  th <- c(1.05, 2.95, -1.05, 0.55)
+  got <- .bt(th, eta)
+  expect_equal(got$nBad, 0L)
+  # the alag column is real, not silently zero ...
+  expect_true(all(abs(got$gradTheta[, 3]) > 1e-3))
+  .h <- 1e-5
+  # ... and every theta column FD-agrees, the jump-carried one included
+  fdT <- matrix(0, h2$nid, length(th))
+  for (t in seq_along(th)) {
+    up <- th
+    up[t] <- up[t] + .h
+    dn <- th
+    dn[t] <- dn[t] - .h
+    fdT[, t] <- (.bt(up, eta)$value - .bt(dn, eta)$value) / (2 * .h)
+  }
+  expect_equal(as.numeric(got$gradTheta), as.numeric(fdT), tolerance = 1e-3)
+  # the eta gradient still FD-agrees under the tier-2 path
+  fdE <- (.bt(th, eta + .h)$value - .bt(th, eta - .h)$value) / (2 * .h)
+  expect_equal(as.numeric(got$gradEta), as.numeric(fdE), tolerance = 1e-4)
+  # est="stan" now accepts the model (no dose-handling refusal)
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.lagMod, .d, est = "stan",
+                        control = stanControl(run = FALSE)))
+  expect_s3_class(.code, "nlmixr2stanCode")
 })

@@ -16,19 +16,20 @@ translation step, including things Stan's own ODE interface cannot express:
 - **dosing events** — bolus, infusion, `addl`, steady state, multiple
   compartments, exactly as the event table describes them (value and eta
   gradient FD-verified on dosed models);
+- **derivatives with respect to modelled dose handling** — an *estimated*
+  lag time, bioavailability, duration or rate, whose dependence runs
+  through the event time rather than the ODE right-hand side and so needs
+  a **jump condition** at the event.  rxode2's analytic event
+  sensitivities (`eventSens = "jump"`) supply it, and nlmixr2est's
+  theta-sensitivity model carries it through the linked gradient
+  (nlmixr2est#946; the `alag` theta column FD-agrees at ~1e-5 where it was
+  once silently zero — this package's finite-difference gate caught it and
+  now locks it in).  With an older nlmixr2est lacking that fix,
+  `est="stan"` refuses such models with an explanation rather than
+  sampling a value/gradient mismatch;
 - **delay differential equations**, via rxode2's `delay()` / `past()`;
 - **the residual-error and censoring machinery** (M2/M3/M4) already
   validated in nlmixr2est.
-
-One capability is machinery-ready but deliberately **refused** for now:
-*estimating* a dose-handling parameter (lag time, bioavailability, duration,
-rate).  Its derivative needs a jump condition at the event — rxode2's
-event-sensitivity machinery (`eventSens = "jump"`) provides exactly that,
-but the linked theta-sensitivity model does not yet request it, so the
-column comes back silently zero while the true derivative is not
-(nlmixr2est#946, caught by this package's finite-difference gate).
-`est="stan"` refuses such models with an explanation rather than sampling a
-value/gradient mismatch; `fix()` the parameter to proceed.
 
 The model is compiled and linked **without engaging Stan's threading** —
 rxode2 and nlmixr2est parallelize over subjects inside each likelihood
