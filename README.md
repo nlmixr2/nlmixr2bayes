@@ -12,12 +12,15 @@ The model is compiled and linked **without Stan's threading (TBB) attached** —
 rxode2 and nlmixr2est do their own parallelism over subjects, and a second
 threading runtime layered on top would contend with it.
 
-Three tiers of gradient provision are planned:
+Two tiers of gradient provision are planned:
 
-1. models providing only the outer gradient through nlmixr2est
-2. models providing per-individual inner gradients through nlmixr2est
-3. models providing inner gradients through nlmixr2 plus the outer likelihood
+1. models providing per-individual inner gradients through nlmixr2est
+2. models providing inner gradients through nlmixr2 plus the outer likelihood
    gradient through nlmixr2est
+
+An outer-gradient-only tier was considered and dropped: that gradient is of the
+*marginal* likelihood, so it neither composes into the tiers above nor does
+anything useful on its own.
 
 Prior distributions come from the `ini({})` block (lotri/rxode2), whose
 distribution catalogue is deliberately one-to-one with Stan's — see
