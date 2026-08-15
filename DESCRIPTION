@@ -1,0 +1,47 @@
+Package: nlmixr2stan
+Type: Package
+Title: Stan Interface for 'nlmixr2'
+Version: 0.0.1
+Authors@R: c(
+    person("Matthew", "Fidler", role = c("aut", "cre"),
+           email = "matthew.fidler@gmail.com",
+           comment = c(ORCID = "0000-0001-8538-6691")))
+Description: Bayesian estimation for 'nlmixr2' models by linking Stan (via
+    'rstan') directly to the compiled 'rxode2'/'nlmixr2est' likelihoods rather
+    than re-expressing the model in the Stan language.  The ordinary
+    differential equation solving, residual-error models and censoring stay in
+    one place ('rxode2'/'nlmixr2est'), and Stan consumes the likelihood and its
+    analytically-supplied gradients as an external function.  Prior
+    distributions come from the model's 'ini({})' block, whose distribution
+    catalogue is one-to-one with Stan's.
+License: GPL (>= 3)
+URL: https://github.com/nlmixr2/nlmixr2stan
+BugReports: https://github.com/nlmixr2/nlmixr2stan/issues
+Depends: R (>= 4.2)
+Imports:
+    nlmixr2est (> 7.0.2),
+    rxode2 (>= 5.1.7),
+    lotri (>= 1.0.5),
+    checkmate,
+    cli,
+    digest,
+    methods,
+    stats,
+    utils
+Suggests:
+    rstan (>= 2.26),
+    loo,
+    posterior,
+    testthat (>= 3.0.0),
+    withr,
+    nlmixr2data,
+    numDeriv,
+    mvtnorm,
+    knitr,
+    rmarkdown
+LinkingTo:
+    nlmixr2est
+Encoding: UTF-8
+Config/testthat/edition: 3
+NeedsCompilation: yes
+Config/roxygen2/version: 8.1.0
