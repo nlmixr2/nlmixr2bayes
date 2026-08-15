@@ -3,13 +3,21 @@
 #' The class name `stanControl` makes `nlmixr2(model, data, stanControl(...))`
 #' infer `est="stan"`.
 #'
-#' Two things are pinned and deliberately not user-settable: `cores=1` for the
+#' One thing is pinned and deliberately not user-settable: `cores=1` for the
 #' Stan chains (the linked likelihood lives in process-wide state on the
 #' nlmixr2est side, so chains run sequentially in one process; the
 #' parallelism is over subjects inside each likelihood evaluation, see
-#' `likCores`), and the ODE-retry machinery (`stickyRecalcN=1`,
-#' `maxOdeRecalc=0`) -- a sampler tolerates a poor gradient but is wrong when
-#' the density is not a pure function of state.
+#' `likCores`).
+#'
+#' The ODE-retry machinery (`maxOdeRecalc`, `stickyRecalcN`) stays at
+#' nlmixr2est's defaults and is ENABLED: a hard point retries with relaxed
+#' tolerances instead of rejecting, which beats truncating the posterior to
+#' `-Inf` where the density is actually finite.  This is safe for a sampler
+#' because the C batch entries reset all retry/sticky/tolerance state at the
+#' top of every evaluation (per batch and per subject), so the same point
+#' reproduces the same retry ladder and the same value -- the density stays
+#' a pure function of state, which gate G2 proves bitwise, with the retry
+#' machinery live.
 #'
 #' @param chains number of MCMC chains (run sequentially)
 #' @param iter total iterations per chain (Stan convention, includes warmup)
@@ -28,6 +36,11 @@
 #' @param likelihood the individual likelihood the linked problem evaluates;
 #'   `"focei"` (interaction) or `"foce"` -- the two self-consistent
 #'   value/gradient pairs
+#' @param etaParam eta parameterization: `"noncentered"` (default; Stan
+#'   samples `z` with `eta = z L'`, the funnel-robust form) or `"centered"`
+#'   (Stan samples `eta` directly with `eta[i] ~ multi_normal_cholesky(0, L)`).
+#'   The posteriors are identical by construction (gate G13); the default
+#'   usually mixes better with few subjects
 #' @param likCores subject-parallel thread count inside each likelihood
 #'   evaluation
 #' @param diagOmegaSdPrior character template for the default half-Cauchy
@@ -64,6 +77,7 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
                         init = c("ini", "random"), initJitterSd = 0.1,
                         adapt_delta = 0.9, max_treedepth = 12L, # nolint: object_name_linter.
                         likelihood = c("focei", "foce"),
+                        etaParam = c("noncentered", "centered"),
                         likCores = rxode2::getRxThreads(),
                         diagOmegaSdPrior = "cauchy(0, %s)",
                         lkjEta = 2,
@@ -110,6 +124,7 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
   if (!is.null(cacheDir)) checkmate::assertCharacter(cacheDir, len = 1)
   if (is.character(init)) init <- match.arg(init)
   likelihood <- match.arg(likelihood)
+  etaParam <- match.arg(etaParam)
   point <- match.arg(point)
   ofv <- match.arg(ofv)
   onDiagnostic <- match.arg(onDiagnostic)
@@ -150,7 +165,8 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
                initJitterSd = initJitterSd,
                adapt_delta = adapt_delta,
                max_treedepth = as.integer(max_treedepth),
-               likelihood = likelihood, likCores = as.integer(likCores),
+               likelihood = likelihood, etaParam = etaParam,
+               likCores = as.integer(likCores),
                diagOmegaSdPrior = diagOmegaSdPrior, lkjEta = lkjEta,
                point = point, ofv = ofv,
                rhatMax = rhatMax, essBulkMin = essBulkMin,

@@ -258,7 +258,8 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
     sum(x[, "treedepth__"] >= control$max_treedepth)
   }, numeric(1)))
   .sum <- rstan::summary(sf)$summary
-  .keep <- !grepl("^(z_|eta\\[|omegaOut|logLikSubj|lp__)", rownames(.sum))
+  .keep <- !grepl("^(z_|etaP_|eta\\[|omegaOut|logLikSubj|lp__)",
+                  rownames(.sum))
   .maxRhat <- suppressWarnings(max(.sum[.keep, "Rhat"], na.rm = TRUE))
   .minEss <- suppressWarnings(min(.sum[.keep, "n_eff"], na.rm = TRUE))
   .msg <- character(0)

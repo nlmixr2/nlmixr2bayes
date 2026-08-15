@@ -13,7 +13,7 @@ reimplementing solving, censoring and the residual-error models.
 Everything rxode2/nlmixr2est can express flows through `est="stan"` without a
 translation step, including things Stan's own ODE interface cannot express:
 
-- **dosing events** — bolus, infusion, `addl`, steady state, multiple
+- **dosing events** -- bolus, infusion, `addl`, steady state, multiple
   compartments, exactly as the event table describes them (value and eta
   gradient FD-verified on dosed models);
 - **derivatives with respect to modelled dose handling** — an *estimated*
@@ -23,10 +23,8 @@ translation step, including things Stan's own ODE interface cannot express:
   sensitivities (`eventSens = "jump"`) supply it, and nlmixr2est's
   theta-sensitivity model carries it through the linked gradient
   (nlmixr2est#946; the `alag` theta column FD-agrees at ~1e-5 where it was
-  once silently zero — this package's finite-difference gate caught it and
-  now locks it in).  With an older nlmixr2est lacking that fix,
-  `est="stan"` refuses such models with an explanation rather than
-  sampling a value/gradient mismatch;
+  once silently zero -- this package's finite-difference gate caught it and
+  now locks it in);
 - **delay differential equations**, via rxode2's `delay()` / `past()`;
 - **the residual-error and censoring machinery** (M2/M3/M4) already
   validated in nlmixr2est.

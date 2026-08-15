@@ -136,10 +136,23 @@
       .tpL <- c(.tpL, paste0("  matrix[", .k, ",", .k, "] L", .id,
                              " = diag_pre_multiply(sd", .id, ", Lcorr", .id, ");"))
     }
-    .decl <- c(.decl, paste0("  matrix[N, ", .k, "] z", .id, ";"))
-    .priorL <- c(.priorL, paste0("  to_vector(z", .id, ") ~ std_normal();"))
-    .tpL <- c(.tpL, paste0("  eta[, ", .blk$start, ":", .blk$end,
-                           "] = z", .id, " * L", .id, "';"))
+    if (identical(ctl$etaParam, "centered")) {
+      # centred: eta sampled directly; multi_normal_cholesky supplies the
+      # (Omega-dependent) density, so no Jacobian bookkeeping is needed --
+      # the declared parameter is the one the prior is written on
+      .decl <- c(.decl, paste0("  matrix[N, ", .k, "] etaP", .id, ";"))
+      .priorL <- c(.priorL,
+                   paste0("  for (i in 1:N) etaP", .id,
+                          "[i] ~ multi_normal_cholesky(rep_vector(0, ", .k,
+                          "), L", .id, ");"))
+      .tpL <- c(.tpL, paste0("  eta[, ", .blk$start, ":", .blk$end,
+                             "] = etaP", .id, ";"))
+    } else {
+      .decl <- c(.decl, paste0("  matrix[N, ", .k, "] z", .id, ";"))
+      .priorL <- c(.priorL, paste0("  to_vector(z", .id, ") ~ std_normal();"))
+      .tpL <- c(.tpL, paste0("  eta[, ", .blk$start, ":", .blk$end,
+                             "] = z", .id, " * L", .id, "';"))
+    }
     .gqOmega <- c(.gqOmega, paste0("  omegaOut[", .blk$start, ":", .blk$end,
                                    ", ", .blk$start, ":", .blk$end,
                                    "] = L", .id, " * L", .id, "';"))
@@ -236,8 +249,13 @@
         .ini[[paste0("sd", .id)]] <- sqrt(diag(.sp$block$init))
         .ini[[paste0("Lcorr", .id)]] <- diag(.k)
       }
-      .ini[[paste0("z", .id)]] <- matrix(.jit * stats::rnorm(nid * .k),
-                                         nid, .k)
+      if (identical(ctl$etaParam, "centered")) {
+        .ini[[paste0("etaP", .id)]] <- matrix(.jit * stats::rnorm(nid * .k),
+                                              nid, .k)
+      } else {
+        .ini[[paste0("z", .id)]] <- matrix(.jit * stats::rnorm(nid * .k),
+                                           nid, .k)
+      }
     }
     .ini
   })

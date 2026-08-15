@@ -43,4 +43,19 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
   # posterior means should sit near the ini() estimates for this
   # well-behaved fixture (loose sanity bound, not a calibration claim)
   expect_true(abs(.fit$ui$theta[["tv"]] - 3) < 1)
+  # ---- G11 contract breadth ----------------------------------------------
+  # print/summary run clean (the fit is presentable, not just structured)
+  expect_no_error(invisible(utils::capture.output(print(.fit))))
+  expect_no_error(invisible(utils::capture.output(summary(.fit$parFixedDf))))
+  # $theta follows the standard nlmixr2 fit contract (named numeric; the
+  # finalize step replaces the pre-finalize bounds data.frame, same as focei)
+  expect_true(is.numeric(.fit$env$theta))
+  expect_equal(names(.fit$env$theta), c("tcl", "tv", "add.sd"))
+  # G11d: the posterior-mean etaObf survives a setOfv round-trip -- the
+  # FOCEi ofv step overwrites $etaObf with EBEs unless stashed/restored
+  .etaBefore <- .fit$etaObf
+  .obj <- .fit$objDf["FOCEi", "OBJF"]
+  suppressWarnings(suppressMessages(nlmixr2est::setOfv(.fit, "FOCEi")))
+  expect_equal(.fit$etaObf, .etaBefore)
+  expect_equal(.fit$objDf["FOCEi", "OBJF"], .obj, tolerance = 1e-8)
 })

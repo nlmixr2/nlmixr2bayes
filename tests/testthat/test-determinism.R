@@ -1,10 +1,13 @@
 # G2: the target must be a pure function of state.  NUTS assumes
 # reversibility: if the density at a point depends on what was evaluated
 # before it (ODE tolerance stickiness, retry state, per-subject caches), the
-# sampler is silently wrong.  stanControl pins the retry machinery off; this
-# gate proves the batch entries are bitwise identical under heavy
-# interleaved evaluation -- at the exact C entries the compiled Stan model
-# calls, no Stan needed.
+# sampler is silently wrong.  The ODE retry machinery is ENABLED (a hard
+# point re-solves with relaxed tolerance instead of rejecting -- better than
+# truncating the posterior to -Inf); purity comes from the C batch entries
+# resetting all retry/sticky/tolerance state per batch and per subject, so
+# the same point reproduces the same retry ladder.  This gate proves that
+# bitwise, with the retry machinery live, at the exact C entries the
+# compiled Stan model calls -- no Stan needed.
 #
 # The fixture is a DOSED ODE model on purpose: the history-dependent state
 # this gate exists to catch (LSODA solver work arrays, tolerance stickiness,
@@ -61,6 +64,15 @@ test_that("cond batch: 500 interleaved evaluations are bitwise identical (G2)", 
     }
   }
   expect_true(.ok)
+  # thread-count invariance: the same batch at likCores=2 is bitwise
+  # identical to the serial result (retry/tolerance state is subject-scoped
+  # and reset per batch, so the parallel schedule cannot leak between
+  # subjects)
+  stanSetCores(2L)
+  .a2 <- .condBatch(.etaA)
+  stanSetCores(1L)
+  expect_identical(.a2$value, .refA$value)
+  expect_identical(.a2$grad, .refA$grad)
 })
 
 test_that("tier-2 batch: interleaved theta+eta evaluations are bitwise identical (G2)", {
