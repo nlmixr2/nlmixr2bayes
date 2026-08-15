@@ -35,7 +35,9 @@ The model is compiled and linked **without engaging Stan's threading** —
 rxode2 and nlmixr2est parallelize over subjects inside each likelihood
 evaluation, and a second threading runtime layered on top would contend with
 it.  Stan runs single-threaded; chains run sequentially; the cores go to the
-subject loop (`stanControl(likCores=)`).
+subject loop (`stanControl(likCores=)`). The rate limiting step in most
+pharamcometric models is the ODE solving; therefore this is the approach that
+will likely give the best speed.
 
 Two gradient tiers are provided, both supplying analytic derivatives to Stan
 via `precomputed_gradients` (nothing is re-derived by autodiff):
