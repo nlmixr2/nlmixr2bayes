@@ -2,3 +2,4 @@
 ^\.vexp$
 ^.*\.Rproj$
 ^\.Rproj\.user$
+^\.lintr$

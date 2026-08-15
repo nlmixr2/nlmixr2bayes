@@ -62,7 +62,7 @@
 stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
                         thin = 1L, seed = 42L,
                         init = c("ini", "random"), initJitterSd = 0.1,
-                        adapt_delta = 0.9, max_treedepth = 12L,
+                        adapt_delta = 0.9, max_treedepth = 12L, # nolint: object_name_linter.
                         likelihood = c("focei", "foce"),
                         likCores = rxode2::getRxThreads(),
                         diagOmegaSdPrior = "cauchy(0, %s)",
@@ -78,7 +78,7 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
                         rxControl = NULL,
                         addProp = c("combined2", "combined1"),
                         sumProd = FALSE, optExpression = TRUE,
-                        literalFix = FALSE,
+                        literalFix = TRUE,
                         calcTables = TRUE, compress = TRUE, ci = 0.95,
                         sigdigTable = NULL, ...) {
   checkmate::assertIntegerish(chains, lower = 1, len = 1, any.missing = FALSE)
@@ -190,7 +190,8 @@ getValidNlmixrCtl.stan <- function(control) {
     .ctl <- do.call("stanControl", .ctl)
   }
   if (!inherits(.ctl, "stanControl")) {
-    cli::cli_inform("invalid control for {.code est=\"{.cls}\"}, using default")
+    cli::cli_inform(paste0("invalid control for est=\"", .cls,
+                           "\", using default"))
     .ctl <- stanControl()
   } else {
     .ctl <- do.call(stanControl, .ctl)
@@ -222,14 +223,14 @@ nmObjGetControl.stan <- function(x, ...) {
 .stanControlToFoceiControl <- function(env, assign = TRUE) {
   .c <- env$stanControl
   .f <- nlmixr2est::foceiControl(
-    rxControl = .c$rxControl,
-    maxOuterIterations = 0L, maxInnerIterations = 0L,
-    covMethod = 0L, interaction = 1L, scaleTo = 0,
-    sumProd = .c$sumProd, optExpression = .c$optExpression,
-    literalFix = .c$literalFix,
-    calcTables = .c$calcTables, addProp = .c$addProp,
-    compress = .c$compress, ci = .c$ci, sigdigTable = .c$sigdigTable,
-    etaMat = env$etaMat)
+                                 rxControl = .c$rxControl,
+                                 maxOuterIterations = 0L, maxInnerIterations = 0L,
+                                 covMethod = 0L, interaction = 1L, scaleTo = 0,
+                                 sumProd = .c$sumProd, optExpression = .c$optExpression,
+                                 literalFix = .c$literalFix,
+                                 calcTables = .c$calcTables, addProp = .c$addProp,
+                                 compress = .c$compress, ci = .c$ci, sigdigTable = .c$sigdigTable,
+                                 etaMat = env$etaMat)
   if (assign) env$control <- .f
   invisible(.f)
 }

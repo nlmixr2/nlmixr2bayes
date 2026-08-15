@@ -53,15 +53,15 @@ test_that("G6: posterior means agree with est='focei' on theo_sd", {
               "set NLMIXR2STAN_SLOW=TRUE for the G6 agreement gate")
   .d <- nlmixr2data::theo_sd
   .focei <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.theoFocei, .d, est = "focei",
-                        control = nlmixr2est::foceiControl(print = 0L,
-                                                           covMethod = ""))))
+                                              nlmixr2est::nlmixr2(.theoFocei, .d, est = "focei",
+                                                                  control = nlmixr2est::foceiControl(print = 0L,
+                                                                                                     covMethod = ""))))
   .fit <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.theoStan, .d, est = "stan",
-                        control = stanControl(chains = 2L, iter = 1500L,
-                                              warmup = 500L, seed = 7L,
-                                              adapt_delta = 0.95,
-                                              onDiagnostic = "none"))))
+                                            nlmixr2est::nlmixr2(.theoStan, .d, est = "stan",
+                                                                control = stanControl(chains = 2L, iter = 1500L,
+                                                                                      warmup = 500L, seed = 7L,
+                                                                                      adapt_delta = 0.95,
+                                                                                      onDiagnostic = "none"))))
   .thF <- .focei$ui$theta
   .thS <- .fit$ui$theta
   .sd <- sqrt(diag(.fit$cov))

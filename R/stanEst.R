@@ -25,6 +25,31 @@
   .lines
 }
 
+#' Estimated thetas that enter dose handling (alag/f/dur/rate), transitively
+#' through intermediate assignments
+#' @noRd
+.stanEventThetas <- function(ui) {
+  .exprs <- ui$lstExpr
+  .lhs <- vapply(.exprs, function(e) {
+    if (is.call(e) && length(e) >= 3L) deparse1(e[[2]]) else ""
+  }, character(1))
+  .isEvent <- grepl("^(alag|lag|f|F|rate|dur)\\(", .lhs)
+  if (!any(.isEvent)) return(character(0))
+  .need <- unique(unlist(lapply(.exprs[.isEvent], function(e) all.vars(e[[3]]))))
+  repeat {
+    .add <- character(0)
+    for (.i in which(!.isEvent)) {
+      if (.lhs[.i] %in% .need) .add <- c(.add, all.vars(.exprs[[.i]][[3]]))
+    }
+    .new <- setdiff(.add, .need)
+    if (length(.new) == 0L) break
+    .need <- c(.need, .new)
+  }
+  .iniDf <- ui$iniDf
+  .th <- .iniDf[!is.na(.iniDf$ntheta) & !.iniDf$fix, "name"]
+  intersect(.need, .th)
+}
+
 #' Capability assertions + prior triage for est="stan"
 #' @noRd
 .stanAssert <- function(ui) {
@@ -44,6 +69,19 @@
          ": the linked conditional likelihood omits the DV-transform ",
          "Jacobian, which is not constant in an estimated lambda; fix the ",
          "lambda or drop the transform", call. = FALSE)
+  }
+  # estimated dose-handling parameters: the derivative through the event
+  # needs a jump condition, and the linked theta forward-sensitivity model
+  # does not carry it -- the sensitivity index ADVERTISES such a theta but
+  # its column is silently zero, which a gradient-based sampler experiences
+  # as a value/gradient mismatch.  Caught by the FD gate; refused here.
+  .evTh <- .stanEventThetas(ui)
+  if (length(.evTh) > 0L) {
+    stop("est=\"stan\" cannot yet estimate dose-handling parameter(s) ",
+         paste0("'", .evTh, "'", collapse = ", "),
+         " (alag/f/dur/rate): the linked theta sensitivities do not ",
+         "propagate through the event jump; fix() them or wait for the ",
+         "event-sensitivity wiring", call. = FALSE)
   }
   # mu-referenced covariates: the covariate-coefficient theta gradient needs
   # the per-subject covariate values, which the linkage does not carry yet
@@ -118,9 +156,14 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
     writeLines(.gen$code, control$stanFile)
   }
   if (!isTRUE(control$run)) {
+    # $env carries the ui the way a fit does, so nlmixr2's post-dispatch
+    # restore (which un-does the literal-fix/zero-omega preprocessing on the
+    # returned object's ui) has somewhere to write
+    .env <- new.env(parent = emptyenv())
+    .env$ui <- ui
     .out <- list(code = .gen$code, data = .gen$data, map = .map,
                  priors = .pri, notes = .gen$notes, ui = ui,
-                 control = control)
+                 control = control, env = .env)
     class(.out) <- "nlmixr2stanCode"
     return(.out)
   }
@@ -132,7 +175,8 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
                      !(seq_len(nrow(.map$theta)) %in% .map$muRefIdx))
   .h <- stanLinkSetup(ui, env$data, likelihood = control$likelihood,
                       rxControl = control$rxControl,
-                      thetaSens = .needSens, cores = control$likCores)
+                      thetaSens = .needSens, literalFix = control$literalFix,
+                      cores = control$likCores)
   on.exit(stanLinkFree(), add = TRUE)
   on.exit(.Call(`_nlmixr2stan_clearThetaBase`), add = TRUE)
   if (!identical(.h$etaNames, .map$eta$name) ||
@@ -152,29 +196,23 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
     tryCatch(.linkSetOmegaInv(.omInv), error = function(e) NULL)
   }
   # ---- sample -------------------------------------------------------------
-  # jitter draws for the inits come from R's RNG; leave the user's RNG state
-  # as we found it
-  .oldSeed <- if (exists(".Random.seed", envir = globalenv())) {
-    get(".Random.seed", envir = globalenv())
-  } else NULL
-  on.exit({
-    if (!is.null(.oldSeed)) {
-      assign(".Random.seed", .oldSeed, envir = globalenv())
-    } else if (exists(".Random.seed", envir = globalenv())) {
-      rm(".Random.seed", envir = globalenv())
+  # the init jitter draws come from R's RNG; rxWithSeed scopes the seed and
+  # restores the user's RNG state (touching .Random.seed directly is
+  # forbidden by CRAN)
+  .sf <- rxode2::rxWithSeed(control$seed, {
+    .init <- if (identical(control$init, "ini")) {
+      .stanInit(.map, .gen$blockSpecs, .nid, control)
+    } else {
+      control$init
     }
-  }, add = TRUE)
-  set.seed(control$seed)
-  .init <- if (identical(control$init, "ini")) {
-    .stanInit(.map, .gen$blockSpecs, .nid, control)
-  } else control$init
-  .sf <- rstan::sampling(.sm, data = .gen$data, chains = control$chains,
-                         iter = control$iter, warmup = control$warmup,
-                         thin = control$thin, seed = control$seed,
-                         init = .init, cores = 1,
-                         refresh = if (control$verbose) max(1L, control$iter %/% 10L) else 0L,
-                         control = list(adapt_delta = control$adapt_delta,
-                                        max_treedepth = control$max_treedepth))
+    rstan::sampling(.sm, data = .gen$data, chains = control$chains,
+                    iter = control$iter, warmup = control$warmup,
+                    thin = control$thin, seed = control$seed,
+                    init = .init, cores = 1,
+                    refresh = if (control$verbose) max(1L, control$iter %/% 10L) else 0L,
+                    control = list(adapt_delta = control$adapt_delta,
+                                   max_treedepth = control$max_treedepth))
+  })
   .dx <- .stanDiagnostics(.sf, control)
   # Free the link BEFORE finalize: nlmixr2CreateOutputFromUi (and the
   # setOfv("FOCEi") row) run zero-iteration focei fits whose setup tears down
@@ -286,7 +324,9 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
   env2$model <- .ui$ebe
   env2$message <- if (dx$nDivergent > 0) {
     paste0(dx$nDivergent, " divergent transitions")
-  } else ""
+  } else {
+    ""
+  }
   env2$stanfit <- sf
   env2$stanCode <- gen$code
   env2$stanData <- gen$data

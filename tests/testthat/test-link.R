@@ -41,8 +41,10 @@ test_that("stage 0: gradient matches central differences (the sign test)", {
   .h <- 1e-5
   fd <- matrix(0, h$nid, h$neta)
   for (k in seq_len(h$neta)) {
-    up <- eta; up[, k] <- up[, k] + .h
-    dn <- eta; dn[, k] <- dn[, k] - .h
+    up <- eta
+    up[, k] <- up[, k] + .h
+    dn <- eta
+    dn[, k] <- dn[, k] - .h
     fd[, k] <- (nlmixr2stan:::.condBatch(up)$value -
                   nlmixr2stan:::.condBatch(dn)$value) / (2 * .h)
   }

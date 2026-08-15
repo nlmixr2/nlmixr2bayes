@@ -82,8 +82,10 @@ test_that("multivariate priors dedupe to one statement (rule 3)", {
   expect_equal(sum(.p$pop$kind == "multivariate"), 1L)
   .mv <- .p$pop[.p$pop$kind == "multivariate", ]
   expect_equal(.mv$members, "tcl,tv")
+  expect_match(.mv$statement, "target \\+= multi_normal_lpdf", fixed = FALSE)
   expect_match(.mv$statement,
-               "target \\+= multi_normal_lpdf\\(to_vector\\(\\{tcl, tv\\}\\) \\| \\[1, 3.45\\]', \\[\\[1, 0.01\\], \\[0.01, 1\\]\\]\\);")
+               "to_vector\\(\\{tcl, tv\\}\\) \\| \\[1, 3.45\\]'")
+  expect_match(.mv$statement, "\\[\\[1, 0.01\\], \\[0.01, 1\\]\\]\\);")
 })
 
 test_that("omega-block priors are classified for the generator, not emitted", {
@@ -102,7 +104,9 @@ test_that("every non-discrete univariate distribution in the catalogue parses", 
   for (.i in seq_len(nrow(.uni))) {
     .r <- .uni[.i, ]
     .nArgs <- .r$nReq
-    .call <- if (.nArgs == 0L) paste0(.r$name, "()") else {
+    .call <- if (.nArgs == 0L) {
+      paste0(.r$name, "()")
+    } else {
       paste0(.r$name, "(", paste(rep("1", .nArgs), collapse = ", "), ")")
     }
     .lk <- .stanPriorLookup(.call)

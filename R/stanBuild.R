@@ -11,20 +11,20 @@
 #' @noRd
 .stanProbeCode <- function() {
   paste(
-    "functions {",
-    "  vector nlmixr2_cond_all(matrix etaMat);",
-    "}",
-    "data {",
-    "  int<lower=1> N;",
-    "  int<lower=1> P;",
-    "}",
-    "parameters {",
-    "  matrix[N, P] eta;",
-    "}",
-    "model {",
-    "  target += sum(nlmixr2_cond_all(eta));",
-    "}",
-    sep = "\n")
+        "functions {",
+        "  vector nlmixr2_cond_all(matrix etaMat);",
+        "}",
+        "data {",
+        "  int<lower=1> N;",
+        "  int<lower=1> P;",
+        "}",
+        "parameters {",
+        "  matrix[N, P] eta;",
+        "}",
+        "model {",
+        "  target += sum(nlmixr2_cond_all(eta));",
+        "}",
+        sep = "\n")
 }
 
 #' Probe the Stan build environment

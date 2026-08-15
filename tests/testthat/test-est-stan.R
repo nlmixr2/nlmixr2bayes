@@ -5,11 +5,11 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
   skip_on_cran()
   skip_if_not_installed("rstan")
   .fit <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan",
-                        control = stanControl(chains = 2L, iter = 400L,
-                                              warmup = 200L, seed = 42L,
-                                              likCores = 1L,
-                                              onDiagnostic = "none"))))
+                                            nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan",
+                                                                control = stanControl(chains = 2L, iter = 400L,
+                                                                                      warmup = 200L, seed = 42L,
+                                                                                      likCores = 1L,
+                                                                                      onDiagnostic = "none"))))
   expect_true(inherits(.fit, "nlmixr2FitData"))
   .env <- .fit$env
   # point estimates pushed back into the ui (the env's fullTheta/theta are

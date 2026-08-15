@@ -12,39 +12,39 @@
 
 .refStanCode <- function() {
   paste(
-    "data {",
-    "  int<lower=1> N;",
-    "  int<lower=1> Nobs;",
-    "  array[Nobs] int<lower=1, upper=N> id;",
-    "  vector[Nobs] time;",
-    "  vector[Nobs] dv;",
-    "}",
-    "parameters {",
-    "  real tcl;",
-    "  real tv;",
-    "  real<lower=0> add_sd;",
-    "  real<lower=0> sd_b1;",
-    "  matrix[N, 1] z_b1;",
-    "}",
-    "model {",
-    "  tcl ~ normal(1, 2);",
-    "  tv ~ normal(3, 2);",
-    "  add_sd ~ cauchy(0, 2.5);",
-    # the exact default the generator announces: cauchy(0, 2.5*sqrt(0.1))
-    paste0("  sd_b1 ~ cauchy(0, ",
-           format(2.5 * sqrt(0.1), digits = 15, trim = TRUE,
-                  scientific = FALSE), ");"),
-    "  to_vector(z_b1) ~ std_normal();",
-    "  {",
-    "    real v = exp(tv);",
-    "    for (o in 1:Nobs) {",
-    "      real cl = exp(tcl + sd_b1 * z_b1[id[o], 1]);",
-    "      real cp = 100 / v * exp(-cl / v * time[o]);",
-    "      dv[o] ~ normal(cp, add_sd);",
-    "    }",
-    "  }",
-    "}",
-    sep = "\n")
+        "data {",
+        "  int<lower=1> N;",
+        "  int<lower=1> Nobs;",
+        "  array[Nobs] int<lower=1, upper=N> id;",
+        "  vector[Nobs] time;",
+        "  vector[Nobs] dv;",
+        "}",
+        "parameters {",
+        "  real tcl;",
+        "  real tv;",
+        "  real<lower=0> add_sd;",
+        "  real<lower=0> sd_b1;",
+        "  matrix[N, 1] z_b1;",
+        "}",
+        "model {",
+        "  tcl ~ normal(1, 2);",
+        "  tv ~ normal(3, 2);",
+        "  add_sd ~ cauchy(0, 2.5);",
+        # the exact default the generator announces: cauchy(0, 2.5*sqrt(0.1))
+        paste0("  sd_b1 ~ cauchy(0, ",
+               format(2.5 * sqrt(0.1), digits = 15, trim = TRUE,
+                      scientific = FALSE), ");"),
+        "  to_vector(z_b1) ~ std_normal();",
+        "  {",
+        "    real v = exp(tv);",
+        "    for (o in 1:Nobs) {",
+        "      real cl = exp(tcl + sd_b1 * z_b1[id[o], 1]);",
+        "      real cp = 100 / v * exp(-cl / v * time[o]);",
+        "      dv[o] ~ normal(cp, add_sd);",
+        "    }",
+        "  }",
+        "}",
+        sep = "\n")
 }
 
 test_that("G4: the linked posterior matches a hand-written pure-Stan reference", {
@@ -55,12 +55,12 @@ test_that("G4: the linked posterior matches a hand-written pure-Stan reference",
   .warm <- if (nzchar(Sys.getenv("NLMIXR2STAN_SLOW"))) 2000L else 1000L
   # ---- the linked fit ------------------------------------------------------
   .fit <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.estMod, d, est = "stan",
-                        control = stanControl(chains = 2L, iter = .iter,
-                                              warmup = .warm, seed = 101L,
-                                              adapt_delta = 0.95,
-                                              likCores = 1L,
-                                              onDiagnostic = "none"))))
+                                            nlmixr2est::nlmixr2(.estMod, d, est = "stan",
+                                                                control = stanControl(chains = 2L, iter = .iter,
+                                                                                      warmup = .warm, seed = 101L,
+                                                                                      adapt_delta = 0.95,
+                                                                                      likCores = 1L,
+                                                                                      onDiagnostic = "none"))))
   .sfL <- .fit$env$stanfit
   # ---- the reference fit ---------------------------------------------------
   .smR <- stanCompile(.refStanCode())

@@ -22,6 +22,10 @@
 #' @param rxControl solving options
 #' @param thetaSens also wire the theta-sensitivity model (`d/d(theta)` of the
 #'   conditional at fixed eta)
+#' @param literalFix inline fixed population parameters as model literals (the
+#'   nlmixr2est literal-fix hook); keep this matched with the est method's
+#'   `stanControl(literalFix=)` so the linked problem and the generated Stan
+#'   program agree on the parameter vector
 #' @param cores subject-parallel thread count for each likelihood evaluation
 #' @return invisibly, the link handle (the `foceiLikLoad` handle plus
 #'   `flags`, `setupHash`)
@@ -29,7 +33,7 @@
 #' @author Matthew L. Fidler
 stanLinkSetup <- function(ui, data, likelihood = c("focei", "foce"),
                           rxControl = rxode2::rxControl(),
-                          thetaSens = FALSE,
+                          thetaSens = FALSE, literalFix = TRUE,
                           cores = rxode2::getRxThreads()) {
   likelihood <- match.arg(likelihood)
   if (!is.null(.stanLinkEnv$handle)) {
@@ -39,7 +43,7 @@ stanLinkSetup <- function(ui, data, likelihood = c("focei", "foce"),
   }
   .h <- nlmixr2est::foceiLikLoad(ui, data, likelihood, rxControl = rxControl,
                                  scale = "natural", thetaSens = thetaSens,
-                                 est = "stan")
+                                 est = "stan", literalFix = literalFix)
   .d <- .Call(`_nlmixr2stan_dims`)
   if (.d[["status"]] != 0L) {
     nlmixr2est::foceiLikUnload()
