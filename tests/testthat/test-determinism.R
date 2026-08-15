@@ -5,10 +5,42 @@
 # gate proves the batch entries are bitwise identical under heavy
 # interleaved evaluation -- at the exact C entries the compiled Stan model
 # calls, no Stan needed.
+#
+# The fixture is a DOSED ODE model on purpose: the history-dependent state
+# this gate exists to catch (LSODA solver work arrays, tolerance stickiness,
+# per-subject solve caches, the event-handling path) is only in play when
+# the solver actually runs -- the closed-form .linkMod would pass trivially.
+
+.odeDetMod <- function() {
+  ini({
+    tcl <- 1
+    tv <- 3
+    add.sd <- 0.5
+    eta.cl ~ 0.1
+  })
+  model({
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv)
+    d / dt(central) <- -cl / v * central
+    cp <- central / v
+    cp ~ add(add.sd)
+  })
+}
+
+.odeDetData <- function() {
+  set.seed(42)
+  .tt <- c(0.5, 1, 2, 4, 8)
+  do.call(rbind, lapply(1:4, function(id) {
+    rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 100, EVID = 1),
+          data.frame(ID = id, TIME = .tt,
+                     DV = 5 * exp(-0.05 * .tt) + stats::rnorm(5, 0, 0.5),
+                     AMT = 0, EVID = 0))
+  }))
+}
 
 test_that("cond batch: 500 interleaved evaluations are bitwise identical (G2)", {
   skip_on_cran()
-  h <- stanLinkSetup(.linkMod, .linkData(), cores = 1L)
+  h <- stanLinkSetup(.odeDetMod, .odeDetData(), cores = 1L)
   on.exit(stanLinkFree(), add = TRUE)
   .linkSetTheta(h$initPar)
   set.seed(17)
@@ -33,7 +65,7 @@ test_that("cond batch: 500 interleaved evaluations are bitwise identical (G2)", 
 
 test_that("tier-2 batch: interleaved theta+eta evaluations are bitwise identical (G2)", {
   skip_on_cran()
-  h <- stanLinkSetup(.linkMod, .linkData(), thetaSens = TRUE, cores = 1L)
+  h <- stanLinkSetup(.odeDetMod, .odeDetData(), thetaSens = TRUE, cores = 1L)
   on.exit({
     .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
     stanLinkFree()

@@ -78,7 +78,7 @@ bridge does not share code with:
 |---|---|
 | Stan's assembled gradient (`grad_log_prob`) vs. Richardson finite differences of its own log density | ~3e-8 |
 | `d/d(eta)` and `d/d(theta)` vs. central differences of the linked conditional value | ~3e-8 |
-| quadrature marginal over the linked conditional vs. nlmixr2's own `est="agq"` (nAGQ=101) at matched theta | 3e-7 |
+| quadrature marginal over the linked conditional vs. nlmixr2's own `est="agq"` (nAGQ=101) at matched theta | 3e-7 (independent *marginalizations* — trapezoid vs adaptive Gauss–Hermite; the integrand engine is shared, and is anchored absolutely by the hand-density row below) |
 | censored (M2/M3/M4) and `ll()` conditionals vs. hand-computed textbook densities | exact up to a pinned, parameter-free constant; all gradients FD-verified, including the residual-SD dependence of the censored CDF terms |
 | prior-only sampling (likelihood stripped) vs. every declared prior | one-sample KS per parameter, including the default LKJ + half-Cauchy omega path |
 | full posterior vs. a hand-written **native-Stan** implementation of the same model and priors (no external function) | within 3× combined MCSE on every parameter |

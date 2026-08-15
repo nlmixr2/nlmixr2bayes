@@ -1,11 +1,17 @@
 # G3c: tie the linked conditional to nlmixr2's own exact marginal.  The
 # marginal likelihood is computed OUTSIDE Stan by quadrature over eta using
 # only the linked conditional value + the normalized eta prior, and compared
-# against est="agq" (nAGQ=101) evaluated at the same theta.  This is the
-# single most informative gate: it catches a missing/extra normalization
-# constant, a DV-transform term, or a mis-scaled residual model in the
-# linked value -- anything that would bias the Stan target -- with no Stan
-# compile in the picture.
+# against est="agq" (nAGQ=101) evaluated at the same theta.
+#
+# Independence boundary, stated honestly: the two MARGINALIZATIONS are
+# independent (a naive 401-point trapezoid + R's dnorm prior here vs agq's
+# inner optimization + adaptive Gauss-Hermite there), so this catches any
+# bug in the link path (shim, batch assembly, theta handling, eta-prior
+# bookkeeping) and in either integration.  The INTEGRAND is shared -- both
+# sides evaluate likInner0 -- so a defect inside likInner0's density itself
+# would cancel here; the absolute anchor for the integrand is
+# test-censor-ll.R's hand-computed textbook densities (and upstream's
+# NONMEM validation).
 
 test_that("quadrature over the linked conditional reproduces est=\"agq\" (G3c)", {
   skip_on_cran()

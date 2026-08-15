@@ -42,6 +42,12 @@
 # hand-computed textbook conditional for the fixture at theta=(1,3,.5).
 # With a LIMIT column, UNCENSORED rows are M2: the truncated-normal density
 # dnorm/P(X > limit) (Beal 2001) -- not the plain density.
+#
+# Pinned regime: prediction f > limit everywhere in this fixture.  Upstream
+# doCensNormal1 selects the M2 truncation tail by sign(limit - f), so if f
+# crossed BELOW the limit it would normalize by P(X < limit) instead; the
+# hand formula here matches the f > limit branch only, and the fixture is
+# built to stay in it (limit = 0, positive concentrations).
 .censHand <- function(d, eta, limit = NA_real_) {
   vapply(1:4, function(i) {
     .di <- d[d$ID == i, ]
