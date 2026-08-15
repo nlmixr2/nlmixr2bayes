@@ -78,6 +78,9 @@ bridge does not share code with:
 |---|---|
 | Stan's assembled gradient (`grad_log_prob`) vs. Richardson finite differences of its own log density | ~3e-8 |
 | `d/d(eta)` and `d/d(theta)` vs. central differences of the linked conditional value | ~3e-8 |
+| quadrature marginal over the linked conditional vs. nlmixr2's own `est="agq"` (nAGQ=101) at matched theta | 3e-7 |
+| censored (M2/M3/M4) and `ll()` conditionals vs. hand-computed textbook densities | exact up to a pinned, parameter-free constant; all gradients FD-verified, including the residual-SD dependence of the censored CDF terms |
+| prior-only sampling (likelihood stripped) vs. every declared prior | one-sample KS per parameter, including the default LKJ + half-Cauchy omega path |
 | full posterior vs. a hand-written **native-Stan** implementation of the same model and priors (no external function) | within 3× combined MCSE on every parameter |
 | the linked likelihood engine itself | NONMEM-validated upstream in nlmixr2est (Wang 2007 objective, per-subject ETA/CWRES) |
 
@@ -90,7 +93,7 @@ satisfy:
 | mu-referenced theta-gradient column vs. the eta gradient | exact |
 | assembled gradient under Omega^-1 swaps spanning 4 orders of magnitude | exact (the conditional is Omega-free by construction) |
 | `log_prob` decomposes into conditional + normalized eta prior | ~1e-6 (difference form, constants cancel) |
-| bitwise determinism and thread-count invariance of every batch evaluation | exact |
+| bitwise determinism: 500+ interleaved evaluations of both batch entries at alternating points | exact (bitwise identical — the target is a pure function of state, which NUTS's reversibility assumes) |
 
 Plus simulate-and-recover fits, including a correlated omega block whose
 generative correlation lands inside the 90% credible interval, and
@@ -105,10 +108,13 @@ mismatch itself locked in as a test upstream.
 ## Current scope
 
 Supported: ODE and `linCmt()` models, normal residual models
-(add/prop/combined and transforms with fixed lambda), mu-referenced and
-non-mu etas, mu-referenced covariates (subject-constant), all 39
-real-valued prior distributions in the lotri catalogue (univariate,
-multivariate normal families, LKJ/Wishart on omega blocks).
+(add/prop/combined and transforms with fixed lambda), censored data
+(M2/M3/M4 via CENS/LIMIT) and user-written `ll()` endpoints (both
+gate-verified: values tie to textbook densities up to a parameter-free
+constant, gradients FD-verified), mu-referenced and non-mu etas,
+mu-referenced covariates (subject-constant), all 39 real-valued prior
+distributions in the lotri catalogue (univariate, multivariate normal
+families, LKJ/Wishart on omega blocks).
 
 Refused with an explanatory error (not silently wrong): estimated
 transform-both-sides lambda (the linked conditional omits the DV-transform
