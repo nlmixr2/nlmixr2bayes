@@ -19,6 +19,26 @@
 #' @noRd
 .stanOmegaBlockSpec <- function(block, omPri, ctl) {
   .first <- block$members[1L]
+  # fixed etas: the variance is a model CONSTANT, not a sampled parameter --
+  # the eta is still random (z ~ std_normal), but L is fixed.  This is what
+  # the IOV preprocessing hook produces (per-occasion unit-variance etas
+  # scaled by an estimated sd theta in the model code), and it serves plain
+  # fixed-variance etas identically.  Fixed etas with modeled correlations
+  # (a fixed block, k > 1) are out of scope and must error, not be
+  # approximated.
+  if (any(block$fix)) {
+    if (block$k > 1L) {
+      stop("the omega block over ", paste(block$members, collapse = ", "),
+           " contains fixed eta(s) with modeled correlations; ",
+           "est=\"stan\" supports fixed DIAGONAL etas only", call. = FALSE)
+    }
+    if (any(omPri$name %in% block$members)) {
+      stop("eta '", .first, "' is fixed; a prior on a fixed eta is a ",
+           "contradiction", call. = FALSE)
+    }
+    return(list(type = "fixed", default = FALSE, nu = NULL, scale = NULL,
+                lkjEta = NULL))
+  }
   .row <- omPri[omPri$name == .first, , drop = FALSE]
   if (nrow(.row) == 0L) {
     # no block prior: defaults, announced by the caller
@@ -99,7 +119,13 @@
     .blockSpecs[[.b]] <- .sp
     .k <- .blk$k
     .id <- paste0("_b", .b)
-    if (.sp$type == "cov") {
+    if (.sp$type == "fixed") {
+      # fixed-variance eta: L is a constant, nothing is declared or given a
+      # prior; z is still sampled, so the eta remains a random effect with
+      # a KNOWN variance (the IOV hook's unit-variance occasion effects)
+      .tpL <- c(.tpL, paste0("  matrix[1,1] L", .id, " = [[",
+                             .stanNum(sqrt(.blk$init[1, 1])), "]];"))
+    } else if (.sp$type == "cov") {
       .decl <- c(.decl, paste0("  cov_matrix[", .k, "] omega", .id, ";"))
       .priorL <- c(.priorL, paste0("  omega", .id, " ~ ", .sp$stanName, "(",
                                    .stanNum(.sp$nu), ", ",
@@ -185,6 +211,33 @@
     }
     .thPrior <- c(.thPrior, paste0("  ", .r$statement))
   }
+  # ---- estimated transform-both-sides lambda: DV-transform Jacobian ------
+  # The linked conditional evaluates the TRANSFORMED-scale density and omits
+  # the Jacobian sum(log |dh(y; lambda)/dy|).  For Box-Cox/Yeo-Johnson that
+  # is (lambda - 1) * sJ with sJ a pure DATA statistic per endpoint
+  # (Box-Cox: sum(log y); Yeo-Johnson: sum(log1p(y)) over y >= 0 minus
+  # sum(log1p(-y)) over y < 0), so it is emitted STAN-SIDE: lambda's full
+  # gradient is then exact -- d(cond)/dlambda from the linked sensitivities
+  # (nlmixr2/nlmixr2est#949) plus autodiff of this term.  The est layer
+  # fills the statistic into the data list (.stanTbsJacValues).
+  .iniDf <- ui$iniDf
+  .tbsRows <- which(.iniDf$err %in% c("boxCox", "yeoJohnson") &
+                      !.iniDf$fix & !is.na(.iniDf$ntheta))
+  .tbsDecl <- character(0)
+  .tbsTarget <- character(0)
+  .tbsJac <- list()
+  for (.i in .tbsRows) {
+    .p <- match(.iniDf$name[.i], map$theta$name)
+    .dn <- paste0("sumLogJac_", .p)
+    .tbsDecl <- c(.tbsDecl,
+                  paste0("  real ", .dn,
+                         ";  // DV-transform Jacobian statistic"))
+    .tbsTarget <- c(.tbsTarget, paste0("  target += (", map$theta$par[.p],
+                                       " - 1) * ", .dn, ";"))
+    .tbsJac[[length(.tbsJac) + 1L]] <-
+      list(name = .dn, theta = .iniDf$name[.i],
+           transform = .iniDf$err[.i], condition = .iniDf$condition[.i])
+  }
   # ---- assemble -----------------------------------------------------------
   .code <- paste(c(
                    "functions {",
@@ -194,6 +247,7 @@
                    "}",
                    "data {",
                    "  int<lower=1> N;",
+                   .tbsDecl,
                    "}",
                    "parameters {",
                    .decl,
@@ -209,6 +263,7 @@
                    .thPrior,
                    .priorL,
                    "  target += sum(nlmixr2_cond_all2(eta, theta));",
+                   .tbsTarget,
                    "}",
                    "generated quantities {",
                    paste0("  matrix[", nrow(map$eta), ",", nrow(map$eta),
@@ -219,7 +274,7 @@
                    "  logLikSubj = nlmixr2_cond_all2(eta, theta);",
                    "}"), collapse = "\n")
   list(code = .code, data = list(N = NA_integer_), notes = .notes,
-       blockSpecs = .blockSpecs)
+       blockSpecs = .blockSpecs, tbsJac = .tbsJac)
 }
 
 #' Per-chain initial values on the constrained scale
@@ -241,7 +296,9 @@
       .sp <- blockSpecs[[.b]]
       .id <- paste0("_b", .b)
       .k <- .sp$block$k
-      if (.sp$type == "cov") {
+      if (.sp$type == "fixed") {
+        # constant L: nothing to initialize beyond z below
+      } else if (.sp$type == "cov") {
         .ini[[paste0("omega", .id)]] <- .sp$block$init
       } else if (.sp$type == "sd") {
         .ini[[paste0("sd", .id)]] <- sqrt(.sp$block$init[1, 1])

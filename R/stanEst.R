@@ -38,6 +38,49 @@
   is.function(.f) && "eventSens" %in% names(formals(.f))
 }
 
+#' Does the linked nlmixr2est carry the estimated transform-both-sides
+#' lambda's conditional sensitivity?  nlmixr2/nlmixr2est#949 (PR #950) added
+#' the rx__sens_rx_lambda__BY_THETA columns + the DV-side chain rule; both
+#' sides ship as 7.0.3, so probe the builder's body for the marker.
+#' @noRd
+.stanHasTbsLambdaSens <- function() {
+  .f <- get0("rxUiGet.impmapThetaSens", envir = asNamespace("nlmixr2est"))
+  is.function(.f) && any(grepl("rx__sens_rx_lambda__BY_THETA",
+                               deparse(body(.f)), fixed = TRUE))
+}
+
+#' Per-endpoint DV-transform Jacobian statistics for estimated
+#' transform-both-sides lambdas (gen$tbsJac): Box-Cox sJ = sum(log y);
+#' Yeo-Johnson sJ = sum(log1p(y)) over y >= 0 minus sum(log1p(-y)) over
+#' y < 0.  Observations are matched to the lambda's endpoint by CMT when
+#' the model has several endpoints.
+#' @noRd
+.stanTbsJacValues <- function(gen, ui, dataSav) {
+  if (length(gen$tbsJac) == 0L) return(gen)
+  .obs <- dataSav[dataSav$EVID == 0 & !is.na(dataSav$DV), , drop = FALSE]
+  .pd <- ui$predDf
+  for (.j in gen$tbsJac) {
+    .rows <- .obs
+    if (nrow(.pd) > 1L && "CMT" %in% names(.obs)) {
+      .cmt <- .pd$cmt[match(.j$condition, .pd$cond)]
+      .rows <- .obs[.obs$CMT == .cmt, , drop = FALSE]
+    }
+    .dv <- .rows$DV
+    if (identical(.j$transform, "boxCox")) {
+      if (any(.dv <= 0)) {
+        stop("boxCox(", .j$theta, ") needs strictly positive DV and ",
+             "endpoint '", .j$condition, "' has ", sum(.dv <= 0),
+             " non-positive observation(s)", call. = FALSE)
+      }
+      .s <- sum(log(.dv))
+    } else {
+      .s <- sum(log1p(.dv[.dv >= 0])) - sum(log1p(-.dv[.dv < 0]))
+    }
+    gen$data[[.j$name]] <- .s
+  }
+  gen
+}
+
 #' Estimated thetas that enter dose handling (alag/f/dur/rate), transitively
 #' through intermediate assignments
 #' @noRd
@@ -82,14 +125,14 @@
   # lambda term is then constant in the sampled parameters).
   .iniDf <- ui$iniDf
   .tbs <- which(.iniDf$err %in% c("boxCox", "yeoJohnson") & !.iniDf$fix)
-  if (length(.tbs) > 0L) {
-    stop("est=\"stan\" cannot yet estimate the transform-both-sides ",
+  if (length(.tbs) > 0L && !.stanHasTbsLambdaSens()) {
+    stop("est=\"stan\" cannot estimate the transform-both-sides ",
          "parameter(s) ",
          paste0("'", .iniDf$name[.tbs], "'", collapse = ", "),
-         ": the linked conditional's d/dlambda sensitivity column is ",
-         "silently zero (nlmixr2/nlmixr2est#949); fix() the lambda or ",
-         "wait for that fix (the DV-transform Jacobian half is handled ",
-         "Stan-side once it lands)", call. = FALSE)
+         " with this nlmixr2est: the linked conditional's d/dlambda ",
+         "sensitivity column is silently zero; fix() the lambda or ",
+         "update nlmixr2est (>= the nlmixr2/nlmixr2est#949 fix)",
+         call. = FALSE)
   }
   # estimated dose-handling parameters: the derivative through the event
   # needs a jump condition.  nlmixr2est with nlmixr2/nlmixr2est#946 compiles
@@ -151,7 +194,25 @@ attr(nlmixr2Est.stan, "mu") <- FALSE
 # unbounded=FALSE is load-bearing: the natural lower/upper survive in iniDf
 # for the generator to turn into Stan constraints
 attr(nlmixr2Est.stan, "unbounded") <- FALSE
-attr(nlmixr2Est.stan, "iov") <- FALSE
+#' IOV readiness: everything downstream is wired (the .uiApplyIov hook
+#' expansion flows through the generator's fixed-eta blocks and the whole
+#' assembled target was FD-checked end to end), but the upstream
+#' theta-sensitivity column for the IOV magnitude theta is wrong by a
+#' theta-dependent factor (x1.42 at 0.1, x1.14 at 0.2 -- measured, filed
+#' as nlmixr2/nlmixr2est#952).  A scaled-wrong gradient is exactly the
+#' silent kind a sampler turns into a wrong posterior, so IOV stays OFF
+#' until that column FD-agrees.
+#' @noRd
+.stanHasIovSens <- function() {
+  FALSE # flip via a probe when nlmixr2/nlmixr2est#952 lands
+}
+# IOV via nlmixr2est's preprocessing hook (.uiApplyIov): occasion-level
+# random effects become per-occasion FIXED unit-variance etas scaled by an
+# estimated sd theta in the model code; the generator's fixed-eta blocks
+# (constant L, z still sampled) carry them, and the sd theta rides the
+# forward sensitivities like any structural theta.  Gated on the upstream
+# sensitivity being right (#952).
+attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
 
 #' The orchestration: preprocess -> map -> generate -> (compile -> link ->
 #' sample -> finalize)
@@ -166,6 +227,8 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
   .gen <- .stanGenerate(ui, .map, .pri, control)
   .nid <- length(.ret$idLvl)
   .gen$data$N <- .nid
+  # DV-transform Jacobian statistics for any estimated TBS lambda
+  .gen <- .stanTbsJacValues(.gen, ui, .ret$dataSav)
   # per-subject mu-referenced covariate values for the coefficient gradient
   # scatter (d/dtheta_p = cov_i * d/deta_k); a time-varying covariate is
   # flagged, not refused -- its coefficient rides the forward-sensitivity

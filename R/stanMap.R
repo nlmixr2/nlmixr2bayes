@@ -39,7 +39,8 @@
     .blocks[[length(.blocks) + 1L]] <-
       list(members = .nm, idx = sort(.idx), start = min(.idx),
            end = max(.idx), k = length(.nm),
-           init = .m[order(.idx), order(.idx), drop = FALSE])
+           init = .m[order(.idx), order(.idx), drop = FALSE],
+           fix = .eta$fix[sort(.idx)])
     .done <- c(.done, .nm)
   }
   # sort blocks by starting eta index; sanity: contiguity
