@@ -242,7 +242,17 @@
   if (nrow(map$eta) == 0L) {
     # tier 0: population-only (no etas) via the nlm C API
     # (nlmixr2/nlmixr2est#953) -- one external scalar carrying the whole
-    # data log-likelihood and its analytic theta gradient
+    # data log-likelihood and its analytic theta gradient.  The nlm problem
+    # estimates only FREE thetas, while the program's theta vector carries
+    # fixed rows as literals -- a length mismatch the C entry would reject
+    # at the first evaluation (after the compile), so refuse it here: with
+    # literalFix=TRUE (the default) fixed thetas dissolve before this point
+    if (any(map$theta$fix)) {
+      stop("population-only est=\"stan\" needs fixed thetas dissolved: ",
+           "keep literalFix=TRUE (the nlm problem estimates only free ",
+           "thetas, and the program's theta vector would not match)",
+           call. = FALSE)
+    }
     .code <- paste(c(
                      "functions {",
                      "  // external (allow_undefined): log p(y | theta) + analytic",

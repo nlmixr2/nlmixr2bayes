@@ -128,6 +128,21 @@ test_that("plain fixed-variance etas work; fixed correlated blocks refuse", {
   expect_true(any(grepl("matrix[1,1] L_b1 = [[0.2]];", .lines,
                         fixed = TRUE)))
   expect_false(any(grepl("sd_b1", .lines)))
+  # the centred parameterization composes with a fixed block: eta sampled
+  # directly against the CONSTANT L
+  .codeC <- suppressMessages(
+    nlmixr2est::nlmixr2(.fixEta, .d, est = "stan",
+                        control = stanControl(run = FALSE,
+                                              etaParam = "centered")))
+  .linesC <- strsplit(.codeC$code, "\n")[[1]]
+  expect_true(any(grepl("matrix[1,1] L_b1 = [[0.2]];", .linesC,
+                        fixed = TRUE)))
+  expect_true(any(grepl("etaP_b1[i] ~ multi_normal_cholesky", .linesC,
+                        fixed = TRUE)))
+  if (requireNamespace("rstan", quietly = TRUE)) {
+    expect_silent(rstan::stanc(model_code = .codeC$code,
+                               allow_undefined = TRUE))
+  }
   # fixed etas with modeled correlations: out of scope, must error
   .fixBlk <- function() {
     ini({

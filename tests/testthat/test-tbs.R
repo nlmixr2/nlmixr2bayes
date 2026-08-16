@@ -27,12 +27,18 @@
 .tbsData <- function() {
   set.seed(42)
   .tt <- c(0.5, 1, 2, 4, 8)
+  # includes a dose row (EVID=1, NA DV) per subject: the Jacobian statistic
+  # must count OBSERVATIONS only
   do.call(rbind, lapply(1:4, function(id) {
-    data.frame(ID = id, TIME = .tt,
-               DV = abs(5 * exp(-0.05 * .tt) + stats::rnorm(5, 0, 0.5)),
-               AMT = 0, EVID = 0)
+    rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 0, EVID = 2),
+          data.frame(ID = id, TIME = .tt,
+                     DV = abs(5 * exp(-0.05 * .tt) + stats::rnorm(5, 0, 0.5)),
+                     AMT = 0, EVID = 0))
   }))
 }
+
+# observation DVs only (the Jacobian statistic's domain)
+.tbsObsDv <- function(d) d$DV[d$EVID == 0 & !is.na(d$DV)]
 
 test_that("estimated lambda: the linked d/dlambda column FD-agrees (#949)", {
   skip_on_cran()
@@ -81,7 +87,8 @@ test_that("estimated lambda: the generator emits the Jacobian statistic", {
   expect_true(any(grepl("target += (lambda - 1) * sumLogJac_4;", .lines,
                         fixed = TRUE)))
   # the statistic is exactly sum(log DV) for Box-Cox
-  expect_equal(.code$data$sumLogJac_4, sum(log(.d$DV)), tolerance = 1e-12)
+  expect_equal(.code$data$sumLogJac_4, sum(log(.tbsObsDv(.d))),
+               tolerance = 1e-12)
   if (requireNamespace("rstan", quietly = TRUE)) {
     expect_silent(rstan::stanc(model_code = .code$code,
                                allow_undefined = TRUE))
@@ -108,9 +115,10 @@ test_that("estimated lambda: the generator emits the Jacobian statistic", {
   .codeY <- suppressMessages(
     nlmixr2est::nlmixr2(.yjMod, .d, est = "stan",
                         control = stanControl(run = FALSE)))
+  .dvObs <- .tbsObsDv(.d)
   expect_equal(.codeY$data$sumLogJac_4,
-               sum(log1p(.d$DV[.d$DV >= 0])) -
-                 sum(log1p(-.d$DV[.d$DV < 0])), tolerance = 1e-12)
+               sum(log1p(.dvObs[.dvObs >= 0])) -
+                 sum(log1p(-.dvObs[.dvObs < 0])), tolerance = 1e-12)
   # a FIXED lambda emits no Jacobian machinery (constant shift)
   .fixMod <- function() {
     ini({

@@ -52,6 +52,44 @@ test_that("tier 0 codegen: theta-only program with nlmixr2_pop_ll", {
   }
 })
 
+test_that("tier 0 refuses undissolved fixed thetas (theta-length mismatch)", {
+  skip_on_cran()
+  skip_if_not(nlmixr2stan:::.stanHasNlmApi(),
+              "nlmixr2est lacks the nlm C API (#953)")
+  .fixMod <- function() {
+    ini({
+      tcl <- 1
+      tv <- fix(3)
+      add.sd <- c(0, 0.5)
+      prior(tcl) ~ dnorm(1, 2)
+      prior(add.sd) ~ dcauchy(0, 2.5)
+    })
+    model({
+      cl <- exp(tcl)
+      v <- exp(tv)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  # literalFix=FALSE keeps the fixed row in the theta vector; the nlm
+  # problem estimates only free thetas, so the mismatch is refused at
+  # GENERATION (before any compile) rather than failing at the first
+  # evaluation
+  expect_error(
+    suppressMessages(
+      nlmixr2est::nlmixr2(.fixMod, .popData(), est = "stan",
+                          control = stanControl(run = FALSE,
+                                                literalFix = FALSE))),
+    "literalFix")
+  # with the default literalFix=TRUE the fixed theta dissolves and the
+  # model generates
+  expect_s3_class(
+    suppressMessages(
+      nlmixr2est::nlmixr2(.fixMod, .popData(), est = "stan",
+                          control = stanControl(run = FALSE))),
+    "nlmixr2stanCode")
+})
+
 test_that("tier 0 link: value ties to the hand density; gradient FD-agrees", {
   skip_on_cran()
   skip_if_not(nlmixr2stan:::.stanHasNlmApi(),
