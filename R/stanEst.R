@@ -224,7 +224,10 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
   # factor); with neither source its gradient would be silently zero, so
   # refuse.  (etaIdx is 1-based in the map, 0-based in the shim; covVal
   # columns follow muRefCov rows.)
-  .mrcTvBad <- which(.cov$timeVarying &
+  # (a fix()ed coefficient needs no gradient at all -- with literalFix=FALSE
+  # it survives into the map, and refusing it would reject a valid model)
+  .mrcFree <- !.map$theta$fix[.map$muRefCov$thetaIdx]
+  .mrcTvBad <- which(.cov$timeVarying & .mrcFree &
                        !(.map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
   if (length(.mrcTvBad) > 0L) {
     stop("time-varying mu-referenced covariate coefficient(s) ",
@@ -232,7 +235,7 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
          " have no forward sensitivity in the linked model, so their ",
          "gradient would be silently zero", call. = FALSE)
   }
-  .mrcS <- which(!.cov$timeVarying &
+  .mrcS <- which(!.cov$timeVarying & .mrcFree &
                    !(.map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
   if (length(.mrcS) > 0L) {
     .Call(`_nlmixr2stan_setMuRefCov`,

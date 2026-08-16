@@ -99,6 +99,9 @@ test_that("simulation-based calibration: ranks are uniform (G5)", {
   .discard <- 0L
   .seed <- 5000L
   while (length(.ranks) < .n) {
+    # hard stop: a systematically broken sampler would otherwise redraw
+    # forever instead of failing the discard-rate gate
+    if (.discard > .n) break
     .seed <- .seed + 1L
     .r <- .oneRep(.seed)
     if (is.null(.r)) {
@@ -107,6 +110,7 @@ test_that("simulation-based calibration: ranks are uniform (G5)", {
     }
     .ranks[[length(.ranks) + 1L]] <- .r
   }
+  expect_gte(length(.ranks), .n * 0.5)
   .rk <- do.call(rbind, .ranks)
   .L <- .rk[1, "L"]
   cat(sprintf("\nSBC: %d replicates, %d discarded (%.0f%%), L = %d\n",
@@ -115,7 +119,7 @@ test_that("simulation-based calibration: ranks are uniform (G5)", {
   # uniformity per parameter: randomized-PIT KS against U(0,1)
   set.seed(1)
   for (.p in c("tcl", "add.sd", "omSd")) {
-    .u <- (.rk[, .p] + stats::runif(.n)) / (.L + 1)
+    .u <- (.rk[, .p] + stats::runif(nrow(.rk))) / (.L + 1)
     .ks <- suppressWarnings(stats::ks.test(.u, "punif"))
     cat(sprintf("SBC %s: KS p = %.4f\n", .p, .ks$p.value))
     expect_gt(.ks$p.value, 0.001)
