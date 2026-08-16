@@ -131,8 +131,48 @@ test_that("mixture tier-2 shim: component-conditional value + gradients FD-agree
   }
   .p1Idx <- .map$mixProbIdx[1]
   expect_true(all(got$gradTheta[, .p1Idx] == 0))
+  # positive controls first (a bug zeroing all columns must NOT pass), then
+  # the per-component selectivity
+  expect_true(any(abs(got$gradTheta[1:4, 1]) > 1e-3)) # tcl1 x component 1
+  expect_true(any(abs(got$gradTheta[5:8, 2]) > 1e-3)) # tcl2 x component 2
   expect_true(all(abs(got$gradTheta[5:8, 1]) < 1e-10)) # tcl1 x component 2
   expect_true(all(abs(got$gradTheta[1:4, 2]) < 1e-10)) # tcl2 x component 1
+})
+
+test_that("a fix()ed mixing probability inlines as a literal", {
+  skip_on_cran()
+  skip_if_not(.stanHasMixApi(),
+              "nlmixr2est lacks the blessed mixture layout (#955)")
+  .fixP <- function() {
+    ini({
+      tcl1 <- 1
+      tcl2 <- 2
+      tv <- 3
+      p1 <- fix(0.3)
+      add.sd <- 0.5
+      eta.cl ~ 0.1
+      prior(tcl1) ~ dnorm(1, 2)
+      prior(add.sd) ~ dcauchy(0, 2.5)
+    })
+    model({
+      cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+      v <- exp(tv)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  # literalFix would dissolve it entirely; test the kept-in-vector path
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.fixP, .mixData(), est = "stan",
+                        control = stanControl(run = FALSE,
+                                              literalFix = FALSE)))
+  .lines <- strsplit(.code$code, "\n")[[1]]
+  expect_true(any(grepl("log_sum_exp(log(0.3)", .lines, fixed = TRUE)))
+  expect_false(any(grepl("real<lower=0,upper=1> p1;", .lines, fixed = TRUE)))
+  if (requireNamespace("rstan", quietly = TRUE)) {
+    expect_silent(rstan::stanc(model_code = .code$code,
+                               allow_undefined = TRUE))
+  }
 })
 
 test_that("mixture end to end: assembled gradient + membership + fit contract", {

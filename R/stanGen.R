@@ -100,9 +100,10 @@
       .con <- pri$pop$constraint[.w]
     }
     if (.r$name %in% .mixProbNames) {
-      # a mixing probability IS a probability: constrain to (0,1)
-      # regardless of the (typically unbounded) iniDf declaration
-      .con <- "<lower=0,upper=1>"
+      # a mixing probability IS a probability: intersect the declared
+      # bounds with (0,1) -- a TIGHTER user declaration (e.g.
+      # c(0.1, 0.3, 0.6)) survives, an unbounded one becomes (0,1)
+      .con <- .stanConstraint(max(.r$lower, 0), min(.r$upper, 1))
     }
     .decl <- c(.decl, paste0("  real", .con, " ", .r$par, ";"))
   }
@@ -125,7 +126,15 @@
          "has ", map$nMix, " components)", call. = FALSE)
   }
   .rowsN <- if (map$nMix > 1L) paste0(map$nMix, "*N") else "N"
-  .mixP <- if (map$nMix > 1L) map$theta$par[map$mixProbIdx[1]] else NULL
+  # a fix()ed mixing probability is not a declared parameter -- inline the
+  # literal in the log_sum_exp weights (review catch: the bare symbol would
+  # not compile)
+  .mixP <- if (map$nMix > 1L) {
+    .pi <- map$mixProbIdx[1]
+    if (map$theta$fix[.pi]) .stanNum(map$theta$est[.pi]) else map$theta$par[.pi]
+  } else {
+    NULL
+  }
   # ---- omega blocks -------------------------------------------------------
   .blockSpecs <- list()
   .tpL <- character(0)   # transformed-parameter lines building L_b
