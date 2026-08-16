@@ -112,17 +112,26 @@
 }
 
 #' Per-subject values of the mu-referenced covariates, nid x nrow(muRefCov)
-#' in idLvl order.  The scatter identity d/dtheta_p = cov_i * d/deta_k only
-#' factors when the covariate is constant within subject, so a time-varying
-#' covariate is refused (the rows nlmixr2est's preprocessing adds, e.g. the
-#' EVID=9 initialization row, carry NA and are ignored).
+#' in idLvl order (the rows nlmixr2est's preprocessing adds, e.g. the
+#' EVID=9 initialization row, carry NA and are ignored).  The scatter
+#' identity d/dtheta_p = cov_i * d/deta_k only factors when the covariate
+#' is constant within subject; a TIME-VARYING covariate is NOT an error --
+#' its coefficient is handled like any other structural theta through the
+#' forward-sensitivity model (the same way the other nlmixr2est methods
+#' treat a time-varying regressor) -- so it is only flagged here, and the
+#' est wiring routes it to the sensitivity path instead of the scatter.
+#' @return list(val = nid x nCov matrix (NA columns where time-varying),
+#'   timeVarying = logical per coefficient)
 #' @noRd
 .stanMuRefCovValues <- function(map, dataSav) {
   .mrc <- map$muRefCov
-  if (nrow(.mrc) == 0L) return(matrix(0, 0L, 0L))
+  if (nrow(.mrc) == 0L) {
+    return(list(val = matrix(0, 0L, 0L), timeVarying = logical(0)))
+  }
   .id <- dataSav$ID
   .nid <- length(unique(.id))
-  .val <- matrix(0, .nid, nrow(.mrc))
+  .val <- matrix(NA_real_, .nid, nrow(.mrc))
+  .tv <- logical(nrow(.mrc))
   for (.j in seq_len(nrow(.mrc))) {
     .cn <- .mrc$covariate[.j]
     if (!.cn %in% names(dataSav)) {
@@ -137,14 +146,11 @@
              "subject ", .i, call. = FALSE)
       }
       if (length(.u) > 1L) {
-        stop("est=\"stan\" needs mu-referenced covariates constant within ",
-             "subject and '", .cn, "' varies within subject ", .i,
-             ": the coefficient gradient d/d(", .mrc$name[.j],
-             ") = ", .cn, " * d/d(eta) only factors for a ",
-             "subject-constant covariate", call. = FALSE)
+        .tv[.j] <- TRUE
+        break
       }
       .val[.i, .j] <- .u
     }
   }
-  .val
+  list(val = .val, timeVarying = .tv)
 }

@@ -112,16 +112,23 @@ Supported: ODE and `linCmt()` models, normal residual models
 (M2/M3/M4 via CENS/LIMIT) and user-written `ll()` endpoints (both
 gate-verified: values tie to textbook densities up to a parameter-free
 constant, gradients FD-verified), mu-referenced and non-mu etas,
-mu-referenced covariates (subject-constant), all 39 real-valued prior
-distributions in the lotri catalogue (univariate, multivariate normal
-families, LKJ/Wishart on omega blocks).
+mu-referenced covariates (subject-constant and time-varying), all 39
+real-valued prior distributions in the lotri catalogue (univariate,
+multivariate normal families, LKJ/Wishart on omega blocks).
+
+Mu-referenced covariates work for both subject-constant covariates (the
+`cov_i * d/deta` scatter identity) and time-varying covariates (the
+coefficient rides the forward-sensitivity model like any other structural
+theta, the same way the other nlmixr2est methods treat a time-varying
+regressor); both routes are FD-verified.
 
 Refused with an explanatory error (not silently wrong): estimated
-transform-both-sides lambda (the linked conditional omits the DV-transform
-Jacobian), a time-varying covariate on a mu-referenced coefficient (the
-`cov_i * d/deta` factorization needs the covariate constant within
-subject), mixture models, IOV, and the 8 discrete distributions (every
-`ini({})` parameter is real-valued).
+transform-both-sides lambda (temporarily: the DV-transform Jacobian is
+data-times-lambda algebra the generator will emit Stan-side with exact
+autodiff, but the linked conditional's own d/dlambda sensitivity column is
+silently zero upstream — nlmixr2est#949, FD-measured; a *fixed* lambda
+works today), mixture models, IOV, and the 8 discrete distributions
+(every `ini({})` parameter is real-valued).
 
 This package requires nlmixr2est with the FOCEi conditional-likelihood C API
 (nlmixr2est#937, #939, #941).  See the issue tracker for the roadmap

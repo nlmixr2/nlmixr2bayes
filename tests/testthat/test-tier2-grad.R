@@ -202,15 +202,19 @@ test_that("mu-referenced covariate coefficient gradients FD-agree", {
   .env$table <- nlmixr2est::tableControl()
   nlmixr2est::.foceiPreProcessData(.d, .env, .ui, rxode2::rxControl())
   .cv <- nlmixr2stan:::.stanMuRefCovValues(.map, .env$dataSav)
-  expect_equal(as.numeric(.cv), .wt)
-  # a time-varying covariate cannot factor through the scatter identity
+  expect_equal(as.numeric(.cv$val), .wt)
+  expect_false(any(.cv$timeVarying))
+  # a time-varying covariate cannot factor through the scatter identity --
+  # it is FLAGGED (not refused): the coefficient rides the
+  # forward-sensitivity model like any other structural theta, the same
+  # way the other nlmixr2est methods treat a time-varying regressor
   .dTv <- .d
   .dTv$WT[.dTv$ID == 1][3] <- 0.4
   .envTv <- new.env(parent = emptyenv())
   .envTv$table <- nlmixr2est::tableControl()
   nlmixr2est::.foceiPreProcessData(.dTv, .envTv, .ui, rxode2::rxControl())
-  expect_error(nlmixr2stan:::.stanMuRefCovValues(.map, .envTv$dataSav),
-               "varies within subject")
+  .cvTv <- nlmixr2stan:::.stanMuRefCovValues(.map, .envTv$dataSav)
+  expect_true(.cvTv$timeVarying[1])
   # --- regime 1: the theta-sensitivity model carries the coefficient -------
   # upstream classifies wt.cl as a plain structural theta, so it gets an
   # exact forward sensitivity; est="stan" must NOT also scatter (2x bug)
@@ -255,7 +259,7 @@ test_that("mu-referenced covariate coefficient gradients FD-agree", {
   .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, as.integer(.map$muRefIdx))
   .Call(nlmixr2stan:::`_nlmixr2stan_setMuRefCov`,
         as.integer(.map$muRefCov$thetaIdx),
-        as.integer(.map$muRefCov$etaIdx - 1L), .cv)
+        as.integer(.map$muRefCov$etaIdx - 1L), .cv$val)
   got2 <- .bt(th, eta)
   expect_equal(got2$nBad, 0L)
   # tcl (mu-ref) and wt.cl (scatter) columns match regime 1's; tv/add.sd
@@ -265,6 +269,23 @@ test_that("mu-referenced covariate coefficient gradients FD-agree", {
   expect_equal(got2$gradTheta[, 3], .wt * got2$gradEta[, 1],
                tolerance = 1e-12)
   expect_equal(as.numeric(got2$gradTheta[, 3]), as.numeric(fdT[, 3]),
+               tolerance = 1e-3)
+  stanLinkFree()
+  .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+  # --- time-varying covariate: the forward-sensitivity route --------------
+  h3 <- stanLinkSetup(.covMod, .dTv, thetaSens = TRUE, cores = 1L)
+  expect_true(3L %in% h3$thetaSensIdx)
+  .Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(h3$initPar))
+  .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, as.integer(.map$muRefIdx))
+  got3 <- .bt(th, eta)
+  expect_equal(got3$nBad, 0L)
+  .h <- 1e-5
+  up <- th
+  up[3] <- up[3] + .h
+  dn <- th
+  dn[3] <- dn[3] - .h
+  fdTv <- (.bt(up, eta)$value - .bt(dn, eta)$value) / (2 * .h)
+  expect_equal(as.numeric(got3$gradTheta[, 3]), as.numeric(fdTv),
                tolerance = 1e-3)
   # est="stan" accepts the model end-to-end (codegen path)
   .code <- suppressMessages(

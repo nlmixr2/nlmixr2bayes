@@ -33,6 +33,9 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
   }
   # Bayesian accessors ride on the fit environment
   expect_s4_class(.env$stanfit, "stanfit")
+  # the documented retrieval path: fit$stanfit reaches the rstan object
+  expect_s4_class(.fit$stanfit, "stanfit")
+  expect_true(is.character(.fit$stanCode))
   expect_true(is.character(.env$stanCode))
   expect_true(is.data.frame(.env$posteriorSummary))
   expect_true(is.list(.env$stanDiagnostics))
@@ -58,4 +61,15 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
   suppressWarnings(suppressMessages(nlmixr2est::setOfv(.fit, "FOCEi")))
   expect_equal(.fit$etaObf, .etaBefore)
   expect_equal(.fit$objDf["FOCEi", "OBJF"], .obj, tolerance = 1e-8)
+  # D7: subject-level WAIC/LOO rows and the loo objects
+  if (requireNamespace("loo", quietly = TRUE)) {
+    expect_s3_class(.fit$env$loo, "loo")
+    expect_s3_class(.fit$env$waic, "waic")
+    expect_true(any(grepl("^WAIC", rownames(.fit$objDf))))
+    expect_true(any(grepl("^LOO", rownames(.fit$objDf))))
+    # deviance-scale OBJF = -2 * elpd
+    expect_equal(.fit$objDf[grep("^LOO", rownames(.fit$objDf)), "OBJF"],
+                 -2 * .fit$env$loo$estimates["elpd_loo", "Estimate"],
+                 tolerance = 1e-8)
+  }
 })
