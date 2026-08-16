@@ -107,7 +107,12 @@ mismatch itself locked in as a test upstream.
 
 ## Current scope
 
-Supported: ODE and `linCmt()` models, normal residual models
+Supported: mixed AND population-only models (a no-eta model -- e.g. a
+single-subject Bayesian fit -- runs as "tier 0" through nlmixr2est's nlm
+path: one external scalar `nlmixr2_pop_ll(theta)` carrying the complete
+data log-likelihood and its analytic gradient, value tied to a
+hand-written density and FD-gate-verified; needs nlmixr2est with
+nlmixr2est#953), ODE and `linCmt()` models, normal residual models
 (add/prop/combined and transforms with fixed lambda), censored data
 (M2/M3/M4 via CENS/LIMIT) and user-written `ll()` endpoints (both
 gate-verified: values tie to textbook densities up to a parameter-free
@@ -122,13 +127,17 @@ coefficient rides the forward-sensitivity model like any other structural
 theta, the same way the other nlmixr2est methods treat a time-varying
 regressor); both routes are FD-verified.
 
-Refused with an explanatory error (not silently wrong): estimated
-transform-both-sides lambda (temporarily: the DV-transform Jacobian is
-data-times-lambda algebra the generator will emit Stan-side with exact
-autodiff, but the linked conditional's own d/dlambda sensitivity column is
-silently zero upstream — nlmixr2est#949, FD-measured; a *fixed* lambda
-works today), mixture models, IOV, and the 8 discrete distributions
-(every `ini({})` parameter is real-valued).
+Estimated transform-both-sides lambda (Box-Cox / Yeo-Johnson) is
+supported: the linked conditional supplies the transformed-scale density
+with an exact d/dlambda column (nlmixr2est#949; FD-verified at ~1e-10),
+and the generator adds the DV-transform Jacobian Stan-side as
+`target += (lambda - 1) * sumLogJac` — a pure data statistic, so lambda's
+full gradient is exact end to end (the assembled target is gate-verified
+against the untransformed-scale density in difference form).
+
+Refused with an explanatory error (not silently wrong): mixture models,
+IOV, and the 8 discrete distributions (every `ini({})` parameter is
+real-valued).
 
 This package requires nlmixr2est with the FOCEi conditional-likelihood C API
 (nlmixr2est#937, #939, #941).  See the issue tracker for the roadmap

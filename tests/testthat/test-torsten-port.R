@@ -135,6 +135,54 @@ test_that("Torsten Friberg-Karlsson port (two endpoints) generates and parses", 
   }
 })
 
+test_that("Torsten pk2cpt port (single patient, no etas) generates and parses", {
+  skip_on_cran()
+  skip_if_not(nlmixr2stan:::.stanHasNlmApi(),
+              "nlmixr2est lacks the nlm C API (#953)")
+  # the single-patient two-compartment example, Torsten's informative
+  # lognormal priors verbatim (normal on the log-scale parameters)
+  .pk2cpt <- function() {
+    ini({
+      lcl <- log(10)
+      lq <- log(15)
+      lv1 <- log(35)
+      lv2 <- log(105)
+      lka <- log(2.5)
+      prior(lcl) ~ dnorm(log(10), 0.25)
+      prior(lq) ~ dnorm(log(15), 0.5)
+      prior(lv1) ~ dnorm(log(35), 0.25)
+      prior(lv2) ~ dnorm(log(105), 0.5)
+      prior(lka) ~ dnorm(log(2.5), 1)
+      lnorm.sd <- c(0, 0.2)
+      prior(lnorm.sd) ~ dcauchy(0, 1)
+    })
+    model({
+      cl <- exp(lcl)
+      q <- exp(lq)
+      v <- exp(lv1)
+      vp <- exp(lv2)
+      ka <- exp(lka)
+      cp <- linCmt()
+      cp ~ lnorm(lnorm.sd)
+    })
+  }
+  .d <- rbind(data.frame(ID = 1, TIME = 0, DV = NA_real_, AMT = 1000,
+                         EVID = 1),
+              data.frame(ID = 1, TIME = c(0.5, 1, 2, 4, 8, 12, 24),
+                         DV = c(15, 22, 24, 18, 12, 8, 3), AMT = 0,
+                         EVID = 0))
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.pk2cpt, .d, est = "stan",
+                        control = stanControl(run = FALSE)))
+  expect_s3_class(.code, "nlmixr2stanCode")
+  .lines <- strsplit(.code$code, "\n")[[1]]
+  expect_true(any(grepl("nlmixr2_pop_ll", .lines, fixed = TRUE)))
+  if (requireNamespace("rstan", quietly = TRUE)) {
+    expect_silent(rstan::stanc(model_code = .code$code,
+                               allow_undefined = TRUE))
+  }
+})
+
 test_that("IOV occasion-indicator pattern generates and parses", {
   skip_on_cran()
   .iov <- function() {

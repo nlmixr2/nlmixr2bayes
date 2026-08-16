@@ -31,7 +31,7 @@
   .etaNames <- .eta$name
   .blocks <- list()
   .done <- character(0)
-  .lst <- lotri::lotriMatInv(.om)
+  .lst <- if (nrow(.eta) == 0L) list() else lotri::lotriMatInv(.om)
   for (.b in .lst) {
     .m <- as.matrix(.b)
     .nm <- dimnames(.m)[[1]]
@@ -39,7 +39,8 @@
     .blocks[[length(.blocks) + 1L]] <-
       list(members = .nm, idx = sort(.idx), start = min(.idx),
            end = max(.idx), k = length(.nm),
-           init = .m[order(.idx), order(.idx), drop = FALSE])
+           init = .m[order(.idx), order(.idx), drop = FALSE],
+           fix = .eta$fix[sort(.idx)])
     .done <- c(.done, .nm)
   }
   # sort blocks by starting eta index; sanity: contiguity

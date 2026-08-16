@@ -210,4 +210,72 @@ nlmixr2_cond_all2(const Eigen::Matrix<stan::math::var, Eigen::Dynamic,
   }
   return out;
 }
+
+// ============================================================================
+// Tier 0: population-only models (no etas) via the nlm C API
+// (nlmixr2estNlmPtr.h, nlmixr2/nlmixr2est#953).  The nlm entry returns
+// MINUS the log-likelihood (with normalization constants) and its analytic
+// theta gradient on the natural scale, so log p = -value and
+// d/d(theta) log p = -dTheta.  One scalar, one vari.
+
+typedef int (*nlmixr2stan_pop_eval_t)(const double *theta, int ntheta,
+                                      double *value, double *dTheta);
+
+inline nlmixr2stan_pop_eval_t nlmixr2stan__fnPop() {
+  static nlmixr2stan_pop_eval_t fn = 0;
+  if (fn == 0) {
+    fn = reinterpret_cast<nlmixr2stan_pop_eval_t>(
+      R_GetCCallable("nlmixr2stan", "nlmixr2stan_pop_eval"));
+  }
+  return fn;
+}
+
+inline int nlmixr2stan__popEval(const double *theta, int ntheta,
+                                double *value, double *dTheta,
+                                std::ostream *pstream__) {
+  (void)pstream__;
+  const int rc = nlmixr2stan__fnPop()(theta, ntheta, value, dTheta);
+  if (rc < 0) {
+    stan::math::throw_domain_error("nlmixr2_pop_ll", "nlmixr2est status",
+                                   rc, "was ", " (<0 is a hard failure)");
+  }
+  return rc;
+}
+
+// --- double overload --------------------------------------------------------
+inline double
+nlmixr2_pop_ll(const Eigen::Matrix<double, Eigen::Dynamic, 1>& theta,
+               std::ostream* pstream__) {
+  const int nth = static_cast<int>(theta.size());
+  std::vector<double> th(static_cast<size_t>(nth));
+  std::vector<double> g(static_cast<size_t>(nth));
+  double v = 0;
+  for (int j = 0; j < nth; ++j) th[j] = theta(j);
+  const int rc = nlmixr2stan__popEval(th.data(), nth, &v, g.data(),
+                                      pstream__);
+  if (rc > 0) return -std::numeric_limits<double>::infinity();
+  return -v;
+}
+
+// --- var overload -----------------------------------------------------------
+inline stan::math::var
+nlmixr2_pop_ll(const Eigen::Matrix<stan::math::var, Eigen::Dynamic, 1>& theta,
+               std::ostream* pstream__) {
+  using stan::math::var;
+  const int nth = static_cast<int>(theta.size());
+  std::vector<double> th(static_cast<size_t>(nth));
+  std::vector<double> g(static_cast<size_t>(nth));
+  double v = 0;
+  for (int j = 0; j < nth; ++j) th[j] = theta(j).val();
+  const int rc = nlmixr2stan__popEval(th.data(), nth, &v, g.data(),
+                                      pstream__);
+  std::vector<var> ops(static_cast<size_t>(nth));
+  std::vector<double> gi(static_cast<size_t>(nth));
+  for (int j = 0; j < nth; ++j) {
+    ops[j] = theta(j);
+    gi[j] = (rc > 0) ? 0.0 : -g[j];
+  }
+  const double lp = (rc > 0) ? -std::numeric_limits<double>::infinity() : -v;
+  return stan::math::precomputed_gradients(lp, ops, gi);
+}
 #endif

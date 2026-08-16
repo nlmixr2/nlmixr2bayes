@@ -176,15 +176,16 @@ model.
 
 Rather than produce a silently wrong posterior, `est="stan"` refuses:
 
-- estimated transform-both-sides lambda -- temporarily.  The design is
-  settled: the DV-transform Jacobian is data-times-lambda algebra emitted
-  on the Stan side with exact autodiff (for Box-Cox,
-  `(lambda - 1) * sum(log y)` per endpoint), and the linked conditional
-  supplies the transformed-scale density; what blocks it today is that the
-  conditional's own `d/dlambda` sensitivity column is silently zero
-  upstream (nlmixr2est#949).  A *fixed* lambda works now;
 - mixture models, IOV, and discrete priors (every `ini({})` parameter is
   real-valued).
+
+Estimated transform-both-sides lambda (Box-Cox/Yeo-Johnson) is supported:
+the linked conditional supplies the transformed-scale density with an
+exact `d/dlambda` sensitivity (nlmixr2est#949), and the generator emits
+the DV-transform Jacobian on the Stan side --
+`target += (lambda - 1) * sumLogJac`, a pure data statistic per endpoint
+-- so the assembled target is the correct untransformed-scale density
+with an exact lambda gradient (both gate-verified).
 
 Mu-referenced covariates are supported whether subject-constant (an
 analytic chain-rule identity) or time-varying (the coefficient is treated
