@@ -47,7 +47,7 @@ have from a FOCEi/SAEM run, and the posterior is sampled against the
 | residual models | hand-written (anything Stan can express) | nlmixr2 catalogue (add/prop/combined, lnorm, ...), censoring M2/M3/M4, user `ll()` |
 | eta structure | hand-written (any structure, incl. IOV by hand) | lotri blocks; non-centred or centred; IOV via occasion etas (see below) |
 | priors | any Stan distribution, hand-written | the 39-distribution lotri catalogue via `prior()` in `ini({})`, LKJ/inv-Wishart on omega |
-| single-subject (no etas) | yes | not yet (population models only) |
+| single-subject (no etas) | yes | planned: nlmixr2est's `nlm` path already provides the likelihood + analytic theta gradients for no-eta models, so this is a small linking addition, not a structural gap |
 | gradients | Stan autodiff through the solvers | analytic forward sensitivities via `precomputed_gradients` |
 | within-chain parallelism | MPI (`map_rect`-style population solvers) | subject-parallel OpenMP inside each likelihood evaluation (`likCores`) |
 | interface | cmdstan / cmdstanr | rstan, `nlmixr2(..., est = "stan")` |
@@ -252,9 +252,14 @@ what a Torsten user would have written by hand anyway.
 ## What does not carry over
 
 - Torsten's **single-patient** examples (`pk2cpt` and friends) have no
-  etas; nlmixr2stan currently requires a mixed model.  A single-subject
-  port needs a (possibly tightly-priored) eta or must wait for
-  population-only support.
+  etas; nlmixr2stan currently requires a mixed model.  This is a
+  *temporary* gap, not a structural one: nlmixr2est's `est="nlm"` path
+  already computes the likelihood **and** analytic theta gradients for
+  no-eta models (rxode2 theta forward sensitivities), so linking it as a
+  "tier 0" -- a theta-only program with
+  `target += nlmixr2_pop_ll(theta)` -- is a small, tracked addition.  In
+  the meantime a single-subject port needs a (possibly tightly-priored)
+  eta.
 
 - Torsten's `pmx_solve_group_*` **MPI parallelism** distributes subjects
   across processes; nlmixr2stan parallelizes subjects with OpenMP threads
