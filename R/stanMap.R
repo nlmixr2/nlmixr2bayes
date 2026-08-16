@@ -88,8 +88,15 @@
                                     stringsAsFactors = FALSE))
     }
   }
+  # finite mixtures: ui$mixProbs names the mixing-probability thetas
+  # (K-1 of them for K components); they never enter the conditional --
+  # their gradients come from Stan's autodiff of the log_sum_exp weights
+  .mixProbs <- tryCatch(ui$mixProbs, error = function(e) NULL)
+  if (is.null(.mixProbs)) .mixProbs <- character(0)
+  .mixProbIdx <- match(.mixProbs, .theta$name)
   list(theta = .theta, eta = .eta, blocks = .blocks, muRefIdx = .muRefIdx,
-       muRefCov = .muRefCov)
+       muRefCov = .muRefCov, mixProbIdx = .mixProbIdx,
+       nMix = length(.mixProbs) + 1L)
 }
 
 #' Every estimated theta must have a gradient source: mu-reference or the
@@ -101,8 +108,12 @@
   .muCovered <- map$muRefIdx[map$muRefIdx > 0L]
   .covCovered <- map$muRefCov$thetaIdx
   .sensCovered <- thetaSensIdx
+  # mixing probabilities get their gradient from Stan's autodiff of the
+  # log_sum_exp weights (the conditional is p-free by construction)
+  .mixCovered <- map$mixProbIdx[!is.na(map$mixProbIdx)]
   .uncovered <- setdiff(.free, Reduce(union, list(.muCovered, .covCovered,
-                                                  .sensCovered)))
+                                                  .sensCovered,
+                                                  .mixCovered)))
   if (length(.uncovered) > 0L) {
     stop("no gradient source (mu-reference or theta sensitivity) for ",
          "estimated parameter(s) ",

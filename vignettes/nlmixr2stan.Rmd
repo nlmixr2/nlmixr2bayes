@@ -176,7 +176,10 @@ model.
 
 Rather than produce a silently wrong posterior, `est="stan"` refuses:
 
-- mixture models, IOV, and discrete priors (every `ini({})` parameter is
+- mixtures with more than 2 components (2-component `mix()` models are
+  supported, with per-subject membership posteriors in
+  `fit$env$mixProb`), IOV (until an upstream sensitivity fix,
+  nlmixr2est#952), and discrete priors (every `ini({})` parameter is
   real-valued).
 
 Estimated transform-both-sides lambda (Box-Cox/Yeo-Johnson) is supported:
