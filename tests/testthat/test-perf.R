@@ -43,7 +43,7 @@ test_that("theo_sd linCmt() performance tripwire (G12)", {
   .fit <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
     .mod, nlmixr2data::theo_sd, est = "stan",
     control = stanControl(chains = 2L, iter = 1000L, warmup = 500L,
-                          seed = 42L, likCores = 2L, calcTables = FALSE,
+                          seed = 42L, cores = 2L, calcTables = FALSE,
                           onDiagnostic = "none"))))
   .wall <- proc.time()[["elapsed"]] - .t0
   .sum <- rstan::summary(.fit$env$stanfit,

@@ -8,7 +8,7 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
                                             nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan",
                                                                 control = stanControl(chains = 2L, iter = 400L,
                                                                                       warmup = 200L, seed = 42L,
-                                                                                      likCores = 1L,
+                                                                                      cores = 1L,
                                                                                       onDiagnostic = "none"))))
   expect_true(inherits(.fit, "nlmixr2FitData"))
   .env <- .fit$env
@@ -72,4 +72,45 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
                  -2 * .fit$env$loo$estimates["elpd_loo", "Estimate"],
                  tolerance = 1e-8)
   }
+})
+
+test_that("iteration print + parameter history over the sampler", {
+  skip_on_cran()
+  skip_if_not_installed("rstan")
+  skip_if_not(nlmixr2stan:::.stanHasIterPrint())
+  # the scale.h table prints via Rprintf (stdout); nlmixr2's own progress
+  # goes to the message stream -- capture both
+  .out <- utils::capture.output(type = "output", {
+    .msg <- utils::capture.output(type = "message", {
+      .fit <- suppressWarnings(
+        nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan",
+                            control = stanControl(chains = 1L, iter = 200L,
+                                                  warmup = 100L, seed = 42L,
+                                                  cores = 1L, print = 100L,
+                                                  calcTables = FALSE,
+                                                  ofv = "none",
+                                                  onDiagnostic = "none")))
+    })
+  })
+  # the familiar scale.h iteration table printed during sampling
+  expect_true(any(grepl("Function Val", c(.out, .msg), fixed = TRUE)))
+  # ... and the printed rows were recorded as parHistData with natural-scale
+  # thetas + the ACTUAL omega variance columns (om.<eta>), objf = -2*sum(ll)
+  .ph <- .fit$parHistData
+  expect_true(is.data.frame(.ph))
+  expect_true(nrow(.ph) > 0L)
+  expect_true(all(c("iter", "type", "objf", "tcl", "tv", "add.sd",
+                    "om.eta.cl") %in% names(.ph)))
+  expect_true(all(is.finite(.ph$objf[.ph$type == "Scaled"])))
+  # print = 0 turns the machinery off entirely
+  .fit0 <- suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan",
+                        control = stanControl(chains = 1L, iter = 200L,
+                                              warmup = 100L, seed = 42L,
+                                              cores = 1L, print = 0L,
+                                              calcTables = FALSE,
+                                              ofv = "none",
+                                              onDiagnostic = "none"))))
+  expect_true(is.null(.fit0$parHistData) ||
+                nrow(.fit0$parHistData) == 0L)
 })

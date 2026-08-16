@@ -4,7 +4,13 @@
 \alias{stanPopLinkSetup}
 \title{Load the tier-0 (population-only) likelihood for a model/data pair}
 \usage{
-stanPopLinkSetup(ui, data, rxControl = rxode2::rxControl())
+stanPopLinkSetup(
+  ui,
+  data,
+  rxControl = rxode2::rxControl(),
+  cores = rxode2::getRxThreads(),
+  print = 0L
+)
 }
 \arguments{
 \item{ui}{rxode2 ui (or model function) WITHOUT etas}
@@ -12,6 +18,14 @@ stanPopLinkSetup(ui, data, rxControl = rxode2::rxControl())
 \item{data}{estimation data}
 
 \item{rxControl}{solving options}
+
+\item{cores}{subject-parallel thread count for the population solves
+(applied through `rxControl$cores` when that is left at its 0/"auto"
+default; an explicit `rxControl$cores` wins)}
+
+\item{print}{iteration-print cadence: every `print`-th evaluation of the
+linked objective prints an nlmixr2est-style row (0 = off); the history
+is collected by [nlmixr2est::nlmGetParHist()]}
 }
 \value{
 invisibly, a handle (ntheta, nobs, flags, initPar, setupHash)

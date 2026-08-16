@@ -45,20 +45,31 @@ have from a FOCEi/SAEM run, and the posterior is sampled against the
 | NONMEM-convention events (AMT/EVID/ADDL/SS/RATE) | yes | yes (rxode2 event table) |
 | estimated `alag`/`f`/`dur`/`rate` | parameters of the solve (Torsten notes an open adjoint issue at `tlag = 0`) | yes; jump-condition sensitivities, FD-verified |
 | residual models | hand-written (anything Stan can express) | nlmixr2 catalogue (add/prop/combined, lnorm, ...), censoring M2/M3/M4, user `ll()` |
-| eta structure | hand-written (any structure, incl. IOV by hand) | lotri blocks; non-centred or centred; IOV via occasion etas (see below) |
+| eta structure | hand-written (any structure, incl. IOV by hand) | lotri blocks; non-centred or centred; fixed-variance etas (constant Cholesky factor); IOV wired through nlmixr2est's iov hook (gated on an upstream sensitivity fix, nlmixr2est#952 -- the occasion-indicator pattern below works today) |
+| finite mixtures | hand-written | `mix()` (2 components): log-sum-exp marginalization, membership posteriors in `fit$env$mixProb` |
 | priors | any Stan distribution, hand-written | the 39-distribution lotri catalogue via `prior()` in `ini({})`, LKJ/inv-Wishart on omega |
 | single-subject (no etas) | yes | yes ("tier 0": the nlm path's likelihood + analytic theta gradients, one external scalar `nlmixr2_pop_ll(theta)`; needs nlmixr2est with nlmixr2est#953) |
 | gradients | Stan autodiff through the solvers | analytic forward sensitivities via `precomputed_gradients` |
-| within-chain parallelism | MPI (`map_rect`-style population solvers) | subject-parallel OpenMP inside each likelihood evaluation (`likCores`) |
+| within-chain parallelism | MPI (`map_rect`-style population solvers) | subject-parallel OpenMP inside each likelihood evaluation (`cores`) |
 | interface | cmdstan / cmdstanr | rstan, `nlmixr2(..., est = "stan")` |
 | output | cmdstan CSV; roll your own diagnostics/GOF | `nlmixr2FitData` (IPRED/CWRES tables, `$objDf` with FOCEi/WAIC/LOO rows) + the `stanfit` |
 | model reuse across estimation methods | Stan-only | the same function fits with focei/saem/bobyqa/... |
 
-Where Torsten is the right tool: hand-tuned Stan programs, single-subject
-models, structures outside the nlmixr2 ui (e.g. exotic hierarchies), and
-cmdstan-ecosystem workflows.  Where nlmixr2stan is the right tool: standard
+Where Torsten is the right tool: hand-tuned Stan programs, structures
+outside the nlmixr2 ui (e.g. exotic hierarchies), and cmdstan-ecosystem
+workflows.  Where nlmixr2stan is the right tool: standard
 population PK/PD where the model already exists in nlmixr2 form, and the
 Bayesian run should be comparable line-for-line with the frequentist ones.
+
+The middle ground is planned: an **rxode2 sensitivity linkage** for
+hand-written Stan programs -- write your own Stan code (any hierarchy,
+any prior structure) while the ODE system, dosing events, and their
+analytic sensitivities come from a compiled rxode2 model (including
+event-time "jump" sensitivities and delay differential equations, which
+no Stan-native solver provides).  This exists today as a standalone
+rxode2--Stan bridge and will be merged into this package family; it
+shares the same no-Stan-code-in-the-linked-`.so` architecture, at the
+ODE level instead of the likelihood level.
 
 ## Port: `poppk2cpt` (two-compartment population model)
 
@@ -112,6 +123,26 @@ fit <- nlmixr2est::nlmixr2(poppk2cpt, d, est = "stan",
 
 The event table is the same NONMEM-convention data both tools consume --
 no `iObs`/`start`/`end` index bookkeeping; rxode2 derives it.
+
+**A note on completeness**: these ports are verified at the code level
+(each generates a program that stanc accepts -- see
+`test-torsten-port.R`) but have **not** been run against Torsten's own
+example datasets, which ship inside the Torsten repository as R dump
+files rather than in any R package.  To reproduce a port against the
+original data, load Torsten's dump and reshape the NONMEM-style vectors
+into the event-table columns nlmixr2 expects:
+
+```{r}
+e <- new.env()
+source(file.path(torstenDir, "example-models/poppk2cpt/poppk2cpt.data.R"),
+       local = e)
+d <- with(e, data.frame(ID = rep(seq_len(nSubjects),
+                                 times = end - start + 1),
+                        TIME = time, AMT = amt, EVID = evid, CMT = cmt,
+                        RATE = rate, II = ii, ADDL = addl, SS = ss,
+                        DV = NA_real_))
+d$DV[e$iObs] <- e$cObs
+```
 
 A note on the eta parameterization: nlmixr2stan's generated program uses
 **the same Matt's trick** Torsten's examples hand-code -- by default the
@@ -183,6 +214,58 @@ fk <- function() {
 Multi-endpoint likelihoods, initial conditions, and the stiff ODE solve are
 all standard rxode2/nlmixr2est machinery; `likInner0` sums the per-endpoint
 terms and the analytic gradients flow through the same linkage.
+
+## Port: `effCpt` (effect-compartment population PK/PD)
+
+Torsten's `effCpt` example: a two-compartment oral PK linked to an effect
+compartment (`ke0`) driving an Emax response, fit to concentration and
+response observations simultaneously (~250 lines of Stan with a
+hand-built rate matrix and separate PK/PD indexing):
+
+```{r}
+effCpt <- function() {
+  ini({
+    lcl <- log(10); lq <- log(15); lv1 <- log(35); lv2 <- log(105)
+    lka <- log(2)
+    lke0 <- log(1)
+    lec50 <- log(100)
+    prior(lcl) ~ dnorm(log(10), 0.25)
+    prior(lke0) ~ dnorm(log(1), 0.25)
+    prior(lec50) ~ dnorm(log(100), 0.5)
+    lnorm.sd <- c(0, 0.2)
+    resp.sd <- c(0, 5)
+    prior(lnorm.sd) ~ dcauchy(0, 1)
+    prior(resp.sd) ~ dcauchy(0, 5)
+    eta.cl ~ 0.06
+    eta.v1 ~ 0.06
+    eta.ke0 ~ 0.04
+    eta.ec50 ~ 0.04
+  })
+  model({
+    cl <- exp(lcl + eta.cl)
+    q <- exp(lq)
+    v1 <- exp(lv1 + eta.v1)
+    v2 <- exp(lv2)
+    ka <- exp(lka)
+    ke0 <- exp(lke0 + eta.ke0)
+    ec50 <- exp(lec50 + eta.ec50)
+    k10 <- cl / v1
+    k12 <- q / v1
+    k21 <- q / v2
+    d/dt(depot) <- -ka * depot
+    d/dt(cent) <- ka * depot - (k10 + k12) * cent + k21 * peri
+    d/dt(peri) <- k12 * cent - k21 * peri
+    cp <- 1000 * cent / v1
+    d/dt(ce) <- ke0 * (cp - ce)          # effect compartment
+    resp <- 100 * ce / (ec50 + ce)       # Emax(100) response
+    cp ~ lnorm(lnorm.sd)
+    resp ~ add(resp.sd)
+  })
+}
+```
+
+Both endpoints ride the same solve; `likInner0` sums the per-endpoint
+terms, and the analytic gradients flow through the same linkage.
 
 ## IOV
 
@@ -263,7 +346,7 @@ what a Torsten user would have written by hand anyway.
 
 - Torsten's `pmx_solve_group_*` **MPI parallelism** distributes subjects
   across processes; nlmixr2stan parallelizes subjects with OpenMP threads
-  inside each likelihood call (`likCores`) -- same axis, different
+  inside each likelihood call (`cores`) -- same axis, different
   mechanics, no user-visible model difference.
 
 - Conversely, rxode2 capabilities with no Torsten equivalent flow through

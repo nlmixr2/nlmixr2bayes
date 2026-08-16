@@ -140,6 +140,12 @@
   .tpL <- character(0)   # transformed-parameter lines building L_b
   .priorL <- character(0)
   .gqOmega <- character(0)
+  # iteration-print display: natural-scale thetas + the ACTUAL omega
+  # variances/covariances of every estimated block (om.<eta>, cov.<e1>.<e2>);
+  # fixed-variance blocks are constants and are not shown
+  .dispOm <- character(0)
+  .dispNames <- map$theta$name
+  .dispIdx <- nrow(map$theta)
   for (.b in seq_along(map$blocks)) {
     .blk <- map$blocks[[.b]]
     .sp <- .stanOmegaBlockSpec(.blk, pri$omega, ctl)
@@ -210,7 +216,29 @@
     .gqOmega <- c(.gqOmega, paste0("  omegaOut[", .blk$start, ":", .blk$end,
                                    ", ", .blk$start, ":", .blk$end,
                                    "] = L", .id, " * L", .id, "';"))
+    if (.sp$type != "fixed") {
+      .dispOm <- c(.dispOm, paste0("    matrix[", .k, ",", .k, "] Od", .id,
+                                   " = L", .id, " * L", .id, "';"))
+      for (.di in seq_len(.k)) {
+        for (.dj in seq_len(.di)) {
+          .dispIdx <- .dispIdx + 1L
+          .dispOm <- c(.dispOm, paste0("    parDisp[", .dispIdx, "] = Od",
+                                       .id, "[", .di, ",", .dj, "];"))
+          .dispNames <- c(.dispNames,
+                          if (.di == .dj) {
+                            paste0("om.", .blk$members[.di])
+                          } else {
+                            paste0("cov.", .blk$members[.di], ".",
+                                   .blk$members[.dj])
+                          })
+        }
+      }
+    }
   }
+  .dispTick <- c(paste0("    vector[", .dispIdx, "] parDisp;"),
+                 .dispOm,
+                 paste0("    parDisp[1:", nrow(map$theta), "] = theta;"),
+                 "    real iterDummy = nlmixr2_iter_tick(parDisp, -2 * sumLL);")
   # ---- theta vector -------------------------------------------------------
   .thL <- paste0("  vector[", nrow(map$theta), "] theta;")
   for (.i in seq_len(nrow(map$theta))) {
@@ -312,6 +340,9 @@
                    "  // external (allow_undefined): value + analytic d/d(eta) and",
                    "  // d/d(theta) supplied by the linked rxode2/nlmixr2est likelihood",
                    "  vector nlmixr2_cond_all2(matrix etaMat, vector theta);",
+                   "  // external iteration tick: nlmixr2est-style iteration print;",
+                   "  // returns 0 and contributes nothing to the target",
+                   "  real nlmixr2_iter_tick(vector par, real objf);",
                    "}",
                    "data {",
                    "  int<lower=1> N;",
@@ -337,14 +368,23 @@
                      c(paste0("  {"),
                        paste0("    vector[", .rowsN,
                               "] llCond = nlmixr2_cond_all2(eta, theta);"),
+                       paste0("    real sumLL = 0;"),
                        paste0("    for (i in 1:N) {"),
-                       paste0("      target += log_sum_exp(log(", .mixP,
+                       paste0("      sumLL += log_sum_exp(log(", .mixP,
                               ") + llCond[i], log1p(-", .mixP,
                               ") + llCond[N + i]);"),
                        paste0("    }"),
+                       paste0("    target += sumLL;"),
+                       .dispTick,
                        paste0("  }"))
                    } else {
-                     "  target += sum(nlmixr2_cond_all2(eta, theta));"
+                     c(paste0("  {"),
+                       paste0("    vector[", .rowsN,
+                              "] llCond = nlmixr2_cond_all2(eta, theta);"),
+                       paste0("    real sumLL = sum(llCond);"),
+                       paste0("    target += sumLL;"),
+                       .dispTick,
+                       paste0("  }"))
                    },
                    .tbsTarget,
                    "}",
@@ -375,7 +415,8 @@
                    },
                    "}"), collapse = "\n")
   list(code = .code, data = list(N = NA_integer_), notes = .notes,
-       blockSpecs = .blockSpecs, tbsJac = .tbsJac, pop = FALSE)
+       blockSpecs = .blockSpecs, tbsJac = .tbsJac, pop = FALSE,
+       dispNames = .dispNames)
 }
 
 #' Per-chain initial values on the constrained scale

@@ -3,11 +3,14 @@
 #' The class name `stanControl` makes `nlmixr2(model, data, stanControl(...))`
 #' infer `est="stan"`.
 #'
-#' One thing is pinned and deliberately not user-settable: `cores=1` for the
-#' Stan chains (the linked likelihood lives in process-wide state on the
-#' nlmixr2est side, so chains run sequentially in one process; the
-#' parallelism is over subjects inside each likelihood evaluation, see
-#' `likCores`).
+#' Parallelism has two axes.  By default (unix) the CHAINS run in forked
+#' processes (`chainCores`, inheriting the [rxode2::getRxThreads()]
+#' budget capped at `chains`) with serial evaluation inside each chain.
+#' With `chainCores = 1` the chains run sequentially and each likelihood
+#' evaluation is subject-parallel instead (`cores`, defaulting to
+#' `getRxThreads()`).  `getRxThreads()` honors `OMP_THREAD_LIMIT`, which
+#' CRAN sets to 2, so checks stay within CRAN's core policy
+#' automatically.
 #'
 #' The ODE-retry machinery (`maxOdeRecalc`, `stickyRecalcN`) stays at
 #' nlmixr2est's defaults and is ENABLED: a hard point retries with relaxed
@@ -19,6 +22,29 @@
 #' a pure function of state, which gate G2 proves bitwise, with the retry
 #' machinery live.
 #'
+#' @param algorithm the Stan inference algorithm: `"NUTS"` (default; the
+#'   No-U-Turn HMC sampler -- full Bayes), or Stan's two ADVI variational
+#'   approximations `"meanfield"` (independent Gaussians on the
+#'   unconstrained scale) and `"fullrank"` (one full-covariance Gaussian),
+#'   run through [rstan::vb()], or `"pathfinder"` (Stan's multi-path
+#'   Pathfinder, run through the StanEstimators package against the
+#'   compiled model's exact log density and analytic gradient --
+#'   L-BFGS trajectories from jittered starts, ELBO-selected normal
+#'   approximations, PSIS-resampled draws; needs `StanEstimators`
+#'   installed since rstan does not expose Pathfinder yet).  ADVI is typically 10-100x faster and is a
+#'   fair first look, but it is an APPROXIMATION -- it understates tails
+#'   and correlations; the Pareto-k diagnostic (`khat`) replaces
+#'   Rhat/divergences and `khat > 0.7` means the approximation is not
+#'   reliable and NUTS should be used.  All algorithms run the same
+#'   generated program against the same linked rxode2/nlmixr2est
+#'   likelihood and return the same complete nlmixr2 fit
+#' @param pathfinderPaths number of independent Pathfinder paths
+#'   (`algorithm = "pathfinder"`); the multi-path PSIS mixture is what
+#'   makes Pathfinder robust to a single path landing badly
+#' @param vbIter maximum ADVI iterations (`algorithm` != "NUTS")
+#' @param vbTolRelObj ADVI relative-ELBO convergence tolerance
+#' @param vbOutputSamples posterior draws taken from the fitted
+#'   approximation (these flow into every posterior summary on the fit)
 #' @param chains number of MCMC chains (run sequentially)
 #' @param iter total iterations per chain (Stan convention, includes warmup)
 #' @param warmup warmup iterations per chain
@@ -30,9 +56,11 @@
 #'   [rstan::sampling()]
 #' @param initJitterSd unconstrained-scale jitter for chains 2+ under
 #'   `init="ini"` (chain 1 starts exactly at the `ini()` values)
-#' @param adapt_delta target acceptance rate (above Stan's 0.8 default:
-#'   PK posteriors are stiff)
-#' @param max_treedepth NUTS maximum tree depth
+#' @param adapt_delta target acceptance rate; matches Stan's own default
+#'   (0.8) so an `est="stan"` run and a hand-written rstan run of the
+#'   same model behave identically out of the box.  Stiff PK posteriors
+#'   that show divergences should raise it toward 0.95-0.99
+#' @param max_treedepth NUTS maximum tree depth (Stan's default, 10)
 #' @param likelihood the individual likelihood the linked problem evaluates;
 #'   `"focei"` (interaction) or `"foce"` -- the two self-consistent
 #'   value/gradient pairs
@@ -41,8 +69,37 @@
 #'   (Stan samples `eta` directly with `eta[i] ~ multi_normal_cholesky(0, L)`).
 #'   The posteriors are identical by construction (gate G13); the default
 #'   usually mixes better with few subjects
-#' @param likCores subject-parallel thread count inside each likelihood
-#'   evaluation
+#' @param print the familiar nlmixr2est iteration-print cadence: every
+#'   `print`-th log-density evaluation prints a row of natural-scale thetas
+#'   plus the current omega variances/covariances (`om.<eta>`,
+#'   `cov.<eta1>.<eta2>`) and `-2*sum(conditional log-lik)`, and records it
+#'   in `$parHistData`.  A NUTS chain makes many evaluations per iteration,
+#'   so the default (100) is roughly a row every dozen sampler iterations;
+#'   `0` turns printing and history off
+#' @param maxOdeRecalc failed-solve tolerance relaxations inside each
+#'   likelihood evaluation before the FD fallback (0 disables; the
+#'   evaluators reset this state per call so the density stays a pure
+#'   function of the parameters either way)
+#' @param fallbackFD after the relaxations, retry the prediction model
+#'   with shi21 central-difference eta gradients before rejecting the
+#'   point with -Inf
+#' @param chainCores processes for parallel chains (rstan's `cores`).
+#'   Default (`NULL`): on unix, `min(chains, rxode2::getRxThreads())` --
+#'   chains run in FORKED processes, each fork receiving a copy-on-write
+#'   duplicate of the linked likelihood state (verified: draws are
+#'   bit-identical to a sequential run, ~1.6x faster on 2 chains).  When
+#'   chains fork, `cores` (subject threads) defaults to 1 -- OpenMP
+#'   inside a forked child of an OpenMP-using parent can deadlock -- and
+#'   the iteration print is disabled (the ticks would happen in the
+#'   forks' memory).  Set `chainCores = 1` for sequential chains with
+#'   subject-parallel evaluation and the iteration table.  On Windows
+#'   the default is 1 and `chainCores > 1` is refused (rstan's parallel
+#'   chains there are PSOCK processes without the linked state)
+#' @param cores subject-parallel thread count inside each likelihood
+#'   evaluation (default [rxode2::getRxThreads()]; on CRAN this is capped
+#'   at 2 through `OMP_THREAD_LIMIT`).  This is the per-run analogue of the
+#'   `cores` argument every other nlmixr2est control carries; Stan's own
+#'   chains still run sequentially
 #' @param diagOmegaSdPrior character template for the default half-Cauchy
 #'   scale on an omega SD without its own prior; `%s` is replaced by the
 #'   initial SD estimate (see Details in the vignette)
@@ -65,7 +122,13 @@
 #' @param verbose show compiler/sampler output
 #' @param sigdig ODE solver accuracy (`atol=rtol=10^-sigdig`); tight by
 #'   default so the density is smooth at sampler scale
-#' @param rxControl solving options ([rxode2::rxControl()])
+#' @param rxControl solving options ([rxode2::rxControl()]).  When `NULL`
+#'   (default) the solver is the dense AutoSwitch composite
+#'   (`method="dop853+ros4", dense=TRUE`) at `sigdig`-tight tolerances:
+#'   dense-output Dormand-Prince stepping -- the twin of Stan's own
+#'   default ODE solver (`ode_rk45`), 25-40% cheaper per gradient than
+#'   lsoda on typical PK models -- with an automatic dense Rosenbrock
+#'   fallback when the system turns stiff
 #' @param addProp,sumProd,optExpression,literalFix,calcTables,compress,ci,sigdigTable
 #'   standard nlmixr2 passthroughs for the output machinery
 #' @param ... only `genRxControl`
@@ -73,12 +136,20 @@
 #' @export
 #' @author Matthew L. Fidler
 stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
+                        algorithm = c("NUTS", "meanfield", "fullrank",
+                                      "pathfinder"),
+                        pathfinderPaths = 4L,
+                        vbIter = 10000L, vbTolRelObj = 0.01,
+                        vbOutputSamples = 1000L,
                         thin = 1L, seed = 42L,
                         init = c("ini", "random"), initJitterSd = 0.1,
-                        adapt_delta = 0.9, max_treedepth = 12L, # nolint: object_name_linter.
+                        adapt_delta = 0.8, max_treedepth = 10L, # nolint: object_name_linter.
                         likelihood = c("focei", "foce"),
                         etaParam = c("noncentered", "centered"),
-                        likCores = rxode2::getRxThreads(),
+                        cores = rxode2::getRxThreads(),
+                        print = 100L,
+                        maxOdeRecalc = 3L, fallbackFD = TRUE,
+                        chainCores = NULL,
                         diagOmegaSdPrior = "cauchy(0, %s)",
                         lkjEta = 2,
                         point = c("mean", "median"),
@@ -95,6 +166,13 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
                         literalFix = TRUE,
                         calcTables = TRUE, compress = TRUE, ci = 0.95,
                         sigdigTable = NULL, ...) {
+  algorithm <- match.arg(algorithm)
+  checkmate::assertIntegerish(pathfinderPaths, lower = 1, len = 1,
+                              any.missing = FALSE)
+  checkmate::assertIntegerish(vbIter, lower = 10, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(vbTolRelObj, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(vbOutputSamples, lower = 10, len = 1,
+                              any.missing = FALSE)
   checkmate::assertIntegerish(chains, lower = 1, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(iter, lower = 2, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(warmup, lower = 1, upper = iter - 1, len = 1)
@@ -103,7 +181,42 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
   checkmate::assertNumeric(initJitterSd, lower = 0, len = 1)
   checkmate::assertNumeric(adapt_delta, lower = 0, upper = 1, len = 1)
   checkmate::assertIntegerish(max_treedepth, lower = 1, upper = 20, len = 1)
-  checkmate::assertIntegerish(likCores, lower = 1, len = 1)
+  checkmate::assertIntegerish(cores, lower = 1, len = 1)
+  checkmate::assertIntegerish(print, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(maxOdeRecalc, lower = 0, len = 1,
+                              any.missing = FALSE)
+  checkmate::assertLogical(fallbackFD, len = 1, any.missing = FALSE)
+  .coresExplicit <- !missing(cores)
+  if (is.null(chainCores)) {
+    # default: parallel chains inheriting the core budget (capped at the
+    # chain count).  Forked chains are unix-only -- on Windows rstan uses
+    # PSOCK workers, fresh processes WITHOUT the linked likelihood.
+    chainCores <- if (identical(.Platform$OS.type, "unix")) {
+      min(as.integer(chains), as.integer(rxode2::getRxThreads()))
+    } else {
+      1L
+    }
+  }
+  checkmate::assertIntegerish(chainCores, lower = 1, len = 1,
+                              any.missing = FALSE)
+  if (chainCores > 1L && !identical(.Platform$OS.type, "unix")) {
+    stop("chainCores > 1 needs fork-based parallelism (unix): on Windows ",
+         "rstan's parallel chains are PSOCK processes that do not carry ",
+         "the linked likelihood", call. = FALSE)
+  }
+  if (chainCores > 1L) {
+    if (.coresExplicit && cores > 1L) {
+      warning("subject-parallel OpenMP (cores = ", cores, ") inside ",
+              "FORKED chains (chainCores = ", chainCores, ") risks the ",
+              "OpenMP-after-fork hazard; cores = 1 is the safe setting",
+              call. = FALSE)
+    } else if (!.coresExplicit) {
+      # the forks are the parallelism; OpenMP inside a forked child of an
+      # OpenMP-tainted parent can deadlock, so the default stays serial
+      # within each chain
+      cores <- 1L
+    }
+  }
   checkmate::assertCharacter(diagOmegaSdPrior, len = 1, pattern = "%s")
   checkmate::assertNumeric(lkjEta, lower = 0, len = 1)
   checkmate::assertNumeric(rhatMax, lower = 1, len = 1)
@@ -146,9 +259,16 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
     .tol <- 10^(-sigdig)
     if (is.null(rxControl)) {
       # pinned for correctness: the retry machinery makes the density depend
-      # on evaluation history (the batch entries also reset it per call)
+      # on evaluation history (the batch entries also reset it per call).
+      # method: the dense AutoSwitch composite dop853+ros4 -- dense-output
+      # Dormand-Prince stepping (the twin of Stan's own default ode_rk45:
+      # large internal steps, interpolation at observation times, ~25-40%
+      # cheaper per gradient than lsoda on typical PK models) with an
+      # automatic dense Rosenbrock (ros4) fallback when the system turns
+      # stiff, so stiff models stay correct without user intervention.
       rxControl <- rxode2::rxControl(rtol = .tol, atol = .tol,
                                      ssRtol = .tol, ssAtol = .tol,
+                                     method = "dop853+ros4", dense = TRUE,
                                      maxsteps = 100000L)
       genRxControl <- TRUE
     } else if (is.list(rxControl) && !inherits(rxControl, "rxControl")) {
@@ -160,13 +280,22 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
     }
   }
   .ret <- list(chains = as.integer(chains), iter = as.integer(iter),
+               algorithm = algorithm,
+               pathfinderPaths = as.integer(pathfinderPaths),
+               vbIter = as.integer(vbIter),
+               vbTolRelObj = vbTolRelObj,
+               vbOutputSamples = as.integer(vbOutputSamples),
                warmup = as.integer(warmup), thin = as.integer(thin),
                seed = as.integer(seed), init = init,
                initJitterSd = initJitterSd,
                adapt_delta = adapt_delta,
                max_treedepth = as.integer(max_treedepth),
                likelihood = likelihood, etaParam = etaParam,
-               likCores = as.integer(likCores),
+               cores = as.integer(cores),
+               print = as.integer(print),
+               maxOdeRecalc = as.integer(maxOdeRecalc),
+               fallbackFD = fallbackFD,
+               chainCores = as.integer(chainCores),
                diagOmegaSdPrior = diagOmegaSdPrior, lkjEta = lkjEta,
                point = point, ofv = ofv,
                rhatMax = rhatMax, essBulkMin = essBulkMin,

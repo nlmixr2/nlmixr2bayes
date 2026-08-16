@@ -27,6 +27,7 @@ int nlmixr2stan_cond_batch_theta(const double *theta, int ntheta,
                                  const double *eta, int nid, int neta,
                                  double *value, double *gradEta,
                                  double *gradTheta);
+int nlmixr2stan_iter_tick(const double *par, int n, double objf);
 
 static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2stan_iniFoceiPtrs", (DL_FUNC) &iniNlmixr2estFocei, 1},
@@ -57,6 +58,8 @@ void R_init_nlmixr2stan(DllInfo *dll) {
                       (DL_FUNC) &nlmixr2stan_cond_batch_theta);
   R_RegisterCCallable("nlmixr2stan", "nlmixr2stan_pop_eval",
                       (DL_FUNC) &nlmixr2stan_pop_eval);
+  R_RegisterCCallable("nlmixr2stan", "nlmixr2stan_iter_tick",
+                      (DL_FUNC) &nlmixr2stan_iter_tick);
   R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
   R_useDynamicSymbols(dll, FALSE);
   R_forceSymbols(dll, TRUE);

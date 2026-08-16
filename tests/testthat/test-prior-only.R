@@ -32,10 +32,14 @@ test_that("prior-only sampling recovers every declared prior (G14)", {
     nlmixr2est::nlmixr2(.mod, .d, est = "stan",
                         control = stanControl(run = FALSE)))
   .lines <- strsplit(.code$code, "\n")[[1]]
-  # strip the ONE likelihood statement; keep everything else byte-identical
-  .w <- grep("target += sum(nlmixr2_cond_all2", .lines, fixed = TRUE)
+  # neutralize the ONE likelihood evaluation (the model block computes
+  # llCond once and adds sum(llCond)); everything else stays
+  # byte-identical -- the iteration tick's external call is a no-op when
+  # printing is not armed, so it can stay
+  .w <- grep("] llCond = nlmixr2_cond_all2(eta, theta);", .lines,
+             fixed = TRUE)
   expect_length(.w, 1L)
-  .lines <- .lines[-.w]
+  .lines[.w] <- '    vector[N] llCond = rep_vector(0, N);' 
   # generated quantities would call the (unlinked) external function
   .w2 <- grep("logLikSubj = nlmixr2_cond_all2", .lines, fixed = TRUE)
   if (length(.w2) == 1L) .lines[.w2] <- "  logLikSubj = rep_vector(0, N);"

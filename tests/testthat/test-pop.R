@@ -131,7 +131,7 @@ test_that("tier 0 end to end: fit, assembled gradient, fit contract", {
   .fit <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
     .popMod, .d, est = "stan",
     control = stanControl(chains = 1L, iter = 600L, warmup = 300L,
-                          seed = 42L, likCores = 1L, calcTables = FALSE,
+                          seed = 42L, cores = 1L, calcTables = FALSE,
                           ofv = "none", onDiagnostic = "none"))))
   expect_true(inherits(.fit, "nlmixr2FitCore"))
   expect_s4_class(.fit$env$stanfit, "stanfit")
@@ -240,4 +240,29 @@ test_that("tier 0 + estimated lambda: nlm convention pinned; assembled target ex
                           method = "Richardson")
     expect_equal(.gA, .gN, tolerance = 1e-4)
   }
+})
+
+test_that("tier 0 iteration print: rows + nlm parameter history", {
+  skip_on_cran()
+  skip_if_not(nlmixr2stan:::.stanHasNlmApi(),
+              "nlmixr2est lacks the nlm C API (#953)")
+  .d <- .popData()
+  # the scale.h table prints via Rprintf (stdout); setup messages go to the
+  # message stream -- capture both
+  .out <- utils::capture.output(type = "output", {
+    .msg <- utils::capture.output(type = "message", {
+      h <- stanPopLinkSetup(.popMod, .d, print = 2L)
+      for (i in 1:5) invisible(nlmixr2stan:::.popEval(h$initPar))
+      .ph <- nlmixr2est::nlmGetParHist(TRUE)
+      stanLinkFree()
+    })
+  })
+  .out <- c(.out, .msg)
+  # never a DOUBLE header (the regression: setup + lazy row-print each
+  # printing one); whether it prints at all depends on residency state
+  # carried across setups in one process, so 0 is acceptable in-suite
+  expect_true(sum(grepl("Function Val", .out, fixed = TRUE)) <= 1L)
+  expect_true(is.data.frame(.ph))
+  expect_equal(sum(.ph$type == "Scaled"), 3L)
+  expect_true(all(c("objf", "tcl", "tv", "add.sd") %in% names(.ph)))
 })

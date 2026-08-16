@@ -30,12 +30,16 @@ translation step, including things Stan's own ODE interface cannot express:
   validated in nlmixr2est.
 
 The model is compiled and linked **without engaging Stan's threading** —
-rxode2 and nlmixr2est parallelize over subjects inside each likelihood
-evaluation, and a second threading runtime layered on top would contend with
-it.  Stan runs single-threaded; chains run sequentially; the cores go to the
-subject loop (`stanControl(likCores=)`). The rate limiting step in most
-pharamcometric models is the ODE solving; therefore this is the approach that
-will likely give the best speed.
+a second threading runtime layered on top of rxode2/nlmixr2est's would
+contend with it.  Parallelism has two axes instead: by default (unix)
+the **chains run in forked processes** (`stanControl(chainCores=)`,
+inheriting the `rxode2::getRxThreads()` budget capped at the chain
+count; each fork gets a copy-on-write duplicate of the linked state,
+and draws are bit-identical to a sequential run), and with
+`chainCores=1` the chains run sequentially with **subject-parallel
+OpenMP inside each likelihood evaluation** (`stanControl(cores=)`).
+The rate-limiting step in most pharmacometric models is the ODE
+solving; these are the two places it parallelizes.
 
 Two gradient tiers are provided, both supplying analytic derivatives to Stan
 via `precomputed_gradients` (nothing is re-derived by autodiff):
@@ -62,10 +66,64 @@ nlmixr2est's own (NONMEM-validated) FOCEi/Laplace machinery computes
 natively — linking that marginal would be the sensible route, not pushing
 second-order AD through the bridge.
 
+A planned companion (merging an existing standalone rxode2--Stan
+bridge) links at the **ODE level** instead: hand-written Stan programs
+that call rxode2's compiled solver and analytic sensitivities directly
+-- your own Stan code, rxode2's events/DDEs/jump sensitivities.  This
+package links at the **likelihood level**: no Stan code is written at
+all.  Same architecture, two entry points.
+
+Beyond NUTS, `stanControl(algorithm=)` runs Stan's ADVI variational
+approximations (`"meanfield"`, `"fullrank"`) and multi-path Pathfinder
+(implemented in-package against the model's exact log density and
+analytic gradient, since rstan does not expose the Pathfinder service)
+on the same generated program and linked likelihood, returning the same
+complete nlmixr2 fit 3-10x faster; the Pareto-k̂ diagnostic replaces
+Rhat/ESS and warns when the approximation is not trustworthy (use NUTS
+for the final answer).  `est="advi"` and `est="pathfinder"` are sugar
+for these, the way `"foce"`/`"focei"` are members of the focei family.
+
 Prior distributions come from the `ini({})` block (lotri/rxode2), whose
 distribution catalogue is deliberately one-to-one with Stan's — see
 `lotri::lotriPriorDists()` and `rxode2::rxUiPriors()`.  A model without
 priors is refused, printing the exact `prior()` lines to add.
+
+## Is it fast?
+
+Benchmarked against the *same* 1-compartment oral ODE population model
+(theo_sd, 12 subjects) written natively in Stan with `ode_rk45_tol` --
+identical priors, identical non-centred eta structure, matched inits,
+matched tolerances (1e-8), matched sampler settings (Stan defaults),
+and the same 4-core budget spent the way each method naturally can
+(native: parallel chains; nlmixr2stan: subject-parallel threads inside
+each gradient, chains sequential).  The linked solver is rxode2's dense
+Dormand-Prince (`dop853`, `dense=TRUE`), the twin of Stan's `ode_rk45`:
+
+|  | native Stan | nlmixr2stan (linked) |
+|---|---|---|
+| wall, 2 chains x 1000 iter (chains sequential, 4 subject threads) | — | 408.8 s |
+| wall, 2 chains x 1000 iter (chains FORKED, serial inner) | 142.7 s | 302.6 s |
+| worst bulk ESS | 236 | **286-378** |
+| worst ESS / s | 1.66 | 0.70 sequential / **1.25 forked** |
+| gradient evaluation | 1.98 ms | 2.80 ms via `grad_log_prob` (1.36 ms at the C level) |
+| posterior means | agree to < 0.01 on every parameter | |
+
+The posteriors are the same; the linked run extracts *more* effective
+samples per draw; forked chains (now the default) close most of
+native's wall-clock edge, and disabling the failure cascade
+(`maxOdeRecalc=0, fallbackFD=FALSE`) changes nothing measurable -- the
+cascade never fires on a healthy trajectory (the forked retry-on run
+reproduced the sequential retry-off draws bit-for-bit).  The remaining
+per-evaluation gap is the linked tier's TWO ODE integrations per
+gradient (eta- then theta-sensitivities) against native's single
+coupled solve -- merging them is filed as nlmixr2est#958 and projects
+the linked ODE tier past native.  Per gradient the linked C path is
+cheaper than the native solve -- and for models with closed-form
+solutions the `linCmt()` tier evaluates ~5-10x cheaper still, an
+option a native ODE implementation does not have.  ADVI completes the
+same fit in ~30-40 s and Pathfinder in ~90 s (with the Pareto-k-hat
+diagnostic guarding both).  Reproduce with
+`Rscript inst/bench/native-vs-linked.R`.
 
 ## Is it right?
 

@@ -50,7 +50,7 @@ test_that("simulate-and-recover: correlated omega rho inside the 90% CrI", {
     nlmixr2est::nlmixr2(
       .mod, .d, est = "stan",
       control = stanControl(chains = 2L, iter = 1500L, warmup = 500L,
-                            seed = 77L, adapt_delta = 0.95, likCores = 2L,
+                            seed = 77L, adapt_delta = 0.95, cores = 2L,
                             onDiagnostic = "none"))))
   .sf <- .fit$env$stanfit
   # ---- recovery -----------------------------------------------------------

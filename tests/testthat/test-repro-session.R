@@ -44,7 +44,7 @@ test_that("fixed seed: bitwise-identical draws across fresh sessions (G9)", {
         .mod, .d, est = "stan",
         control = nlmixr2stan::stanControl(chains = 1L, iter = 400L,
                                            warmup = 200L, seed = 42L,
-                                           likCores = 1L,
+                                           cores = 1L,
                                            calcTables = FALSE,
                                            onDiagnostic = "none"))))
       rstan::extract(.fit$env$stanfit, permuted = FALSE)

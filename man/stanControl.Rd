@@ -8,15 +8,24 @@ stanControl(
   chains = 4L,
   iter = 2000L,
   warmup = floor(iter/2),
+  algorithm = c("NUTS", "meanfield", "fullrank", "pathfinder"),
+  pathfinderPaths = 4L,
+  vbIter = 10000L,
+  vbTolRelObj = 0.01,
+  vbOutputSamples = 1000L,
   thin = 1L,
   seed = 42L,
   init = c("ini", "random"),
   initJitterSd = 0.1,
-  adapt_delta = 0.9,
-  max_treedepth = 12L,
+  adapt_delta = 0.8,
+  max_treedepth = 10L,
   likelihood = c("focei", "foce"),
   etaParam = c("noncentered", "centered"),
-  likCores = rxode2::getRxThreads(),
+  cores = rxode2::getRxThreads(),
+  print = 100L,
+  maxOdeRecalc = 3L,
+  fallbackFD = TRUE,
+  chainCores = NULL,
   diagOmegaSdPrior = "cauchy(0, \%s)",
   lkjEta = 2,
   point = c("mean", "median"),
@@ -51,6 +60,34 @@ stanControl(
 
 \item{warmup}{warmup iterations per chain}
 
+\item{algorithm}{the Stan inference algorithm: `"NUTS"` (default; the
+No-U-Turn HMC sampler -- full Bayes), or Stan's two ADVI variational
+approximations `"meanfield"` (independent Gaussians on the
+unconstrained scale) and `"fullrank"` (one full-covariance Gaussian),
+run through [rstan::vb()], or `"pathfinder"` (Stan's multi-path
+Pathfinder, run through the StanEstimators package against the
+compiled model's exact log density and analytic gradient --
+L-BFGS trajectories from jittered starts, ELBO-selected normal
+approximations, PSIS-resampled draws; needs `StanEstimators`
+installed since rstan does not expose Pathfinder yet).  ADVI is typically 10-100x faster and is a
+fair first look, but it is an APPROXIMATION -- it understates tails
+and correlations; the Pareto-k diagnostic (`khat`) replaces
+Rhat/divergences and `khat > 0.7` means the approximation is not
+reliable and NUTS should be used.  All algorithms run the same
+generated program against the same linked rxode2/nlmixr2est
+likelihood and return the same complete nlmixr2 fit}
+
+\item{pathfinderPaths}{number of independent Pathfinder paths
+(`algorithm = "pathfinder"`); the multi-path PSIS mixture is what
+makes Pathfinder robust to a single path landing badly}
+
+\item{vbIter}{maximum ADVI iterations (`algorithm` != "NUTS")}
+
+\item{vbTolRelObj}{ADVI relative-ELBO convergence tolerance}
+
+\item{vbOutputSamples}{posterior draws taken from the fitted
+approximation (these flow into every posterior summary on the fit)}
+
 \item{thin}{thinning interval}
 
 \item{seed}{random seed (fixed by default: reproducibility is a gate)}
@@ -63,10 +100,12 @@ Stan's default; or a list/function passed through to
 \item{initJitterSd}{unconstrained-scale jitter for chains 2+ under
 `init="ini"` (chain 1 starts exactly at the `ini()` values)}
 
-\item{adapt_delta}{target acceptance rate (above Stan's 0.8 default:
-PK posteriors are stiff)}
+\item{adapt_delta}{target acceptance rate; matches Stan's own default
+(0.8) so an `est="stan"` run and a hand-written rstan run of the
+same model behave identically out of the box.  Stiff PK posteriors
+that show divergences should raise it toward 0.95-0.99}
 
-\item{max_treedepth}{NUTS maximum tree depth}
+\item{max_treedepth}{NUTS maximum tree depth (Stan's default, 10)}
 
 \item{likelihood}{the individual likelihood the linked problem evaluates;
 `"focei"` (interaction) or `"foce"` -- the two self-consistent
@@ -78,8 +117,41 @@ samples `z` with `eta = z L'`, the funnel-robust form) or `"centered"`
 The posteriors are identical by construction (gate G13); the default
 usually mixes better with few subjects}
 
-\item{likCores}{subject-parallel thread count inside each likelihood
-evaluation}
+\item{cores}{subject-parallel thread count inside each likelihood
+evaluation (default [rxode2::getRxThreads()]; on CRAN this is capped
+at 2 through `OMP_THREAD_LIMIT`).  This is the per-run analogue of the
+`cores` argument every other nlmixr2est control carries; Stan's own
+chains still run sequentially}
+
+\item{print}{the familiar nlmixr2est iteration-print cadence: every
+`print`-th log-density evaluation prints a row of natural-scale thetas
+plus the current omega variances/covariances (`om.<eta>`,
+`cov.<eta1>.<eta2>`) and `-2*sum(conditional log-lik)`, and records it
+in `$parHistData`.  A NUTS chain makes many evaluations per iteration,
+so the default (100) is roughly a row every dozen sampler iterations;
+`0` turns printing and history off}
+
+\item{maxOdeRecalc}{failed-solve tolerance relaxations inside each
+likelihood evaluation before the FD fallback (0 disables; the
+evaluators reset this state per call so the density stays a pure
+function of the parameters either way)}
+
+\item{fallbackFD}{after the relaxations, retry the prediction model
+with shi21 central-difference eta gradients before rejecting the
+point with -Inf}
+
+\item{chainCores}{processes for parallel chains (rstan's `cores`).
+Default (`NULL`): on unix, `min(chains, rxode2::getRxThreads())` --
+chains run in FORKED processes, each fork receiving a copy-on-write
+duplicate of the linked likelihood state (verified: draws are
+bit-identical to a sequential run, ~1.6x faster on 2 chains).  When
+chains fork, `cores` (subject threads) defaults to 1 -- OpenMP
+inside a forked child of an OpenMP-using parent can deadlock -- and
+the iteration print is disabled (the ticks would happen in the
+forks' memory).  Set `chainCores = 1` for sequential chains with
+subject-parallel evaluation and the iteration table.  On Windows
+the default is 1 and `chainCores > 1` is refused (rstan's parallel
+chains there are PSOCK processes without the linked state)}
 
 \item{diagOmegaSdPrior}{character template for the default half-Cauchy
 scale on an omega SD without its own prior; `%s` is replaced by the
@@ -115,7 +187,13 @@ of compiling or sampling (no Stan toolchain needed)}
 \item{sigdig}{ODE solver accuracy (`atol=rtol=10^-sigdig`); tight by
 default so the density is smooth at sampler scale}
 
-\item{rxControl}{solving options ([rxode2::rxControl()])}
+\item{rxControl}{solving options ([rxode2::rxControl()]).  When `NULL`
+(default) the solver is the dense AutoSwitch composite
+(`method="dop853+ros4", dense=TRUE`) at `sigdig`-tight tolerances:
+dense-output Dormand-Prince stepping -- the twin of Stan's own
+default ODE solver (`ode_rk45`), 25-40% cheaper per gradient than
+lsoda on typical PK models -- with an automatic dense Rosenbrock
+fallback when the system turns stiff}
 
 \item{addProp, sumProd, optExpression, literalFix, calcTables, compress, ci, sigdigTable}{standard nlmixr2 passthroughs for the output machinery}
 
@@ -129,11 +207,14 @@ The class name `stanControl` makes `nlmixr2(model, data, stanControl(...))`
 infer `est="stan"`.
 }
 \details{
-One thing is pinned and deliberately not user-settable: `cores=1` for the
-Stan chains (the linked likelihood lives in process-wide state on the
-nlmixr2est side, so chains run sequentially in one process; the
-parallelism is over subjects inside each likelihood evaluation, see
-`likCores`).
+Parallelism has two axes.  By default (unix) the CHAINS run in forked
+processes (`chainCores`, inheriting the [rxode2::getRxThreads()]
+budget capped at `chains`) with serial evaluation inside each chain.
+With `chainCores = 1` the chains run sequentially and each likelihood
+evaluation is subject-parallel instead (`cores`, defaulting to
+`getRxThreads()`).  `getRxThreads()` honors `OMP_THREAD_LIMIT`, which
+CRAN sets to 2, so checks stay within CRAN's core policy
+automatically.
 
 The ODE-retry machinery (`maxOdeRecalc`, `stickyRecalcN`) stays at
 nlmixr2est's defaults and is ENABLED: a hard point retries with relaxed

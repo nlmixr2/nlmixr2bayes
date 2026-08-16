@@ -69,7 +69,12 @@ nlmixr2_cond_all(const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>& et
   }
   nlmixr2stan__batch(e.data(), nid, neta, v.data(), g.data(), pstream__);
   Eigen::Matrix<double, Eigen::Dynamic, 1> out(nid);
-  for (int i = 0; i < nid; ++i) out(i) = v[i];
+  for (int i = 0; i < nid; ++i) {
+    // defensive: a non-finite value must reach Stan as -Inf (a rejection),
+    // never as NaN (which kills stepsize adaptation)
+    out(i) = std::isfinite(v[i]) ? v[i]
+             : -std::numeric_limits<double>::infinity();
+  }
   return out;
 }
 
@@ -98,11 +103,19 @@ nlmixr2_cond_all(const Eigen::Matrix<stan::math::var, Eigen::Dynamic,
   std::vector<var> ops(static_cast<size_t>(neta));
   std::vector<double> gi(static_cast<size_t>(neta));
   for (int i = 0; i < nid; ++i) {
+    const bool ok = std::isfinite(v[i]);
     for (int j = 0; j < neta; ++j) {
       ops[j] = eta(i, j);
-      gi[j] = g[static_cast<size_t>(i) * neta + j];
+      double gj = g[static_cast<size_t>(i) * neta + j];
+      gi[j] = (ok && std::isfinite(gj)) ? gj : 0.0;
     }
-    out(i) = stan::math::precomputed_gradients(v[i], ops, gi);
+    // non-finite value or any non-finite partial -> clean -Inf rejection
+    bool allOk = ok;
+    for (int j = 0; j < neta && allOk; ++j) {
+      allOk = std::isfinite(g[static_cast<size_t>(i) * neta + j]);
+    }
+    out(i) = stan::math::precomputed_gradients(
+      allOk ? v[i] : -std::numeric_limits<double>::infinity(), ops, gi);
   }
   return out;
 }
@@ -167,7 +180,10 @@ nlmixr2_cond_all2(const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>& e
   nlmixr2stan__batchTheta(th.data(), nth, e.data(), nid, neta,
                           v.data(), ge.data(), gt.data(), pstream__);
   Eigen::Matrix<double, Eigen::Dynamic, 1> out(nid);
-  for (int i = 0; i < nid; ++i) out(i) = v[i];
+  for (int i = 0; i < nid; ++i) {
+    out(i) = std::isfinite(v[i]) ? v[i]
+             : -std::numeric_limits<double>::infinity();
+  }
   return out;
 }
 
@@ -199,14 +215,24 @@ nlmixr2_cond_all2(const Eigen::Matrix<stan::math::var, Eigen::Dynamic,
   std::vector<double> gi(static_cast<size_t>(neta + nth));
   for (int j = 0; j < nth; ++j) ops[neta + j] = theta(j);
   for (int i = 0; i < nid; ++i) {
+    bool allOk = std::isfinite(v[i]);
+    for (int j = 0; j < neta && allOk; ++j) {
+      allOk = std::isfinite(ge[static_cast<size_t>(i) * neta + j]);
+    }
+    for (int j = 0; j < nth && allOk; ++j) {
+      allOk = std::isfinite(gt[static_cast<size_t>(i) * nth + j]);
+    }
     for (int j = 0; j < neta; ++j) {
       ops[j] = eta(i, j);
-      gi[j] = ge[static_cast<size_t>(i) * neta + j];
+      gi[j] = allOk ? ge[static_cast<size_t>(i) * neta + j] : 0.0;
     }
     for (int j = 0; j < nth; ++j) {
-      gi[neta + j] = gt[static_cast<size_t>(i) * nth + j];
+      gi[neta + j] = allOk ? gt[static_cast<size_t>(i) * nth + j] : 0.0;
     }
-    out(i) = stan::math::precomputed_gradients(v[i], ops, gi);
+    // non-finite value or any non-finite partial -> clean -Inf rejection,
+    // never a NaN on the autodiff tape (it kills stepsize adaptation)
+    out(i) = stan::math::precomputed_gradients(
+      allOk ? v[i] : -std::numeric_limits<double>::infinity(), ops, gi);
   }
   return out;
 }
@@ -277,5 +303,35 @@ nlmixr2_pop_ll(const Eigen::Matrix<stan::math::var, Eigen::Dynamic, 1>& theta,
   }
   const double lp = (rc > 0) ? -std::numeric_limits<double>::infinity() : -v;
   return stan::math::precomputed_gradients(lp, ops, gi);
+}
+
+// --- iteration tick ---------------------------------------------------------
+// One call per model-block evaluation carrying the natural-scale display
+// vector (thetas + actual omega variances/covariances) and the current
+// -2*sum(conditional log-lik).  Forwards to nlmixr2stan_iter_tick, which
+// no-ops (rc -1) unless the R side armed the nlmixr2est scale.h iteration
+// print (foceiLikIterPrintStart); contributes NOTHING to the target.
+// Templated because stanc3 may instantiate par/objf as double (fixed
+// parameters, generated quantities) or stan::math::var (model block).
+typedef int (*nlmixr2stan_iter_tick_t)(const double *par, int n, double objf);
+
+inline nlmixr2stan_iter_tick_t nlmixr2stan__tickFn() {
+  static nlmixr2stan_iter_tick_t fn = 0;
+  if (fn == 0) {
+    fn = reinterpret_cast<nlmixr2stan_iter_tick_t>(
+      R_GetCCallable("nlmixr2stan", "nlmixr2stan_iter_tick"));
+  }
+  return fn;
+}
+
+template <typename TPar, typename TObj>
+inline double nlmixr2_iter_tick(const TPar& par, const TObj& objf,
+                                std::ostream* pstream__) {
+  (void)pstream__;
+  const int n = static_cast<int>(par.size());
+  std::vector<double> v(static_cast<size_t>(n));
+  for (int j = 0; j < n; ++j) v[j] = stan::math::value_of(par(j));
+  nlmixr2stan__tickFn()(v.data(), n, stan::math::value_of(objf));
+  return 0.0;
 }
 #endif

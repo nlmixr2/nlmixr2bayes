@@ -26,7 +26,18 @@ method uses -- one source of truth, with analytic gradients handed to Stan
 through `precomputed_gradients()`.  Stan samples theta, the omega
 parameters, and the individual etas jointly; the eta prior is fully owned
 by Stan (non-centred by default), so its autodiff composes the supplied
-gradients through the Omega parameterization.
+gradients through the Omega parameterization.  A model with **no** etas
+(a population-only or single-subject fit) runs as "tier 0" through
+nlmixr2est's nlm path instead -- one external scalar carrying the whole
+data log-likelihood with its analytic gradient.
+
+Beyond the core: finite mixtures (`mix()`, 2 components) marginalize with
+the Stan `log_sum_exp` pattern and put per-subject membership posteriors
+in `fit$env$mixProb`; fixed-variance etas (`eta ~ fix(v)`) render as
+constant Cholesky factors with the eta still sampled; and an estimated
+transform-both-sides lambda (Box-Cox/Yeo-Johnson, including on
+`logitNorm`/`probitNorm` bases) is handled with the DV-transform Jacobian
+emitted Stan-side.
 
 ## Priors come from `ini({})`
 
@@ -84,18 +95,68 @@ Notes on how priors are handled:
 ```{r}
 stanControl(
   chains = 4, iter = 2000, warmup = 1000, seed = 42,
-  adapt_delta = 0.9, max_treedepth = 12,
+  adapt_delta = 0.8, max_treedepth = 10, # Stan's own sampler defaults
   init = "ini",          # chains start at the ini() estimates (jittered)
   etaParam = "noncentered",  # or "centered"; identical posterior (gate G13)
-  likCores = 4           # subject-parallel threads INSIDE each evaluation
+  cores = 4,          # subject-parallel threads INSIDE each evaluation
+  print = 100         # nlmixr2est-style iteration table cadence (0 = off)
 )
 ```
 
-Chains run sequentially in one process: the linked likelihood lives in
-process-wide state, and rxode2/nlmixr2est already parallelize over subjects
-inside each likelihood evaluation (`likCores`).  The ODE solving is the
+Parallelism has two axes.  By default (unix) the chains run in FORKED
+processes (`chainCores`, inheriting the `rxode2::getRxThreads()` budget
+capped at the chain count): each fork receives a copy-on-write
+duplicate of the linked likelihood, and the draws are bit-identical to
+a sequential run.  With `chainCores = 1` the chains run sequentially
+and each likelihood evaluation is subject-parallel instead (`cores`,
+default `getRxThreads()`; CRAN's two-core policy is honored
+automatically through `OMP_THREAD_LIMIT`).  The ODE solving is the
 rate-limiting step in most pharmacometric models, so that is where the
-cores go.
+cores go either way.
+
+With sequential chains (`chainCores = 1`), during sampling the familiar
+nlmixr2est iteration table prints every
+`print`-th log-density evaluation: the natural-scale thetas, the current
+omega variances/covariances (`om.<eta>`, `cov.<eta1>.<eta2>` -- Stan
+samples omega, so these move), and `-2*sum(conditional log-lik)`.  The
+printed rows are recorded on the fit as `$parHistData`.
+
+## Other Stan inference algorithms: ADVI
+
+`stanControl(algorithm=)` selects the inference algorithm that runs on the
+same generated program and the same linked likelihood:
+
+* `"NUTS"` (default) -- the No-U-Turn HMC sampler; full Bayes.
+* `"meanfield"` -- ADVI with independent Gaussians on the unconstrained
+  scale (Stan's `rstan::vb()`).
+* `"fullrank"` -- ADVI with one full-covariance Gaussian.
+* `"pathfinder"` -- multi-path Pathfinder (Zhang, Carpenter, Gelman &
+  Vehtari 2022), implemented in nlmixr2stan against the compiled model's
+  exact log density and analytic gradient (rstan does not expose the
+  Pathfinder service): L-BFGS trajectories from jittered starts, an
+  ELBO-selected local Gaussian per path, and Pareto-smoothed importance
+  resampling over the path mixture.  Needs the `loo` package.
+
+```{r, eval=FALSE}
+fit <- nlmixr2(one.cmt, theo_sd, est = "stan",
+               control = stanControl(algorithm = "meanfield"))
+# or the sugar methods, like "foce"/"focei" in nlmixr2est:
+fit <- nlmixr2(one.cmt, theo_sd, est = "advi")        # meanfield ADVI
+fit <- nlmixr2(one.cmt, theo_sd, est = "pathfinder")  # Pathfinder
+```
+
+Everything downstream is identical -- the variational draws flow through
+the same posterior-to-fit machinery, so `$parFixed`, `$etaObf`, `$omega`,
+`$posteriorSummary`, WAIC/LOO and the iteration print all work -- and
+ADVI is typically 5-10x faster than NUTS on these models (~40 s vs
+~260 s on `theo_sd`).  But ADVI is an *approximation*: it understates
+tails and posterior correlations.  The Pareto-\(\hat k\) diagnostic of
+the importance ratios replaces Rhat/ESS/divergences on the fit
+(`$stanDiagnostics$khat`, also shown in the fit header): \(\hat k \le
+0.7\) means the approximation supports importance correction; above that
+the fit warns (via `onDiagnostic`) that the approximation is unreliable
+and NUTS should be used.  Hierarchical PK posteriors routinely exceed it
+-- treat ADVI as the fast first look and NUTS as the answer.
 
 `run = FALSE` returns the generated Stan program and data without touching
 rstan -- useful for inspection and for codegen tests:

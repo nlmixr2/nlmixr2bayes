@@ -33,6 +33,16 @@ SEXP _nlmixr2stan_setCores(SEXP n) {
   return Rf_ScalarInteger(nlmixr2stanCores);
 }
 
+/* Iteration tick from inside the compiled Stan model's model block: the
+ * natural-scale display vector (thetas + actual omega entries) and the
+ * current -2*sum(conditional log-lik).  Forwards to nlmixr2est's scale.h
+ * iteration print (entry 8 of the FOCEi table); no-op (-1) when that
+ * entry is absent (older nlmixr2est) or printing is not armed. */
+int nlmixr2stan_iter_tick(const double *par, int n, double objf) {
+  if (nlmixr2FoceiIterPrintRowP == NULL) return -1;
+  return nlmixr2FoceiIterPrintRowP(par, n, objf);
+}
+
 SEXP _nlmixr2stan_apiVersion(void) {
   if (nlmixr2FoceiApiVersionP == NULL) return Rf_ScalarInteger(-1);
   return Rf_ScalarInteger(nlmixr2FoceiApiVersionP());

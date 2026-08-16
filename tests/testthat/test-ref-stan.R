@@ -59,7 +59,7 @@ test_that("G4: the linked posterior matches a hand-written pure-Stan reference",
                                                                 control = stanControl(chains = 2L, iter = .iter,
                                                                                       warmup = .warm, seed = 101L,
                                                                                       adapt_delta = 0.95,
-                                                                                      likCores = 1L,
+                                                                                      cores = 1L,
                                                                                       onDiagnostic = "none"))))
   .sfL <- .fit$env$stanfit
   # ---- the reference fit ---------------------------------------------------
