@@ -42,6 +42,7 @@ Suggests:
 LinkingTo:
     nlmixr2est
 Encoding: UTF-8
+VignetteBuilder: knitr
 Config/testthat/edition: 3
 NeedsCompilation: yes
 Config/roxygen2/version: 8.1.0

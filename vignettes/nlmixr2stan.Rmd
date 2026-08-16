@@ -1,0 +1,208 @@
+---
+title: "Bayesian estimation with est=\"stan\""
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Bayesian estimation with est="stan"}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+`nlmixr2stan` adds a Bayesian HMC estimation method to nlmixr2:
+
+```{r}
+library(nlmixr2stan)
+fit <- nlmixr2est::nlmixr2(model, data, est = "stan")
+```
+
+Stan is **linked** to the compiled rxode2/nlmixr2est likelihood rather than
+the model being translated into Stan's language: rxode2 solves the ODEs
+(dosing events, `addl`, infusions, steady state, delay equations), and
+nlmixr2est evaluates the same conditional likelihood every other nlmixr2
+method uses -- one source of truth, with analytic gradients handed to Stan
+through `precomputed_gradients()`.  Stan samples theta, the omega
+parameters, and the individual etas jointly; the eta prior is fully owned
+by Stan (non-centred by default), so its autodiff composes the supplied
+gradients through the Omega parameterization.
+
+## Priors come from `ini({})`
+
+Priors are declared next to the parameters they describe, with the
+lotri/rxode2 prior syntax -- the distribution catalogue is one-to-one with
+Stan's (`lotri::lotriPriorDists()`):
+
+```{r}
+one.cmt <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- log(c(0, 2.7, 100))
+    tv <- 3.45
+    add.sd <- c(0, 0.7)
+    eta.ka ~ 0.6
+    eta.cl ~ 0.3
+    eta.v ~ 0.1
+    prior(tka) ~ dnorm(0.45, 1)
+    prior(tcl) ~ dnorm(1, 1)
+    prior(tv) ~ dnorm(3.45, 1)
+    prior(add.sd) ~ dcauchy(0, 2.5)
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+
+fit <- nlmixr2est::nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "stan",
+                           control = stanControl(seed = 42))
+```
+
+Notes on how priors are handled:
+
+- A parameter's `ini()` bounds become Stan constraints; `add.sd <- c(0, 0.7)`
+  with `prior(add.sd) ~ dcauchy(0, 2.5)` is the half-Cauchy idiom
+  (`real<lower=0>` + `cauchy(0, 2.5)`).
+- A prior whose support is narrower than the declared bounds tightens the
+  declaration (support promotion); truncation `T[L,U]` is emitted only when
+  the dropped normalizer would be parameter-dependent.
+- Omega blocks: write `prior(eta.x) ~ invWishart(nu)` for an inverse-Wishart
+  on the block, or leave the block without a prior to get the announced
+  default -- `lkj_corr_cholesky(2)` on the correlation plus half-Cauchy
+  priors on each SD.
+- A model with **no** priors is refused, and the error prints the exact
+  `prior()` lines to add.  Bayesian output from silently invented priors
+  would look publishable and be wrong.
+- Parameters that are `fix()`ed are dissolved before generation
+  (`literalFix = TRUE`); a prior on a fixed parameter is an error.
+
+## Controlling the run
+
+```{r}
+stanControl(
+  chains = 4, iter = 2000, warmup = 1000, seed = 42,
+  adapt_delta = 0.9, max_treedepth = 12,
+  init = "ini",          # chains start at the ini() estimates (jittered)
+  etaParam = "noncentered",  # or "centered"; identical posterior (gate G13)
+  likCores = 4           # subject-parallel threads INSIDE each evaluation
+)
+```
+
+Chains run sequentially in one process: the linked likelihood lives in
+process-wide state, and rxode2/nlmixr2est already parallelize over subjects
+inside each likelihood evaluation (`likCores`).  The ODE solving is the
+rate-limiting step in most pharmacometric models, so that is where the
+cores go.
+
+`run = FALSE` returns the generated Stan program and data without touching
+rstan -- useful for inspection and for codegen tests:
+
+```{r}
+code <- nlmixr2est::nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "stan",
+                            control = stanControl(run = FALSE))
+cat(code$code)
+```
+
+## Reading the fit
+
+The result is a first-class `nlmixr2FitData`: `print(fit)`, `fit$parFixed`,
+IPRED/CWRES tables, `plot(fit)` all work.  On top of that:
+
+- `fit$posteriorSummary` -- exact posterior quantiles for every monitored
+  parameter.  The `$parFixed` confidence intervals are a **Wald (Gaussian)
+  approximation** built from the posterior covariance; for skewed
+  posteriors (SDs, small omegas) prefer the exact quantiles here.
+- `fit$etaObf` -- posterior-mean etas (with `OBJI` = -2 x mean conditional
+  log-likelihood per subject).  The FOCEi empirical Bayes estimates
+  computed for the comparability row are kept as `fit$etaObfFocei`.
+
+### Working with the rstan object
+
+The full `rstan::stanfit` is kept on the fit and retrieved with
+
+```{r}
+sf <- fit$stanfit          # the rstan::stanfit (also fit$env$stanfit)
+```
+
+Everything in the rstan/Bayesian ecosystem works from there:
+
+```{r}
+rstan::summary(sf)$summary            # full summary incl. per-eta rows
+draws <- rstan::extract(sf)           # posterior draws by parameter
+rstan::extract(sf, permuted = FALSE)  # iterations x chains x parameter
+rstan::traceplot(sf, pars = c("tka", "tcl", "tv"))
+rstan::get_sampler_params(sf, inc_warmup = FALSE)
+
+# bayesplot / posterior work directly on the stanfit
+bayesplot::mcmc_pairs(sf, pars = c("tka", "tcl", "tv"))
+posterior::as_draws_df(sf)
+```
+
+Parameter naming inside the Stan program: `.` in nlmixr2 names becomes `_`
+(`add.sd` is `add_sd`), the etas are the transformed parameter
+`eta[subject, k]`, and the omega blocks appear as `omegaOut` (the
+covariance in the model's eta order).  `fit$stanCode` and `fit$stanData`
+hold the generated program and its data list, so any draw-level question
+can be answered against the exact program that produced it.
+
+### The objective-function rows
+
+`fit$objDf` carries several rows on the deviance scale:
+
+- **FOCEi** -- a plug-in frequentist objective evaluated at the posterior
+  point estimate, for comparability with other nlmixr2 methods.  It
+  double-uses the data and ignores the prior; it is a bridge to the
+  likelihoodist world, not a Bayesian quantity.
+- **WAIC / LOO** -- information criteria computed from the per-subject
+  conditional log-likelihood draws, so they are **leave-one-subject-out**
+  quantities (the subject is the exchangeable unit of a hierarchical
+  model) conditional on the eta factorization.  The full `loo` objects are
+  at `fit$env$loo` / `fit$env$waic`.
+
+### Diagnostics
+
+Sampler diagnostics run right after sampling and again at print time:
+divergences, Rhat, bulk/tail ESS, treedepth saturation.  Each produces an
+actionable message (which knob to turn); `onDiagnostic` selects
+warn/error/message/none, and the headline numbers print above the parameter
+table in `fit$extra`.  Do not use estimates from a run with divergences or
+Rhat above 1.01 -- raise `adapt_delta` toward 0.99, or reconsider the
+model.
+
+## What is refused (and why)
+
+Rather than produce a silently wrong posterior, `est="stan"` refuses:
+
+- estimated transform-both-sides lambda -- temporarily.  The design is
+  settled: the DV-transform Jacobian is data-times-lambda algebra emitted
+  on the Stan side with exact autodiff (for Box-Cox,
+  `(lambda - 1) * sum(log y)` per endpoint), and the linked conditional
+  supplies the transformed-scale density; what blocks it today is that the
+  conditional's own `d/dlambda` sensitivity column is silently zero
+  upstream (nlmixr2est#949).  A *fixed* lambda works now;
+- mixture models, IOV, and discrete priors (every `ini({})` parameter is
+  real-valued).
+
+Mu-referenced covariates are supported whether subject-constant (an
+analytic chain-rule identity) or time-varying (the coefficient is treated
+as an estimated regressor through the forward-sensitivity model, as in the
+other nlmixr2est methods).
+
+Estimated dose-handling parameters (`alag`/`f`/`dur`/`rate`) are supported
+with nlmixr2est >= the nlmixr2/nlmixr2est#946 fix (their derivatives carry
+the jump condition at the dose event); with an older nlmixr2est they are
+refused with an explanation.
+
+## How it is validated
+
+See the README's oracle tables.  In brief: every gradient is
+finite-difference verified; a quadrature marginal over the linked
+conditional reproduces `est="agq"`; censored and `ll()` conditionals tie to
+hand-computed textbook densities; prior-only sampling recovers every
+declared prior; the full posterior matches a hand-written native-Stan
+implementation of the same model; simulate-and-recover covers the
+generative truth; and the evaluation is bitwise deterministic (the property
+NUTS's reversibility assumes), with the ODE retry machinery live.

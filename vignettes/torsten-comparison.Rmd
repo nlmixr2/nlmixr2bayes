@@ -1,0 +1,236 @@
+---
+title: "nlmixr2stan and Torsten"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{nlmixr2stan and Torsten}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+[Torsten](https://github.com/metrumresearchgroup/Torsten) (Metrum Research
+Group) and nlmixr2stan both bring Stan's NUTS sampler to pharmacometric
+models, from opposite directions:
+
+- **Torsten** is a *library of Stan functions* (`pmx_solve_onecpt`,
+  `pmx_solve_twocpt`, `pmx_solve_linode`, `pmx_solve_rk45/bdf/adams`,
+  coupled PK-forced-PD solvers) with NONMEM-convention event handling
+  (AMT/EVID/CMT/RATE/ADDL/II/SS).  You write the full Stan program by
+  hand: data block, parameter transforms, the eta hierarchy, the residual
+  model, generated quantities.  Total control, and total responsibility.
+
+- **nlmixr2stan** is a *full nlmixr2 estimation method*: the model is the
+  same `ini({})`/`model({})` function every other nlmixr2 method fits, the
+  Stan program is generated, and Stan is **linked** to the compiled
+  rxode2/nlmixr2est likelihood (with analytic gradients) rather than the
+  model being re-expressed in Stan's language.  The fit comes back as a
+  standard `nlmixr2FitData` with GOF tables, plus the full `stanfit`.
+
+The practical consequence: a Torsten model is ~100-200 lines of Stan; the
+same model in nlmixr2stan is the ~20-line nlmixr2 function you may already
+have from a FOCEi/SAEM run, and the posterior is sampled against the
+*identical* likelihood code those methods used.
+
+## Capability comparison
+
+| capability | Torsten | nlmixr2stan |
+|---|---|---|
+| 1/2-cmt analytic models | `pmx_solve_onecpt/twocpt` | `linCmt()` (1/2/3-cmt + absorption) |
+| general linear ODE | matrix exponential (`pmx_solve_linode`) | rxode2 solvers |
+| general (stiff) ODE | `pmx_solve_rk45/bdf/adams` | rxode2 (lsoda/liblsoda/dop853, ...) |
+| delay differential equations | — | rxode2 `delay()` / `past()` |
+| NONMEM-convention events (AMT/EVID/ADDL/SS/RATE) | yes | yes (rxode2 event table) |
+| estimated `alag`/`f`/`dur`/`rate` | parameters of the solve (Torsten notes an open adjoint issue at `tlag = 0`) | yes; jump-condition sensitivities, FD-verified |
+| residual models | hand-written (anything Stan can express) | nlmixr2 catalogue (add/prop/combined, lnorm, ...), censoring M2/M3/M4, user `ll()` |
+| eta structure | hand-written (any structure, incl. IOV by hand) | lotri blocks; non-centred or centred; IOV via occasion etas (see below) |
+| priors | any Stan distribution, hand-written | the 39-distribution lotri catalogue via `prior()` in `ini({})`, LKJ/inv-Wishart on omega |
+| single-subject (no etas) | yes | not yet (population models only) |
+| gradients | Stan autodiff through the solvers | analytic forward sensitivities via `precomputed_gradients` |
+| within-chain parallelism | MPI (`map_rect`-style population solvers) | subject-parallel OpenMP inside each likelihood evaluation (`likCores`) |
+| interface | cmdstan / cmdstanr | rstan, `nlmixr2(..., est = "stan")` |
+| output | cmdstan CSV; roll your own diagnostics/GOF | `nlmixr2FitData` (IPRED/CWRES tables, `$objDf` with FOCEi/WAIC/LOO rows) + the `stanfit` |
+| model reuse across estimation methods | Stan-only | the same function fits with focei/saem/bobyqa/... |
+
+Where Torsten is the right tool: hand-tuned Stan programs, single-subject
+models, structures outside the nlmixr2 ui (e.g. exotic hierarchies), and
+cmdstan-ecosystem workflows.  Where nlmixr2stan is the right tool: standard
+population PK/PD where the model already exists in nlmixr2 form, and the
+Bayesian run should be comparable line-for-line with the frequentist ones.
+
+## Port: `poppk2cpt` (two-compartment population model)
+
+Torsten's `example-models/poppk2cpt` is ~150 lines of Stan:
+NONMEM-style arrays in `data`, `pmx_solve_twocpt` per subject, Matt's
+trick (Matt Hoffman) for the etas, lognormal priors, lognormal
+residual.  The same model in nlmixr2stan:
+
+```{r}
+poppk2cpt <- function() {
+  ini({
+    lcl <- log(10)
+    lq <- log(15)
+    lv1 <- log(35)
+    lv2 <- log(105)
+    lka <- log(2.5)
+    # Torsten's lognormal priors on the natural scale are normal priors on
+    # the log-scale parameters
+    prior(lcl) ~ dnorm(log(10), 0.25)
+    prior(lq) ~ dnorm(log(15), 0.5)
+    prior(lv1) ~ dnorm(log(35), 0.25)
+    prior(lv2) ~ dnorm(log(105), 0.5)
+    prior(lka) ~ dnorm(log(2.5), 1)
+    lnorm.sd <- c(0, 0.2)
+    prior(lnorm.sd) ~ dcauchy(0, 1)
+    # IIV block; the default omega prior is announced as
+    # lkj_corr_cholesky(2) + half-Cauchy SDs -- the same shape Torsten's
+    # examples hand-code
+    eta.cl + eta.q + eta.v1 + eta.v2 + eta.ka ~
+      c(0.06,
+        0.01, 0.06,
+        0.01, 0.01, 0.06,
+        0.01, 0.01, 0.01, 0.06,
+        0.01, 0.01, 0.01, 0.01, 0.06)
+  })
+  model({
+    cl <- exp(lcl + eta.cl)
+    q <- exp(lq + eta.q)
+    v <- exp(lv1 + eta.v1)    # central volume (Torsten's V1)
+    vp <- exp(lv2 + eta.v2)   # peripheral volume (Torsten's V2)
+    ka <- exp(lka + eta.ka)
+    # pmx_solve_twocpt's analytic solution == linCmt() with these params
+    cp <- linCmt()
+    # logCObs ~ normal(log(cHat), sigma) == a lognormal residual
+    cp ~ lnorm(lnorm.sd)
+  })
+}
+fit <- nlmixr2est::nlmixr2(poppk2cpt, d, est = "stan",
+                           control = stanControl(seed = 42))
+```
+
+The event table is the same NONMEM-convention data both tools consume --
+no `iObs`/`start`/`end` index bookkeeping; rxode2 derives it.
+
+## Port: Friberg-Karlsson neutropenia (population PK/PD, two endpoints)
+
+Torsten's `FribergKarlsson` example: a two-compartment PK driving the
+classic proliferation/transit/circulation myelosuppression chain, ~200
+lines with a hand-written 8-state ODE function and separate PK/PD
+observation indexing.  In nlmixr2 syntax:
+
+```{r}
+fk <- function() {
+  ini({
+    lcl <- log(10); lq <- log(15); lv1 <- log(35); lv2 <- log(105)
+    lka <- log(2)
+    lmtt <- log(125)
+    lcirc0 <- log(5)
+    lalpha <- log(3e-4)
+    lgamma <- log(0.17)
+    prior(lcl) ~ dnorm(log(10), 0.25)
+    prior(lmtt) ~ dnorm(log(125), 0.25)
+    prior(lcirc0) ~ dnorm(log(5), 0.25)
+    prior(lalpha) ~ dnorm(log(3e-4), 1)
+    prior(lgamma) ~ dnorm(log(0.17), 0.5)
+    lnorm.sd <- c(0, 0.2)
+    lnormNeut.sd <- c(0, 0.3)
+    prior(lnorm.sd) ~ dcauchy(0, 1)
+    prior(lnormNeut.sd) ~ dcauchy(0, 1)
+    eta.cl ~ 0.06
+    eta.mtt ~ 0.04
+    eta.circ0 ~ 0.04
+  })
+  model({
+    cl <- exp(lcl + eta.cl)
+    q <- exp(lq); v1 <- exp(lv1); v2 <- exp(lv2); ka <- exp(lka)
+    mtt <- exp(lmtt + eta.mtt)
+    circ0 <- exp(lcirc0 + eta.circ0)
+    alpha <- exp(lalpha)
+    gamma <- exp(lgamma)
+    k10 <- cl / v1; k12 <- q / v1; k21 <- q / v2
+    ktr <- 4 / mtt
+    d/dt(depot) <- -ka * depot
+    d/dt(cent) <- ka * depot - (k10 + k12) * cent + k21 * peri
+    d/dt(peri) <- k12 * cent - k21 * peri
+    conc <- cent / v1
+    edrug <- alpha * conc
+    d/dt(prol) <- ktr * prol * (1 - edrug) * (circ0 / circ)^gamma - ktr * prol
+    d/dt(tr1) <- ktr * (prol - tr1)
+    d/dt(tr2) <- ktr * (tr1 - tr2)
+    d/dt(tr3) <- ktr * (tr2 - tr3)
+    d/dt(circ) <- ktr * tr3 - ktr * circ
+    prol(0) <- circ0; tr1(0) <- circ0; tr2(0) <- circ0; tr3(0) <- circ0
+    circ(0) <- circ0
+    # two endpoints, distinguished by CMT/DVID in the data -- Torsten does
+    # this with separate iObsPK/iObsPD index arrays
+    conc ~ lnorm(lnorm.sd)
+    circ ~ lnorm(lnormNeut.sd)
+  })
+}
+```
+
+Multi-endpoint likelihoods, initial conditions, and the stiff ODE solve are
+all standard rxode2/nlmixr2est machinery; `likInner0` sums the per-endpoint
+terms and the analytic gradients flow through the same linkage.
+
+## IOV
+
+Torsten "supports" IOV the way it supports everything: you write it --
+occasion-level etas declared as extra parameters and added into the
+occasion's parameters by hand.  The **same hand-written pattern works in
+nlmixr2stan today**, because as far as the linked likelihood is concerned
+an occasion eta is just another subject-level eta gated by an occasion
+indicator covariate:
+
+```{r}
+iov <- function() {
+  ini({
+    lcl <- log(10)
+    lv <- log(35)
+    prior(lcl) ~ dnorm(log(10), 0.5)
+    lnorm.sd <- c(0, 0.2)
+    prior(lnorm.sd) ~ dcauchy(0, 1)
+    eta.cl ~ 0.06        # IIV
+    eta.occ1 ~ 0.02      # IOV, occasion 1
+    eta.occ2 ~ 0.02      # IOV, occasion 2
+  })
+  model({
+    # OCC is a data column; kappa = the occasion's IOV eta
+    kappa <- eta.occ1 * (OCC == 1) + eta.occ2 * (OCC == 2)
+    cl <- exp(lcl + eta.cl + kappa)
+    v <- exp(lv)
+    cp <- linCmt()
+    cp ~ lnorm(lnorm.sd)
+  })
+}
+```
+
+What this pattern does **not** yet give you is the usual IOV constraint
+that every occasion shares ONE variance: `eta.occ1` and `eta.occ2` above
+get independent (identically-specified) priors rather than a single shared
+`omega_IOV` parameter.  Making the native `~ ... | occ` lotri syntax work
+-- one declared variance shared across the occasion blocks, still sampled
+by Stan -- needs only generator work (a shared-SD constraint across
+blocks), **no upstream likelihood change**, precisely because Stan owns
+the whole eta prior in this design.  That is the tracked path to
+first-class IOV; the indicator pattern above is available now and is what
+a Torsten user would have written anyway.
+
+## What does not carry over
+
+- Torsten's **single-patient** examples (`pk2cpt` and friends) have no
+  etas; nlmixr2stan currently requires a mixed model.  A single-subject
+  port needs a (possibly tightly-priored) eta or must wait for
+  population-only support.
+
+- Torsten's `pmx_solve_group_*` **MPI parallelism** distributes subjects
+  across processes; nlmixr2stan parallelizes subjects with OpenMP threads
+  inside each likelihood call (`likCores`) -- same axis, different
+  mechanics, no user-visible model difference.
+
+- Conversely, rxode2 capabilities with no Torsten equivalent flow through
+  `est="stan"` unchanged: delay differential equations, the censoring
+  machinery (M2/M3/M4), the residual-error catalogue, transit-compartment
+  helpers, and mu-referenced covariate handling.

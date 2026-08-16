@@ -71,17 +71,25 @@
   rxode2::assertRxUiNoMix(ui, " for est=\"stan\"", .var.name = ui$modelName)
   rxode2::assertRxUiMixedOnly(ui, " for est=\"stan\"", .var.name = ui$modelName)
   # (rxode2 >= 5.1.7 always has llik support, so no assertRxUiTransformNormal)
-  # transform-both-sides with an ESTIMATED lambda: the conditional value the
-  # linkage returns omits the DV-transform Jacobian, which is not constant in
-  # an estimated lambda -- the target would be silently wrong
+  # transform-both-sides with an ESTIMATED lambda: two lambda-dependent
+  # pieces are needed.  The DV-transform Jacobian is pure data-times-lambda
+  # algebra the generator can emit Stan-side with exact autodiff (Box-Cox:
+  # (lambda-1)*sum(log y) per endpoint), so it is NOT the blocker; the
+  # blocker is the linked conditional's own d/dlambda through the
+  # transformed residual h(y;lambda) - h(f;lambda), whose theta-sensitivity
+  # column is silently zero upstream (nlmixr2/nlmixr2est#949, FD-measured).
+  # Refused until that column is real; a FIXED lambda works today (every
+  # lambda term is then constant in the sampled parameters).
   .iniDf <- ui$iniDf
   .tbs <- which(.iniDf$err %in% c("boxCox", "yeoJohnson") & !.iniDf$fix)
   if (length(.tbs) > 0L) {
-    stop("est=\"stan\" cannot estimate the transform-both-sides parameter(s) ",
+    stop("est=\"stan\" cannot yet estimate the transform-both-sides ",
+         "parameter(s) ",
          paste0("'", .iniDf$name[.tbs], "'", collapse = ", "),
-         ": the linked conditional likelihood omits the DV-transform ",
-         "Jacobian, which is not constant in an estimated lambda; fix the ",
-         "lambda or drop the transform", call. = FALSE)
+         ": the linked conditional's d/dlambda sensitivity column is ",
+         "silently zero (nlmixr2/nlmixr2est#949); fix() the lambda or ",
+         "wait for that fix (the DV-transform Jacobian half is handled ",
+         "Stan-side once it lands)", call. = FALSE)
   }
   # estimated dose-handling parameters: the derivative through the event
   # needs a jump condition.  nlmixr2est with nlmixr2/nlmixr2est#946 compiles
@@ -159,9 +167,11 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
   .nid <- length(.ret$idLvl)
   .gen$data$N <- .nid
   # per-subject mu-referenced covariate values for the coefficient gradient
-  # scatter (d/dtheta_p = cov_i * d/deta_k); checked here so a time-varying
-  # covariate is refused even under run=FALSE
-  .covVal <- .stanMuRefCovValues(.map, .ret$dataSav)
+  # scatter (d/dtheta_p = cov_i * d/deta_k); a time-varying covariate is
+  # flagged, not refused -- its coefficient rides the forward-sensitivity
+  # model like any other structural theta (nlmixr2est treats a time-varying
+  # regressor the same way)
+  .cov <- .stanMuRefCovValues(.map, .ret$dataSav)
   for (.n in .gen$notes) cli::cli_inform(paste0("est=\"stan\": ", .n))
   if (!is.null(control$stanFile)) {
     writeLines(.gen$code, control$stanFile)
@@ -182,9 +192,13 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
   # ---- compile (cached), then link --------------------------------------
   .sm <- stanCompile(.gen$code, cache = control$cache,
                      cacheDir = control$cacheDir, verbose = control$verbose)
+  # covariate coefficients on a subject-CONSTANT covariate can come from the
+  # scatter, so only they are excluded from the sensitivity requirement; a
+  # time-varying coefficient needs the forward-sensitivity model
+  .mrcConst <- .map$muRefCov$thetaIdx[!.cov$timeVarying]
   .needSens <- any(!.map$theta$fix &
                      !(seq_len(nrow(.map$theta)) %in%
-                         c(.map$muRefIdx, .map$muRefCov$thetaIdx)))
+                         c(.map$muRefIdx, .mrcConst)))
   .h <- stanLinkSetup(ui, env$data, likelihood = control$likelihood,
                       rxControl = control$rxControl,
                       thetaSens = .needSens, literalFix = control$literalFix,
@@ -202,17 +216,29 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
   .Call(`_nlmixr2stan_setThetaBase`, as.double(.h$initPar))
   .Call(`_nlmixr2stan_setMuRef`, as.integer(.map$muRefIdx))
   # covariate-coefficient scatter: d/dtheta_p = cov_i * d/deta_k.  Only for
-  # coefficients the theta-sensitivity model does NOT already carry -- when
-  # upstream classifies the coefficient as a plain structural theta it gets
-  # an exact forward sensitivity, and adding the (equal) scatter on top
-  # would double the column.  (etaIdx is 1-based in the map, 0-based in the
-  # shim; covVal columns follow muRefCov rows.)
-  .mrcS <- which(!(.map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
+  # SUBJECT-CONSTANT coefficients the theta-sensitivity model does NOT
+  # already carry -- when upstream classifies the coefficient as a plain
+  # structural theta it gets an exact forward sensitivity, and adding the
+  # (equal) scatter on top would double the column.  A TIME-VARYING
+  # coefficient must be sensitivity-covered (the scatter identity does not
+  # factor); with neither source its gradient would be silently zero, so
+  # refuse.  (etaIdx is 1-based in the map, 0-based in the shim; covVal
+  # columns follow muRefCov rows.)
+  .mrcTvBad <- which(.cov$timeVarying &
+                       !(.map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
+  if (length(.mrcTvBad) > 0L) {
+    stop("time-varying mu-referenced covariate coefficient(s) ",
+         paste0("'", .map$muRefCov$name[.mrcTvBad], "'", collapse = ", "),
+         " have no forward sensitivity in the linked model, so their ",
+         "gradient would be silently zero", call. = FALSE)
+  }
+  .mrcS <- which(!.cov$timeVarying &
+                   !(.map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
   if (length(.mrcS) > 0L) {
     .Call(`_nlmixr2stan_setMuRefCov`,
           as.integer(.map$muRefCov$thetaIdx[.mrcS]),
           as.integer(.map$muRefCov$etaIdx[.mrcS] - 1L),
-          .covVal[, .mrcS, drop = FALSE])
+          .cov$val[, .mrcS, drop = FALSE])
   }
   # gradient conditioning: keep nlmixr2est's Omega^-1 commensurate with the
   # model's initial Omega (the conditional value is Omega-free)
@@ -390,6 +416,44 @@ attr(nlmixr2Est.stan, "iov") <- FALSE
     if (.ok && !identical(.env$etaObf, .etaObf)) {
       assign("etaObfFocei", .env$etaObf, envir = .env)
       assign("etaObf", .etaObf, envir = .env)
+    }
+  }
+  # ---- WAIC / LOO (D7), subject-level -------------------------------------
+  # logLikSubj is the per-SUBJECT conditional log-likelihood, so these are
+  # leave-one-SUBJECT-out quantities -- the natural cross-validation unit
+  # for a hierarchical model (subjects are the exchangeable unit), and
+  # conditional on the eta factorization (the only one the linkage exposes;
+  # per-observation granularity is a possible upstream extension).
+  if (requireNamespace("loo", quietly = TRUE)) {
+    .llArr <- rstan::extract(sf, pars = "logLikSubj", permuted = FALSE)
+    .rEff <- tryCatch(loo::relative_eff(exp(.llArr)), error = function(e) NULL)
+    .loo <- tryCatch(suppressWarnings(loo::loo(.llArr, r_eff = .rEff)),
+                     error = function(e) NULL)
+    .waic <- tryCatch(suppressWarnings(loo::waic(.llArr)),
+                      error = function(e) NULL)
+    if (!is.null(.loo)) assign("loo", .loo, envir = .env)
+    if (!is.null(.waic)) assign("waic", .waic, envir = .env)
+    .odf <- get0("objDf", envir = .env)
+    if (is.data.frame(.odf)) {
+      .add <- function(odf, nm, elpd) {
+        .row <- odf[1, , drop = FALSE]
+        .row[1, ] <- NA
+        if ("OBJF" %in% names(.row)) .row[1, "OBJF"] <- -2 * elpd
+        if ("Log-likelihood" %in% names(.row)) {
+          .row[1, "Log-likelihood"] <- elpd
+        }
+        rownames(.row) <- nm
+        rbind(odf, .row)
+      }
+      if (!is.null(.waic)) {
+        .odf <- .add(.odf, "WAIC (subject-level)",
+                     .waic$estimates["elpd_waic", "Estimate"])
+      }
+      if (!is.null(.loo)) {
+        .odf <- .add(.odf, "LOO (leave-one-subject-out)",
+                     .loo$estimates["elpd_loo", "Estimate"])
+      }
+      assign("objDf", .odf, envir = .env)
     }
   }
   .fit
