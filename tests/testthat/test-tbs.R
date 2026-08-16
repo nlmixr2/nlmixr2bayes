@@ -212,3 +212,93 @@ test_that("estimated lambda: the assembled target is the untransformed-scale den
     expect_equal(.gA, .gN, tolerance = 1e-4)
   }
 })
+
+test_that("estimated lambda on a logit base: statistic on the transformed DV; target exact", {
+  skip_on_cran()
+  skip_if_not_installed("rstan")
+  skip_if_not(nlmixr2stan:::.stanHasTbsLambdaSens(),
+              "nlmixr2est lacks the #949 lambda sensitivities")
+  # logitNorm + yeoJohnson: the lambda acts on t = logit((y-lo)/(hi-lo)),
+  # so the Jacobian statistic must be the YJ statistic ON t, not on the raw
+  # DV (the review question that prompted this gate); the linked d/dlambda
+  # column is exact for the combined transform (FD 9e-11)
+  .lgMod <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3
+      add.sd <- 0.5
+      lambda <- c(-2, 0.5, 2)
+      eta.cl ~ 0.1
+      prior(tcl) ~ dnorm(1, 2)
+      prior(add.sd) ~ dcauchy(0, 2.5)
+      prior(lambda) ~ dnorm(0.5, 1)
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ logitNorm(add.sd, 0, 20) + yeoJohnson(lambda)
+    })
+  }
+  set.seed(42)
+  .tt <- c(0.5, 1, 2, 4, 8)
+  .d <- do.call(rbind, lapply(1:4, function(id) {
+    data.frame(ID = id, TIME = .tt,
+               DV = pmin(19.5, pmax(0.5, 5 * exp(-0.05 * .tt) +
+                                      stats::rnorm(5, 0, 0.5))),
+               AMT = 0, EVID = 0)
+  }))
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.lgMod, .d, est = "stan",
+                        control = stanControl(run = FALSE)))
+  # the statistic is the YJ statistic on the LOGIT-transformed DV
+  .t <- stats::qlogis(.d$DV / 20)
+  expect_equal(.code$data$sumLogJac_4,
+               sum(log1p(.t[.t >= 0])) - sum(log1p(-.t[.t < 0])),
+               tolerance = 1e-12)
+  # assembled-target exactness in difference form (lambda only)
+  .sm <- stanCompile(.code$code)
+  h <- stanLinkSetup(.lgMod, .d, thetaSens = TRUE, cores = 1L)
+  on.exit({
+    .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+    stanLinkFree()
+  }, add = TRUE)
+  .Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(h$initPar))
+  .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, 1L)
+  .sf <- rstan::sampling(.sm, data = .code$data, chains = 1, iter = 2,
+                         warmup = 1, refresh = 0, cores = 1,
+                         show_messages = FALSE,
+                         init = list(list(tcl = 1, tv = 3, add_sd = 0.5,
+                                          lambda = 0.5, sd_b1 = sqrt(0.1),
+                                          z_b1 = matrix(0, 4, 1))))
+  .bt <- function(theta, e) {
+    .Call(nlmixr2stan:::`_nlmixr2stan_condBatchTheta`, as.double(theta),
+          as.matrix(e))
+  }
+  .eta <- matrix(c(-0.1, 0.05, 0.2, -0.15), 4, 1)
+  .sJ <- .code$data$sumLogJac_4
+  .pt <- function(lam) {
+    list(tcl = 1, tv = 3, add_sd = 0.5, lambda = lam, sd_b1 = sqrt(0.1),
+         z_b1 = .eta / sqrt(0.1))
+  }
+  .lp <- function(lam) {
+    rstan::log_prob(.sf, rstan::unconstrain_pars(.sf, .pt(lam)),
+                    adjust_transform = FALSE)
+  }
+  .cond <- function(lam) sum(.bt(c(1, 3, 0.5, lam), .eta)$value)
+  .l1 <- 0.4
+  .l2 <- 0.7
+  .lhs <- .lp(.l2) - .lp(.l1)
+  .rhs <- (.cond(.l2) - .cond(.l1)) + (.l2 - .l1) * .sJ +
+    (stats::dnorm(.l2, 0.5, 1, log = TRUE) -
+       stats::dnorm(.l1, 0.5, 1, log = TRUE))
+  expect_equal(.lhs, .rhs, tolerance = 1e-6)
+  if (requireNamespace("numDeriv", quietly = TRUE)) {
+    .up <- rstan::unconstrain_pars(.sf, .pt(0.5))
+    .gA <- rstan::grad_log_prob(.sf, .up)
+    attributes(.gA) <- NULL
+    .gN <- numDeriv::grad(function(u) rstan::log_prob(.sf, u), .up,
+                          method = "Richardson")
+    expect_equal(.gA, .gN, tolerance = 1e-4)
+  }
+})

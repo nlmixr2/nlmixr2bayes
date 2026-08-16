@@ -50,10 +50,18 @@
 }
 
 #' Per-endpoint DV-transform Jacobian statistics for estimated
-#' transform-both-sides lambdas (gen$tbsJac): Box-Cox sJ = sum(log y);
-#' Yeo-Johnson sJ = sum(log1p(y)) over y >= 0 minus sum(log1p(-y)) over
-#' y < 0.  Observations are matched to the lambda's endpoint by CMT when
-#' the model has several endpoints.
+#' transform-both-sides lambdas (gen$tbsJac).  The lambda-dependent part of
+#' log|dh(y; lambda)/dy| is always (lambda - 1) * sJ where sJ is the
+#' Box-Cox statistic sum(log t) or the Yeo-Johnson statistic
+#' sum(log1p(t), t >= 0) - sum(log1p(-t), t < 0) evaluated on the
+#' TRANSFORM-BASE value t: the raw DV for a plain-normal base, the
+#' logit/probit of the (bounded, FIXED-bounds) DV for the combined
+#' "logit + yeoJohnson" / "probit + yeoJohnson" endpoints -- the inner
+#' transform's own Jacobian term is lambda-free and constant, so it drops.
+#' (The linked d/dlambda sensitivity handles these combined transforms
+#' exactly -- FD-verified at 9e-11 on logitNorm + yeoJohnson.)
+#' Observations are matched to the lambda's endpoint by CMT when the model
+#' has several endpoints.
 #' @noRd
 .stanTbsJacValues <- function(gen, ui, dataSav) {
   if (length(gen$tbsJac) == 0L) return(gen)
@@ -61,20 +69,40 @@
   .pd <- ui$predDf
   for (.j in gen$tbsJac) {
     .rows <- .obs
+    .pw <- match(.j$condition, .pd$cond)
     if (nrow(.pd) > 1L && "CMT" %in% names(.obs)) {
-      .cmt <- .pd$cmt[match(.j$condition, .pd$cond)]
-      .rows <- .obs[.obs$CMT == .cmt, , drop = FALSE]
+      .rows <- .obs[.obs$CMT == .pd$cmt[.pw], , drop = FALSE]
     }
     .dv <- .rows$DV
+    .tr <- as.character(.pd$transform[.pw])
+    # the transform-base value t the lambda acts on
+    .t <- if (.tr %in% c("boxCox", "yeoJohnson")) {
+      .dv
+    } else if (.tr %in% c("logit + yeoJohnson", "probit + yeoJohnson")) {
+      .lo <- .pd$trLow[.pw]
+      .hi <- .pd$trHi[.pw]
+      if (any(.dv <= .lo | .dv >= .hi)) {
+        stop("endpoint '", .j$condition, "' (", .tr, ") needs DV strictly ",
+             "inside (", .lo, ", ", .hi, ") and has ",
+             sum(.dv <= .lo | .dv >= .hi), " observation(s) outside",
+             call. = FALSE)
+      }
+      .u <- (.dv - .lo) / (.hi - .lo)
+      if (startsWith(.tr, "logit")) stats::qlogis(.u) else stats::qnorm(.u)
+    } else {
+      stop("estimated transform-both-sides lambda on endpoint '",
+           .j$condition, "' with transform '", .tr, "' is not supported ",
+           "by est=\"stan\" yet; fix() the lambda", call. = FALSE)
+    }
     if (identical(.j$transform, "boxCox")) {
-      if (any(.dv <= 0)) {
+      if (any(.t <= 0)) {
         stop("boxCox(", .j$theta, ") needs strictly positive DV and ",
-             "endpoint '", .j$condition, "' has ", sum(.dv <= 0),
+             "endpoint '", .j$condition, "' has ", sum(.t <= 0),
              " non-positive observation(s)", call. = FALSE)
       }
-      .s <- sum(log(.dv))
+      .s <- sum(log(.t))
     } else {
-      .s <- sum(log1p(.dv[.dv >= 0])) - sum(log1p(-.dv[.dv < 0]))
+      .s <- sum(log1p(.t[.t >= 0])) - sum(log1p(-.t[.t < 0]))
     }
     gen$data[[.j$name]] <- .s
   }
