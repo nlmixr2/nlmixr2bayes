@@ -210,13 +210,35 @@ iov <- function() {
 What this pattern does **not** yet give you is the usual IOV constraint
 that every occasion shares ONE variance: `eta.occ1` and `eta.occ2` above
 get independent (identically-specified) priors rather than a single shared
-`omega_IOV` parameter.  Making the native `~ ... | occ` lotri syntax work
--- one declared variance shared across the occasion blocks, still sampled
-by Stan -- needs only generator work (a shared-SD constraint across
-blocks), **no upstream likelihood change**, precisely because Stan owns
-the whole eta prior in this design.  That is the tracked path to
-first-class IOV; the indicator pattern above is available now and is what
-a Torsten user would have written anyway.
+`omega_IOV` parameter.
+
+The path to first-class `~ ... | occ` support is settled and mirrors what
+nlmixr2est's own IOV machinery does: the iov hook expands the model to
+`sd * (iov.cl.1*(OCC==1) + iov.cl.2*(OCC==2))` where the per-occasion
+effects are independent with variance **fixed to one** and a single
+estimated `sd` theta carries the IOV magnitude.  Stan expresses the
+unit-variance constraint directly -- either a plain `std_normal()` prior,
+or the exact standardization
+
+```stan
+parameters {
+  vector[S] alpha_raw;
+}
+transformed parameters {
+  // center to mean zero, scale the REALIZED variance to exactly 1
+  vector[S] alpha = (alpha_raw - mean(alpha_raw)) * sqrt(S / (S - 1.0));
+}
+model {
+  alpha_raw ~ normal(0, 1);
+}
+```
+
+-- and the shared `sd` is then an ordinary theta.  Because the iov hook
+runs at the preprocessing level, the linked likelihood sees ordinary
+subject-level etas and **no upstream likelihood change is needed**; the
+remaining work is generator support for unit-variance eta groups scaled by
+a shared sd theta.  The indicator pattern above is available now and is
+what a Torsten user would have written by hand anyway.
 
 ## What does not carry over
 
