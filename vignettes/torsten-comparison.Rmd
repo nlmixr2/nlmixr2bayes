@@ -113,6 +113,15 @@ fit <- nlmixr2est::nlmixr2(poppk2cpt, d, est = "stan",
 The event table is the same NONMEM-convention data both tools consume --
 no `iObs`/`start`/`end` index bookkeeping; rxode2 derives it.
 
+A note on the eta parameterization: nlmixr2stan's generated program uses
+**the same Matt's trick** Torsten's examples hand-code -- by default the
+etas are non-centred, with `z ~ std_normal()` sampled and
+`eta = z * L'` assembled from the omega Cholesky factor in
+`transformed parameters` -- it is just emitted for you rather than written
+by hand.  `stanControl(etaParam = "centered")` switches to the centred
+form (`eta[i] ~ multi_normal_cholesky(0, L)`); the two are
+gate-verified to target the identical posterior.
+
 ## Port: Friberg-Karlsson neutropenia (population PK/PD, two endpoints)
 
 Torsten's `FribergKarlsson` example: a two-compartment PK driving the
