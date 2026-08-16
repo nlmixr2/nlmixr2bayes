@@ -65,9 +65,15 @@ stanLinkSetup <- function(ui, data, likelihood = c("focei", "foce"),
     stop("some eta uses finite-difference event sensitivities; the gradient",
          " noise breaks a gradient-based sampler", call. = FALSE)
   }
-  if (bitwAnd(.flags, 0x10L) != 0L) {
+  if (bitwAnd(.flags, 0x10L) != 0L &&
+        identical(.Call(`_nlmixr2stan_nMix`), -2L)) {
+    # 0x10 marks the component-major mixture LAYOUT; with the blessed
+    # batch entries (nlmixr2/nlmixr2est#955, the nMix table entry) the
+    # linkage handles it -- only an older nlmixr2est refuses
     nlmixr2est::foceiLikUnload()
-    stop("mixture models are not supported by the Stan linkage", call. = FALSE)
+    stop("mixture models need an nlmixr2est whose FOCEi C API blesses the ",
+         "component-major layout (nlmixr2/nlmixr2est#955); update ",
+         "nlmixr2est", call. = FALSE)
   }
   stanSetCores(cores)
   .h$flags <- .flags

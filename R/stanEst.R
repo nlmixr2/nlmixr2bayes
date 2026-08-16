@@ -50,10 +50,18 @@
 }
 
 #' Per-endpoint DV-transform Jacobian statistics for estimated
-#' transform-both-sides lambdas (gen$tbsJac): Box-Cox sJ = sum(log y);
-#' Yeo-Johnson sJ = sum(log1p(y)) over y >= 0 minus sum(log1p(-y)) over
-#' y < 0.  Observations are matched to the lambda's endpoint by CMT when
-#' the model has several endpoints.
+#' transform-both-sides lambdas (gen$tbsJac).  The lambda-dependent part of
+#' log|dh(y; lambda)/dy| is always (lambda - 1) * sJ where sJ is the
+#' Box-Cox statistic sum(log t) or the Yeo-Johnson statistic
+#' sum(log1p(t), t >= 0) - sum(log1p(-t), t < 0) evaluated on the
+#' TRANSFORM-BASE value t: the raw DV for a plain-normal base, the
+#' logit/probit of the (bounded, FIXED-bounds) DV for the combined
+#' "logit + yeoJohnson" / "probit + yeoJohnson" endpoints -- the inner
+#' transform's own Jacobian term is lambda-free and constant, so it drops.
+#' (The linked d/dlambda sensitivity handles these combined transforms
+#' exactly -- FD-verified at 9e-11 on logitNorm + yeoJohnson.)
+#' Observations are matched to the lambda's endpoint by CMT when the model
+#' has several endpoints.
 #' @noRd
 .stanTbsJacValues <- function(gen, ui, dataSav) {
   if (length(gen$tbsJac) == 0L) return(gen)
@@ -61,20 +69,40 @@
   .pd <- ui$predDf
   for (.j in gen$tbsJac) {
     .rows <- .obs
+    .pw <- match(.j$condition, .pd$cond)
     if (nrow(.pd) > 1L && "CMT" %in% names(.obs)) {
-      .cmt <- .pd$cmt[match(.j$condition, .pd$cond)]
-      .rows <- .obs[.obs$CMT == .cmt, , drop = FALSE]
+      .rows <- .obs[.obs$CMT == .pd$cmt[.pw], , drop = FALSE]
     }
     .dv <- .rows$DV
+    .tr <- as.character(.pd$transform[.pw])
+    # the transform-base value t the lambda acts on
+    .t <- if (.tr %in% c("boxCox", "yeoJohnson")) {
+      .dv
+    } else if (.tr %in% c("logit + yeoJohnson", "probit + yeoJohnson")) {
+      .lo <- .pd$trLow[.pw]
+      .hi <- .pd$trHi[.pw]
+      if (any(.dv <= .lo | .dv >= .hi)) {
+        stop("endpoint '", .j$condition, "' (", .tr, ") needs DV strictly ",
+             "inside (", .lo, ", ", .hi, ") and has ",
+             sum(.dv <= .lo | .dv >= .hi), " observation(s) outside",
+             call. = FALSE)
+      }
+      .u <- (.dv - .lo) / (.hi - .lo)
+      if (startsWith(.tr, "logit")) stats::qlogis(.u) else stats::qnorm(.u)
+    } else {
+      stop("estimated transform-both-sides lambda on endpoint '",
+           .j$condition, "' with transform '", .tr, "' is not supported ",
+           "by est=\"stan\" yet; fix() the lambda", call. = FALSE)
+    }
     if (identical(.j$transform, "boxCox")) {
-      if (any(.dv <= 0)) {
+      if (any(.t <= 0)) {
         stop("boxCox(", .j$theta, ") needs strictly positive DV and ",
-             "endpoint '", .j$condition, "' has ", sum(.dv <= 0),
+             "endpoint '", .j$condition, "' has ", sum(.t <= 0),
              " non-positive observation(s)", call. = FALSE)
       }
-      .s <- sum(log(.dv))
+      .s <- sum(log(.t))
     } else {
-      .s <- sum(log1p(.dv[.dv >= 0])) - sum(log1p(-.dv[.dv < 0]))
+      .s <- sum(log1p(.t[.t >= 0])) - sum(log1p(-.t[.t < 0]))
     }
     gen$data[[.j$name]] <- .s
   }
@@ -119,7 +147,23 @@
          "nlmixr2/nlmixr2est#953)", call. = FALSE)
   }
   rxode2::assertRxUiRandomOnIdOnly(ui, " for est=\"stan\"", .var.name = ui$modelName)
-  rxode2::assertRxUiNoMix(ui, " for est=\"stan\"", .var.name = ui$modelName)
+  # finite mixtures (nlmixr2/nlmixr2est#955): supported for K = 2 when the
+  # loaded nlmixr2est blesses the component-major batch layout (the nMix
+  # table entry exists); the component-conditional rows are log-sum-exped
+  # Stan-side with the mixing weight as an autodiff parameter
+  .mixP <- tryCatch(ui$mixProbs, error = function(e) NULL)
+  .nMixUi <- length(.mixP) + 1L
+  if (.nMixUi > 1L) {
+    if (identical(.Call(`_nlmixr2stan_nMix`), -2L)) {
+      stop("est=\"stan\" mixture support needs an nlmixr2est whose FOCEi C ",
+           "API blesses the component-major layout ",
+           "(nlmixr2/nlmixr2est#955); update nlmixr2est", call. = FALSE)
+    }
+    if (.nMixUi > 2L) {
+      stop("est=\"stan\" supports 2-component mixtures for now (this ",
+           "model has ", .nMixUi, " components)", call. = FALSE)
+    }
+  }
   if (!.noEta) {
     rxode2::assertRxUiMixedOnly(ui, " for est=\"stan\"", .var.name = ui$modelName)
   }
@@ -344,10 +388,22 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   .mrcS <- which(!.cov$timeVarying & .mrcFree &
                    !(.map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
   if (length(.mrcS) > 0L) {
+    .cv <- .cov$val[, .mrcS, drop = FALSE]
+    if (.map$nMix > 1L) {
+      # component-major expanded rows share the physical subject's covariate
+      .cv <- do.call(rbind, rep(list(.cv), .map$nMix))
+    }
     .Call(`_nlmixr2stan_setMuRefCov`,
           as.integer(.map$muRefCov$thetaIdx[.mrcS]),
           as.integer(.map$muRefCov$etaIdx[.mrcS] - 1L),
-          .cov$val[, .mrcS, drop = FALSE])
+          .cv)
+  }
+  if (.map$nMix > 1L) {
+    .nm <- .Call(`_nlmixr2stan_nMix`)
+    if (!identical(.nm, .map$nMix)) {
+      stop("the linked problem reports ", .nm, " mixture component(s) but ",
+           "the model map expects ", .map$nMix, call. = FALSE) # nocov
+    }
   }
   # gradient conditioning: keep nlmixr2est's Omega^-1 commensurate with the
   # model's initial Omega (the conditional value is Omega-free)
@@ -393,7 +449,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     sum(x[, "treedepth__"] >= control$max_treedepth)
   }, numeric(1)))
   .sum <- rstan::summary(sf)$summary
-  .keep <- !grepl("^(z_|etaP_|eta\\[|omegaOut|logLikSubj|lp__)",
+  .keep <- !grepl("^(z_|etaP_|eta\\[|omegaOut|logLikSubj|mixProbOut|lp__)",
                   rownames(.sum))
   .maxRhat <- suppressWarnings(max(.sum[.keep, "Rhat"], na.rm = TRUE))
   .minEss <- suppressWarnings(min(.sum[.keep, "n_eff"], na.rm = TRUE))
@@ -464,6 +520,12 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   } else {
     ""
   }
+  if (map$nMix > 1L) {
+    .mixProb <- apply(rstan::extract(sf, pars = "mixProbOut")$mixProbOut,
+                      c(2, 3), .pointFun)
+    dimnames(.mixProb) <- list(NULL, paste0("mix", seq_len(map$nMix)))
+    env2$mixProb <- data.frame(ID = seq_len(nrow(.mixProb)), .mixProb)
+  }
   env2$stanfit <- sf
   env2$stanCode <- gen$code
   env2$stanData <- gen$data
@@ -498,8 +560,25 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
            " use point=\"mean\"", call. = FALSE) # nocov
     }
   }
-  .etaMean <- apply(.ex$eta, c(2, 3), .pointFun) # nid x neta
-  .nid <- nrow(.etaMean)
+  if (map$nMix > 1L) {
+    # component-specific etas: report the MEMBERSHIP-WEIGHTED eta per
+    # subject (draw-wise, then the point summary), and keep the posterior
+    # membership probabilities on the fit
+    .mp <- rstan::extract(sf, pars = "mixProbOut")$mixProbOut # draws x N x K
+    .nid <- dim(.mp)[2]
+    .neta <- dim(.ex$eta)[3]
+    .etaW <- array(0, c(dim(.ex$eta)[1], .nid, .neta))
+    for (.k in seq_len(map$nMix)) {
+      .rows <- seq_len(.nid) + (.k - 1L) * .nid
+      for (.j in seq_len(.neta)) {
+        .etaW[, , .j] <- .etaW[, , .j] + .mp[, , .k] * .ex$eta[, .rows, .j]
+      }
+    }
+    .etaMean <- apply(.etaW, c(2, 3), .pointFun)
+  } else {
+    .etaMean <- apply(.ex$eta, c(2, 3), .pointFun) # nid x neta
+    .nid <- nrow(.etaMean)
+  }
   .etaObf <- data.frame(ID = seq_len(.nid))
   for (.k in seq_len(ncol(.etaMean))) .etaObf[[map$eta$name[.k]]] <- .etaMean[, .k]
   .etaObf$OBJI <- -2 * colMeans(.ex$logLikSubj)
@@ -509,7 +588,8 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   # posterior summary on the monitored parameters (exact quantiles -- the
   # printed $parFixed CI is a Gaussian approximation from $cov)
   .sum <- rstan::summary(sf)$summary
-  .keep <- !grepl("^(z_|eta\\[|omegaOut|logLikSubj)", rownames(.sum))
+  .keep <- !grepl("^(z_|etaP_|eta\\[|omegaOut|logLikSubj|mixProbOut)",
+                  rownames(.sum))
   .posteriorSummary <- as.data.frame(.sum[.keep, , drop = FALSE])
 
   # ---- the nlmixr2CreateOutputFromUi env contract -------------------------
@@ -539,6 +619,12 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     paste0(dx$nDivergent, " divergent transitions")
   } else {
     ""
+  }
+  if (map$nMix > 1L) {
+    .mixProb <- apply(rstan::extract(sf, pars = "mixProbOut")$mixProbOut,
+                      c(2, 3), .pointFun)
+    dimnames(.mixProb) <- list(NULL, paste0("mix", seq_len(map$nMix)))
+    env2$mixProb <- data.frame(ID = seq_len(nrow(.mixProb)), .mixProb)
   }
   env2$stanfit <- sf
   env2$stanCode <- gen$code

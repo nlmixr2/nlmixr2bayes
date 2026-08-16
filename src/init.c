@@ -6,6 +6,7 @@ SEXP iniNlmixr2estFocei(SEXP p);
 SEXP iniNlmixr2estNlm(SEXP p);
 SEXP _nlmixr2stan_setCores(SEXP n);
 SEXP _nlmixr2stan_apiVersion(void);
+SEXP _nlmixr2stan_nMix(void);
 SEXP _nlmixr2stan_nlmApiVersion(void);
 SEXP _nlmixr2stan_nlmDims(void);
 SEXP _nlmixr2stan_popEval(SEXP thetaS);
@@ -35,6 +36,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2stan_popEval", (DL_FUNC) &_nlmixr2stan_popEval, 1},
   {"_nlmixr2stan_setCores", (DL_FUNC) &_nlmixr2stan_setCores, 1},
   {"_nlmixr2stan_apiVersion", (DL_FUNC) &_nlmixr2stan_apiVersion, 0},
+  {"_nlmixr2stan_nMix", (DL_FUNC) &_nlmixr2stan_nMix, 0},
   {"_nlmixr2stan_dims", (DL_FUNC) &_nlmixr2stan_dims, 0},
   {"_nlmixr2stan_setTheta", (DL_FUNC) &_nlmixr2stan_setTheta, 1},
   {"_nlmixr2stan_setOmegaInv", (DL_FUNC) &_nlmixr2stan_setOmegaInv, 1},

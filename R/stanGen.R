@@ -89,6 +89,7 @@
   .prByName <- stats::setNames(as.list(seq_len(nrow(pri$pop))), pri$pop$name)
   # ---- parameters: free thetas -------------------------------------------
   .decl <- character(0)
+  .mixProbNames <- map$theta$name[stats::na.omit(map$mixProbIdx)]
   for (.i in seq_len(nrow(.free))) {
     .r <- .free[.i, ]
     .con <- .stanConstraint(.r$lower, .r$upper)
@@ -98,6 +99,12 @@
       # tighter than the parameter's own)
       .con <- pri$pop$constraint[.w]
     }
+    if (.r$name %in% .mixProbNames) {
+      # a mixing probability IS a probability: intersect the declared
+      # bounds with (0,1) -- a TIGHTER user declaration (e.g.
+      # c(0.1, 0.3, 0.6)) survives, an unbounded one becomes (0,1)
+      .con <- .stanConstraint(max(.r$lower, 0), min(.r$upper, 1))
+    }
     .decl <- c(.decl, paste0("  real", .con, " ", .r$par, ";"))
   }
   # flat thetas: allowed, but say so loudly
@@ -106,6 +113,27 @@
   if (length(.flat) > 0L) {
     .notes <- c(.notes, paste0("flat (improper) priors on: ",
                                paste(.flat, collapse = ", ")))
+  }
+  # ---- finite mixtures (K = 2 for now) ------------------------------------
+  # etas are COMPONENT-SPECIFIC: every block's z carries nMix*N rows (their
+  # normal priors factor out of the marginalization, so each keeps its
+  # ordinary prior); the external batch returns the component-conditional
+  # values in component-major order and the model log-sum-exps them with
+  # the mixing weights, whose gradient is pure Stan autodiff (the
+  # conditional is p-free, FD-verified upstream in nlmixr2est#955)
+  if (map$nMix > 2L) {
+    stop("est=\"stan\" supports 2-component mixtures for now (this model ",
+         "has ", map$nMix, " components)", call. = FALSE)
+  }
+  .rowsN <- if (map$nMix > 1L) paste0(map$nMix, "*N") else "N"
+  # a fix()ed mixing probability is not a declared parameter -- inline the
+  # literal in the log_sum_exp weights (review catch: the bare symbol would
+  # not compile)
+  .mixP <- if (map$nMix > 1L) {
+    .pi <- map$mixProbIdx[1]
+    if (map$theta$fix[.pi]) .stanNum(map$theta$est[.pi]) else map$theta$par[.pi]
+  } else {
+    NULL
   }
   # ---- omega blocks -------------------------------------------------------
   .blockSpecs <- list()
@@ -166,15 +194,15 @@
       # centred: eta sampled directly; multi_normal_cholesky supplies the
       # (Omega-dependent) density, so no Jacobian bookkeeping is needed --
       # the declared parameter is the one the prior is written on
-      .decl <- c(.decl, paste0("  matrix[N, ", .k, "] etaP", .id, ";"))
+      .decl <- c(.decl, paste0("  matrix[", .rowsN, ", ", .k, "] etaP", .id, ";"))
       .priorL <- c(.priorL,
-                   paste0("  for (i in 1:N) etaP", .id,
+                   paste0("  for (i in 1:", .rowsN, ") etaP", .id,
                           "[i] ~ multi_normal_cholesky(rep_vector(0, ", .k,
                           "), L", .id, ");"))
       .tpL <- c(.tpL, paste0("  eta[, ", .blk$start, ":", .blk$end,
                              "] = etaP", .id, ";"))
     } else {
-      .decl <- c(.decl, paste0("  matrix[N, ", .k, "] z", .id, ";"))
+      .decl <- c(.decl, paste0("  matrix[", .rowsN, ", ", .k, "] z", .id, ";"))
       .priorL <- c(.priorL, paste0("  to_vector(z", .id, ") ~ std_normal();"))
       .tpL <- c(.tpL, paste0("  eta[, ", .blk$start, ":", .blk$end,
                              "] = z", .id, " * L", .id, "';"))
@@ -293,7 +321,7 @@
                    .decl,
                    "}",
                    "transformed parameters {",
-                   paste0("  matrix[N, ", nrow(map$eta), "] eta;"),
+                   paste0("  matrix[", .rowsN, ", ", nrow(map$eta), "] eta;"),
                    .thL,
                    .tpL,
                    "}",
@@ -302,7 +330,22 @@
                    "  // the external function returns the CONDITIONAL log p(y_i|eta_i)",
                    .thPrior,
                    .priorL,
-                   "  target += sum(nlmixr2_cond_all2(eta, theta));",
+                   if (map$nMix > 1L) {
+                     # component-major rows: llCond[i] is component 1,
+                     # llCond[N+i] component 2; the eta priors are OUTSIDE
+                     # the log_sum_exp (they factor), the weights inside
+                     c(paste0("  {"),
+                       paste0("    vector[", .rowsN,
+                              "] llCond = nlmixr2_cond_all2(eta, theta);"),
+                       paste0("    for (i in 1:N) {"),
+                       paste0("      target += log_sum_exp(log(", .mixP,
+                              ") + llCond[i], log1p(-", .mixP,
+                              ") + llCond[N + i]);"),
+                       paste0("    }"),
+                       paste0("  }"))
+                   } else {
+                     "  target += sum(nlmixr2_cond_all2(eta, theta));"
+                   },
                    .tbsTarget,
                    "}",
                    "generated quantities {",
@@ -310,8 +353,26 @@
                           "] omegaOut = rep_matrix(0, ", nrow(map$eta), ",",
                           nrow(map$eta), ");"),
                    "  vector[N] logLikSubj;",
+                   if (map$nMix > 1L) paste0("  matrix[N, ", map$nMix,
+                                             "] mixProbOut;"),
                    .gqOmega,
-                   "  logLikSubj = nlmixr2_cond_all2(eta, theta);",
+                   if (map$nMix > 1L) {
+                     c(paste0("  {"),
+                       paste0("    vector[", .rowsN,
+                              "] llCond = nlmixr2_cond_all2(eta, theta);"),
+                       paste0("    for (i in 1:N) {"),
+                       paste0("      real lp1 = log(", .mixP,
+                              ") + llCond[i];"),
+                       paste0("      real lp2 = log1p(-", .mixP,
+                              ") + llCond[N + i];"),
+                       paste0("      logLikSubj[i] = log_sum_exp(lp1, lp2);"),
+                       paste0("      mixProbOut[i, 1] = exp(lp1 - logLikSubj[i]);"),
+                       paste0("      mixProbOut[i, 2] = exp(lp2 - logLikSubj[i]);"),
+                       paste0("    }"),
+                       paste0("  }"))
+                   } else {
+                     "  logLikSubj = nlmixr2_cond_all2(eta, theta);"
+                   },
                    "}"), collapse = "\n")
   list(code = .code, data = list(N = NA_integer_), notes = .notes,
        blockSpecs = .blockSpecs, tbsJac = .tbsJac, pop = FALSE)
@@ -320,6 +381,8 @@
 #' Per-chain initial values on the constrained scale
 #' @noRd
 .stanInit <- function(map, blockSpecs, nid, ctl) {
+  # component-specific etas: the z/etaP matrices carry nMix*N rows
+  nid <- nid * max(1L, map$nMix)
   .free <- map$theta[!map$theta$fix, , drop = FALSE]
   lapply(seq_len(ctl$chains), function(.chain) {
     .jit <- if (.chain == 1L) 0 else ctl$initJitterSd

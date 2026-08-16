@@ -135,9 +135,18 @@ and the generator adds the DV-transform Jacobian Stan-side as
 full gradient is exact end to end (the assembled target is gate-verified
 against the untransformed-scale density in difference form).
 
-Refused with an explanatory error (not silently wrong): mixture models,
-IOV, and the 8 discrete distributions (every `ini({})` parameter is
-real-valued).
+Finite mixtures (`mix()`, 2 components) are supported: the linked batch
+evaluates the component-conditional likelihoods in nlmixr2est's blessed
+component-major layout (nlmixr2est#955), the generator marginalizes with
+the Stan Users Guide `log_sum_exp` pattern (component-specific etas whose
+priors factor out; the mixing probability's gradient is pure Stan
+autodiff -- the conditional is provably p-free, FD-verified), and the
+per-subject membership posteriors land in `fit$env$mixProb`.  The whole
+assembled mixture target is FD-verified through `grad_log_prob`.
+
+Refused with an explanatory error (not silently wrong): mixtures with
+more than 2 components (for now), IOV (until nlmixr2est#952), and the 8
+discrete distributions (every `ini({})` parameter is real-valued).
 
 This package requires nlmixr2est with the FOCEi conditional-likelihood C API
 (nlmixr2est#937, #939, #941).  See the issue tracker for the roadmap

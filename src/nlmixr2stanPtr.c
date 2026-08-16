@@ -38,6 +38,14 @@ SEXP _nlmixr2stan_apiVersion(void) {
   return Rf_ScalarInteger(nlmixr2FoceiApiVersionP());
 }
 
+/* mixture component count of the loaded problem (#955): 1 non-mixture, K
+ * mixture, -1 not loaded, -2 when the loaded nlmixr2est predates the entry
+ * (treat as refuse-mixtures) */
+SEXP _nlmixr2stan_nMix(void) {
+  if (nlmixr2FoceiNMixP == NULL) return Rf_ScalarInteger(-2);
+  return Rf_ScalarInteger(nlmixr2FoceiNMixP());
+}
+
 /* ---- tier 0: population-only models via the nlm C API (#953) -------------
  * The nlm entry returns MINUS log-likelihood + its analytic theta gradient
  * (natural scale); the injected header negates.  -100 = table not
