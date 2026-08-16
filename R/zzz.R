@@ -10,6 +10,32 @@ NULL
   # load, not just the first: a reloaded nlmixr2est hands back new addresses,
   # and cached ones would point into an unmapped DLL.
   .iniFoceiPtrs()
+  # The nlm (tier-0, population-only) table is OPTIONAL: an older nlmixr2est
+  # without nlmixr2/nlmixr2est#953 just leaves tier 0 unavailable.
+  .iniNlmPtrs()
+}
+
+#' Install (or refresh) the nlmixr2est nlm pointer table (tier 0, #953);
+#' returns FALSE (tier 0 unavailable) on an older nlmixr2est
+#' @noRd
+.iniNlmPtrs <- function() {
+  .fun <- tryCatch(getExportedValue("nlmixr2est", ".nlmixr2estNlmPtrs"),
+                   error = function(e) NULL)
+  if (is.null(.fun)) return(invisible(FALSE))
+  .Call(`_nlmixr2stan_iniNlmPtrs`, .fun())
+  .v <- .Call(`_nlmixr2stan_nlmApiVersion`)
+  if (!identical(.v, 1L)) {
+    stop("nlmixr2stan was built against nlm C API version 1, but the loaded ",
+         "nlmixr2est provides version ", .v,
+         "; reinstall nlmixr2stan against this nlmixr2est", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+#' Is the tier-0 (population-only) nlm C API available?
+#' @noRd
+.stanHasNlmApi <- function() {
+  identical(.Call(`_nlmixr2stan_nlmApiVersion`), 1L)
 }
 
 #' Install (or refresh) the nlmixr2est FOCEi pointer table

@@ -110,9 +110,19 @@
 #' @noRd
 .stanAssert <- function(ui) {
   rxode2::assertRxUiPrediction(ui, " for est=\"stan\"", .var.name = ui$modelName)
+  # population-only (no-eta) models are tier 0 via the nlm C API when the
+  # loaded nlmixr2est provides it (nlmixr2/nlmixr2est#953)
+  .noEta <- !any(!is.na(ui$iniDf$neta1))
+  if (.noEta && !.stanHasNlmApi()) {
+    stop("est=\"stan\" needs a mixed model with this nlmixr2est ",
+         "(population-only models use the nlm C API; update nlmixr2est, ",
+         "nlmixr2/nlmixr2est#953)", call. = FALSE)
+  }
   rxode2::assertRxUiRandomOnIdOnly(ui, " for est=\"stan\"", .var.name = ui$modelName)
   rxode2::assertRxUiNoMix(ui, " for est=\"stan\"", .var.name = ui$modelName)
-  rxode2::assertRxUiMixedOnly(ui, " for est=\"stan\"", .var.name = ui$modelName)
+  if (!.noEta) {
+    rxode2::assertRxUiMixedOnly(ui, " for est=\"stan\"", .var.name = ui$modelName)
+  }
   # (rxode2 >= 5.1.7 always has llik support, so no assertRxUiTransformNormal)
   # transform-both-sides with an ESTIMATED lambda: two lambda-dependent
   # pieces are needed.  The DV-transform Jacobian is pure data-times-lambda
@@ -255,6 +265,39 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   # ---- compile (cached), then link --------------------------------------
   .sm <- stanCompile(.gen$code, cache = control$cache,
                      cacheDir = control$cacheDir, verbose = control$verbose)
+  if (isTRUE(.gen$pop)) {
+    # ---- tier 0: population-only (no etas) via the nlm C API ------------
+    .h <- stanPopLinkSetup(ui, env$data, rxControl = control$rxControl)
+    on.exit(stanLinkFree(), add = TRUE)
+    if (.h$ntheta != sum(!.map$theta$fix)) {
+      stop("the tier-0 problem's parameter count does not match the model ",
+           "map (fix() thetas with literalFix=TRUE)", call. = FALSE)
+    }
+    .sf <- rxode2::rxWithSeed(control$seed, {
+      .init <- if (identical(control$init, "ini")) {
+        .stanInit(.map, .gen$blockSpecs, .nid, control)
+      } else {
+        control$init
+      }
+      rstan::sampling(.sm, data = .gen$data, chains = control$chains,
+                      iter = control$iter, warmup = control$warmup,
+                      thin = control$thin, seed = control$seed,
+                      init = .init, cores = 1,
+                      refresh = if (control$verbose) max(1L, control$iter %/% 10L) else 0L,
+                      control = list(adapt_delta = control$adapt_delta,
+                                     max_treedepth = control$max_treedepth))
+    })
+    .dx <- .stanDiagnostics(.sf, control)
+    # the nlm objective (-2 log-likelihood) at the posterior point estimate,
+    # evaluated while the link is still up
+    .pf <- if (identical(control$point, "median")) stats::median else mean
+    .thPt <- apply(rstan::extract(.sf, pars = "theta")$theta, 2, .pf)
+    .popObj <- tryCatch(2 * .popEval(.thPt[!.map$theta$fix])$value,
+                        error = function(e) NA_real_)
+    stanLinkFree()
+    return(.stanFinalizeEnvPop(.ret, ui, env, .sf, .map, .gen, .dx, control,
+                               popObj = .popObj))
+  }
   # covariate coefficients on a subject-CONSTANT covariate can come from the
   # scatter, so only they are excluded from the sensitivity requirement; a
   # time-varying coefficient needs the forward-sensitivity model
@@ -384,6 +427,58 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   }
   list(nDivergent = .nDiv, nMaxTreedepth = .nTree, maxRhat = .maxRhat,
        minEss = .minEss, messages = .msg)
+}
+
+#' Posterior -> nlmixr2 fit for tier 0 (population-only, no etas)
+#' @noRd
+.stanFinalizeEnvPop <- function(ret, ui, env, sf, map, gen, dx, control,
+                                popObj = NA_real_) {
+  .pointFun <- if (identical(control$point, "median")) stats::median else mean
+  .thDraw <- rstan::extract(sf, pars = "theta")$theta
+  .fullTheta <- apply(.thDraw, 2, .pointFun)
+  names(.fullTheta) <- map$theta$name
+  .free <- !map$theta$fix
+  .cov <- stats::cov(.thDraw[, .free, drop = FALSE])
+  dimnames(.cov) <- list(map$theta$name[.free], map$theta$name[.free])
+  .sum <- rstan::summary(sf)$summary
+  .keep <- !grepl("^lp__", rownames(.sum))
+  .posteriorSummary <- as.data.frame(.sum[.keep, , drop = FALSE])
+  .ui <- rxode2::rxUiDecompress(ui)
+  env2 <- ret
+  env2$ui <- .ui
+  env2$fullTheta <- .fullTheta
+  env2$cov <- .cov
+  env2$covMethod <- "stan.posterior"
+  env2$objective <- popObj
+  env2$adjObf <- FALSE
+  env2$extra <- paste0(" (", control$chains, " chains x ",
+                       control$iter - control$warmup, " draws; max Rhat ",
+                       signif(dx$maxRhat, 4), "; min ESS ", round(dx$minEss),
+                       "; population-only tier 0)")
+  env2$method <- "Stan (HMC)"
+  env2$est <- "stan"
+  env2$ofvType <- "stan"
+  env2$model <- .ui$ebe
+  env2$message <- if (dx$nDivergent > 0) {
+    paste0(dx$nDivergent, " divergent transitions")
+  } else {
+    ""
+  }
+  env2$stanfit <- sf
+  env2$stanCode <- gen$code
+  env2$stanData <- gen$data
+  env2$stanDiagnostics <- dx
+  env2$posteriorSummary <- .posteriorSummary
+  nlmixr2est::.nlmixr2FitUpdateParams(env2)
+  nlmixr2est::nmObjHandleControlObject(env2$stanControl, env2)
+  .stanControlToFoceiControl(env2)
+  .fit <- nlmixr2est::nlmixr2CreateOutputFromUi(env2$ui, data = env2$origData,
+                                                control = env2$control,
+                                                table = env2$table,
+                                                env = env2, est = "stan")
+  .env <- .fit$env
+  .env$method <- "Stan (HMC)"
+  .fit
 }
 
 #' Posterior -> nlmixr2 fit (the .nonmemFinalizeEnv template)

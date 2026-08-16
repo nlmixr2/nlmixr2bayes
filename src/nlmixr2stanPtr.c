@@ -13,9 +13,13 @@
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
 #include <nlmixr2estFoceiPtr.h>
+#include <nlmixr2estNlmPtr.h>
 
 /* instantiates the 7 function-pointer globals + SEXP iniNlmixr2estFocei(SEXP) */
 iniNlmixr2estFoceiGlobals
+
+/* instantiates the 3 nlm (tier-0) globals + SEXP iniNlmixr2estNlm(SEXP) */
+iniNlmixr2estNlmGlobals
 
 /* Subject-parallel thread count for the batch entries, set from R before
  * sampling (rxode2/nlmixr2est parallelize over subjects inside each call;
@@ -32,6 +36,70 @@ SEXP _nlmixr2stan_setCores(SEXP n) {
 SEXP _nlmixr2stan_apiVersion(void) {
   if (nlmixr2FoceiApiVersionP == NULL) return Rf_ScalarInteger(-1);
   return Rf_ScalarInteger(nlmixr2FoceiApiVersionP());
+}
+
+/* ---- tier 0: population-only models via the nlm C API (#953) -------------
+ * The nlm entry returns MINUS log-likelihood + its analytic theta gradient
+ * (natural scale); the injected header negates.  -100 = table not
+ * installed (older nlmixr2est without the nlm API). */
+int nlmixr2stan_pop_eval(const double *theta, int ntheta,
+                         double *value, double *dTheta) {
+  if (nlmixr2NlmEvalP == NULL) return -100;
+  return nlmixr2NlmEvalP(theta, ntheta, value, dTheta);
+}
+
+SEXP _nlmixr2stan_nlmApiVersion(void) {
+  if (nlmixr2NlmApiVersionP == NULL) return Rf_ScalarInteger(-1);
+  return Rf_ScalarInteger(nlmixr2NlmApiVersionP());
+}
+
+SEXP _nlmixr2stan_nlmDims(void) {
+  SEXP ret, nm;
+  int ntheta = 0, nobs = 0, flags = 0, rc;
+  if (nlmixr2NlmDimsP == NULL) Rf_error("nlmixr2est nlm pointer table not installed");
+  rc = nlmixr2NlmDimsP(&ntheta, &nobs, &flags);
+  ret = PROTECT(Rf_allocVector(INTSXP, 4));
+  INTEGER(ret)[0] = rc;
+  INTEGER(ret)[1] = ntheta;
+  INTEGER(ret)[2] = nobs;
+  INTEGER(ret)[3] = flags;
+  nm = PROTECT(Rf_allocVector(STRSXP, 4));
+  SET_STRING_ELT(nm, 0, Rf_mkChar("status"));
+  SET_STRING_ELT(nm, 1, Rf_mkChar("ntheta"));
+  SET_STRING_ELT(nm, 2, Rf_mkChar("nobs"));
+  SET_STRING_ELT(nm, 3, Rf_mkChar("flags"));
+  Rf_setAttrib(ret, R_NamesSymbol, nm);
+  UNPROTECT(2);
+  return ret;
+}
+
+/* R-callable mirror over the exact C path the compiled Stan model uses;
+ * returns the RAW nlm convention (value = -logLik) -- the header negates */
+SEXP _nlmixr2stan_popEval(SEXP thetaS) {
+  int ntheta, rc, i;
+  double value = NA_REAL;
+  SEXP val, grd, ret, nm;
+  if (TYPEOF(thetaS) != REALSXP) Rf_error("'theta' must be a numeric vector");
+  ntheta = (int) Rf_xlength(thetaS);
+  grd = PROTECT(Rf_allocVector(REALSXP, ntheta));
+  for (i = 0; i < ntheta; i++) REAL(grd)[i] = 0.0;
+  rc = nlmixr2stan_pop_eval(REAL(thetaS), ntheta, &value, REAL(grd));
+  if (rc < 0) {
+    UNPROTECT(1);
+    Rf_error("nlmixr2stan_pop_eval failed with status %d", rc);
+  }
+  val = PROTECT(Rf_ScalarReal(value));
+  ret = PROTECT(Rf_allocVector(VECSXP, 3));
+  SET_VECTOR_ELT(ret, 0, val);
+  SET_VECTOR_ELT(ret, 1, grd);
+  SET_VECTOR_ELT(ret, 2, Rf_ScalarInteger(rc));
+  nm = PROTECT(Rf_allocVector(STRSXP, 3));
+  SET_STRING_ELT(nm, 0, Rf_mkChar("value"));
+  SET_STRING_ELT(nm, 1, Rf_mkChar("grad"));
+  SET_STRING_ELT(nm, 2, Rf_mkChar("nBad"));
+  Rf_setAttrib(ret, R_NamesSymbol, nm);
+  UNPROTECT(4);
+  return ret;
 }
 
 /* THE symbol the compiled Stan model resolves via

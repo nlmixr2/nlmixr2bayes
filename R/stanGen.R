@@ -239,6 +239,36 @@
            transform = .iniDf$err[.i], condition = .iniDf$condition[.i])
   }
   # ---- assemble -----------------------------------------------------------
+  if (nrow(map$eta) == 0L) {
+    # tier 0: population-only (no etas) via the nlm C API
+    # (nlmixr2/nlmixr2est#953) -- one external scalar carrying the whole
+    # data log-likelihood and its analytic theta gradient
+    .code <- paste(c(
+                     "functions {",
+                     "  // external (allow_undefined): log p(y | theta) + analytic",
+                     "  // d/d(theta), via nlmixr2est's nlm population likelihood",
+                     "  real nlmixr2_pop_ll(vector theta);",
+                     "}",
+                     "data {",
+                     "  int<lower=1> N;",
+                     .tbsDecl,
+                     "}",
+                     "parameters {",
+                     .decl,
+                     "}",
+                     "transformed parameters {",
+                     .thL,
+                     "}",
+                     "model {",
+                     "  // priors from ini({}); the external function returns the",
+                     "  // COMPLETE population data log-likelihood",
+                     .thPrior,
+                     "  target += nlmixr2_pop_ll(theta);",
+                     .tbsTarget,
+                     "}"), collapse = "\n")
+    return(list(code = .code, data = list(N = NA_integer_), notes = .notes,
+                blockSpecs = .blockSpecs, tbsJac = .tbsJac, pop = TRUE))
+  }
   .code <- paste(c(
                    "functions {",
                    "  // external (allow_undefined): value + analytic d/d(eta) and",
@@ -274,7 +304,7 @@
                    "  logLikSubj = nlmixr2_cond_all2(eta, theta);",
                    "}"), collapse = "\n")
   list(code = .code, data = list(N = NA_integer_), notes = .notes,
-       blockSpecs = .blockSpecs, tbsJac = .tbsJac)
+       blockSpecs = .blockSpecs, tbsJac = .tbsJac, pop = FALSE)
 }
 
 #' Per-chain initial values on the constrained scale

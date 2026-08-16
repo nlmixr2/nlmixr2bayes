@@ -85,7 +85,11 @@ stanLinkSetup <- function(ui, data, likelihood = c("focei", "foce"),
 #' @author Matthew L. Fidler
 stanLinkFree <- function() {
   if (is.null(.stanLinkEnv$handle)) return(invisible(FALSE))
-  nlmixr2est::foceiLikUnload()
+  if (isTRUE(.stanLinkEnv$handle$pop)) {
+    nlmixr2est::.nlmFreeEnv()
+  } else {
+    nlmixr2est::foceiLikUnload()
+  }
   .stanLinkEnv$handle <- NULL
   .stanLinkEnv$hash <- NULL
   invisible(TRUE)
@@ -124,4 +128,78 @@ stanLinkFree <- function() {
     stop("setting Omega^-1 failed with status ", .rc, call. = FALSE)
   }
   invisible(.rc)
+}
+
+# ---- tier 0: population-only (no-eta) link --------------------------------
+
+#' Load the tier-0 (population-only) likelihood for a model/data pair
+#'
+#' Wraps [nlmixr2est::nlmObjectiveSetup()] with `gradient=TRUE` and
+#' `scale="natural"` (the nlm C API, nlmixr2/nlmixr2est#953), so repeated
+#' evaluations return minus the log-likelihood and its analytic theta
+#' gradient on the model's own scale.  Shares the package-level one-linked-
+#' problem-at-a-time lock with [stanLinkSetup()].
+#'
+#' @param ui rxode2 ui (or model function) WITHOUT etas
+#' @param data estimation data
+#' @param rxControl solving options
+#' @return invisibly, a handle (ntheta, nobs, flags, initPar, setupHash)
+#' @export
+#' @author Matthew L. Fidler
+stanPopLinkSetup <- function(ui, data, rxControl = rxode2::rxControl()) {
+  if (!is.null(.stanLinkEnv$handle)) {
+    stop("an nlmixr2stan likelihood is already linked; call stanLinkFree() ",
+         "first", call. = FALSE)
+  }
+  if (!.stanHasNlmApi()) {
+    stop("this nlmixr2est does not provide the nlm population-likelihood C ",
+         "API; update nlmixr2est (nlmixr2/nlmixr2est#953)", call. = FALSE)
+  }
+  .ini <- nlmixr2est::nlmObjectiveSetup(
+    ui, data, control = nlmixr2est::nlmControl(rxControl = rxControl),
+    gradient = TRUE, scale = "natural")
+  .d <- .Call(`_nlmixr2stan_nlmDims`)
+  if (.d[["status"]] != 0L) {
+    nlmixr2est::.nlmFreeEnv() # nocov
+    stop("the tier-0 problem did not come up (dims status ", .d[["status"]],
+         ")", call. = FALSE) # nocov
+  }
+  if (bitwAnd(.d[["flags"]], 0x01L) == 0L ||
+        bitwAnd(.d[["flags"]], 0x02L) == 0L) {
+    nlmixr2est::.nlmFreeEnv() # nocov
+    stop("the tier-0 load must carry the gradient model on the natural ",
+         "scale", call. = FALSE) # nocov
+  }
+  if (bitwAnd(.d[["flags"]], 0x04L) != 0L) {
+    nlmixr2est::.nlmFreeEnv()
+    stop("some theta's sensitivity is finite-differenced; the gradient ",
+         "noise breaks a gradient-based sampler", call. = FALSE)
+  }
+  .h <- list(pop = TRUE, ntheta = .d[["ntheta"]], nobs = .d[["nobs"]],
+             flags = .d[["flags"]], initPar = as.numeric(.ini))
+  .h$setupHash <- digest::digest(list("pop", .h$ntheta, .h$nobs, .h$initPar))
+  .stanLinkEnv$handle <- .h
+  .stanLinkEnv$hash <- .h$setupHash
+  invisible(.h)
+}
+
+#' Free the tier-0 link (also freed by [stanLinkFree()])
+#' @noRd
+.stanPopLinkFree <- function() {
+  if (is.null(.stanLinkEnv$handle)) return(invisible(FALSE))
+  if (isTRUE(.stanLinkEnv$handle$pop)) {
+    nlmixr2est::.nlmFreeEnv()
+    .stanLinkEnv$handle <- NULL
+    .stanLinkEnv$hash <- NULL
+    return(invisible(TRUE))
+  }
+  invisible(FALSE)
+}
+
+#' value + gradient of the tier-0 population log-likelihood (log p = -value
+#' of the raw nlm convention; this mirror returns the RAW convention, the
+#' injected header negates)
+#' @noRd
+.popEval <- function(theta) {
+  .Call(`_nlmixr2stan_popEval`, as.double(theta))
 }

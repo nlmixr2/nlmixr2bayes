@@ -107,7 +107,12 @@ mismatch itself locked in as a test upstream.
 
 ## Current scope
 
-Supported: ODE and `linCmt()` models, normal residual models
+Supported: mixed AND population-only models (a no-eta model -- e.g. a
+single-subject Bayesian fit -- runs as "tier 0" through nlmixr2est's nlm
+path: one external scalar `nlmixr2_pop_ll(theta)` carrying the complete
+data log-likelihood and its analytic gradient, value tied to a
+hand-written density and FD-gate-verified; needs nlmixr2est with
+nlmixr2est#953), ODE and `linCmt()` models, normal residual models
 (add/prop/combined and transforms with fixed lambda), censored data
 (M2/M3/M4 via CENS/LIMIT) and user-written `ll()` endpoints (both
 gate-verified: values tie to textbook densities up to a parameter-free

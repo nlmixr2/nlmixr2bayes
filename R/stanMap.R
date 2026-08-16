@@ -31,7 +31,7 @@
   .etaNames <- .eta$name
   .blocks <- list()
   .done <- character(0)
-  .lst <- lotri::lotriMatInv(.om)
+  .lst <- if (nrow(.eta) == 0L) list() else lotri::lotriMatInv(.om)
   for (.b in .lst) {
     .m <- as.matrix(.b)
     .nm <- dimnames(.m)[[1]]
