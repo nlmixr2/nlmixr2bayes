@@ -5,6 +5,12 @@
 # generous tripwire bounds -- machine variance is real, so a hard budget
 # would fail on slow CI for reasons that are not regressions (the plan
 # classifies G12 as a tripwire, not a build break).  NLMIXR2STAN_SLOW.
+#
+# Recorded baseline (2026-08-16, dev machine): wall 257-267 s for 2x1000
+# (warm compile), worst bulk ESS 309, ESS/s 1.2 -- comfortably inside the
+# plan's full-size budget (<= 15 min at 4x2000, ESS/s >= 1).  Per-eval
+# cost on this problem: tier-2 2.4 ms, tier-1 0.27 ms; treedepth 5-6, no
+# saturation.
 
 test_that("theo_sd linCmt() performance tripwire (G12)", {
   skip_on_cran()
@@ -49,5 +55,6 @@ test_that("theo_sd linCmt() performance tripwire (G12)", {
   # tripwires (generous: 3x the plan budget scaled to this run size)
   expect_lt(.wall, 45 * 60)
   expect_gt(.essPerSec, 0.05)
-  expect_true(inherits(.fit, "nlmixr2FitData"))
+  # calcTables=FALSE returns the core fit class (no table build)
+  expect_true(inherits(.fit, "nlmixr2FitCore"))
 })

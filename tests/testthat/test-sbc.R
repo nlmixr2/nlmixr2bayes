@@ -24,6 +24,7 @@ test_that("simulation-based calibration: ranks are uniform (G5)", {
       eta.cl ~ 0.01
       prior(tcl) ~ dnorm(1, 0.3)
       prior(add.sd) ~ dlnorm(-1, 0.3)
+      prior(eta.cl) ~ invWishart(6)
     })
     model({
       cl <- exp(tcl + eta.cl)
@@ -31,15 +32,30 @@ test_that("simulation-based calibration: ranks are uniform (G5)", {
       cp ~ add(add.sd)
     })
   }
-  # the default omega prior the generator announces for this model:
-  # sd ~ half-Cauchy(0, 2.5 * sqrt(0.01))
-  .sdScale <- 2.5 * sqrt(0.01)
+  # the omega prior: invWishart(6) with the ini value 0.01 as scale; the
+  # 1-D marginal is InvGamma(nu/2 = 3, s/2 = 0.005).  Chosen over the
+  # default half-Cauchy DELIBERATELY: SBC simulates the omega from its own
+  # prior, and a Cauchy-tail draw (sd ~ 3) makes a single replicate's fit
+  # pathological (hours at deep treedepth); InvGamma(3, .) has light tails
+  # so every replicate fits in seconds.  SBC only requires that the
+  # simulation prior MATCHES the model prior, which this does exactly.
   .tt <- c(0.5, 1, 2, 4, 8)
   .nid <- 6L
+  # one program + one compile for ALL replicates: the data live in the
+  # linked nlmixr2est problem, so only the link is rebuilt per replicate
+  .dTemplate <- do.call(rbind, lapply(seq_len(.nid), function(i) {
+    data.frame(ID = i, TIME = .tt, DV = 5, AMT = 0, EVID = 0)
+  }))
+  .codeGen <- suppressMessages(
+    nlmixr2est::nlmixr2(.mod, .dTemplate, est = "stan",
+                        control = stanControl(run = FALSE)))
+  .sm <- stanCompile(.codeGen$code)
+  .stanData <- .codeGen$data
   .oneRep <- function(repSeed) {
     set.seed(repSeed)
     .tcl0 <- stats::rnorm(1, 1, 0.3)
-    .om0 <- abs(stats::rcauchy(1, 0, .sdScale))
+    .omVar0 <- 0.005 / stats::rgamma(1, 3)
+    .om0 <- sqrt(.omVar0)
     .add0 <- stats::rlnorm(1, -1, 0.3)
     .eta <- stats::rnorm(.nid, 0, .om0)
     .d <- do.call(rbind, lapply(seq_len(.nid), function(i) {
@@ -48,15 +64,26 @@ test_that("simulation-based calibration: ranks are uniform (G5)", {
                  DV = .f + stats::rnorm(length(.tt), 0, .add0),
                  AMT = 0, EVID = 0)
     }))
-    .fit <- try(suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
-      .mod, .d, est = "stan",
-      control = stanControl(chains = 1L, iter = 1200L, warmup = 400L,
-                            thin = 8L, seed = repSeed, likCores = 1L,
-                            adapt_delta = 0.95, calcTables = FALSE,
-                            ofv = "none", onDiagnostic = "none")))),
-      silent = TRUE)
-    if (inherits(.fit, "try-error")) return(NULL)
-    .sf <- .fit$env$stanfit
+    # drive the link + sampler directly on the ONE precompiled program --
+    # the full nlmixr2() pipeline (ui rebuild, tables, finalize) per
+    # replicate made the harness hours-slow with zero validation benefit;
+    # this is byte-for-byte the same target (same program, same link path)
+    .sf <- try({
+      h <- stanLinkSetup(.mod, .d, thetaSens = TRUE, cores = 1L)
+      .Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(h$initPar))
+      .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, 1L)
+      suppressWarnings(rstan::sampling(
+        .sm, data = .stanData, chains = 1L, iter = 1200L, warmup = 400L,
+        thin = 8L, seed = repSeed, refresh = 0, cores = 1,
+        show_messages = FALSE,
+        init = list(list(tcl = 1, add_sd = 0.4,
+                         omega_b1 = matrix(0.01, 1, 1),
+                         z_b1 = matrix(0, .nid, 1))),
+        control = list(adapt_delta = 0.95)))
+    }, silent = TRUE)
+    .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+    stanLinkFree()
+    if (inherits(.sf, "try-error")) return(NULL)
     .sp <- rstan::get_sampler_params(.sf, inc_warmup = FALSE)
     if (sum(vapply(.sp, function(x) sum(x[, "divergent__"]),
                    numeric(1))) > 0) {
