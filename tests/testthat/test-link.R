@@ -60,3 +60,60 @@ test_that("stage 0: natural scale means theta is iniDf's est", {
   # scale="natural": the theta part of initPar IS the ini() estimates
   expect_equal(h$initPar[seq_len(h$ntheta)], c(1, 3, 0.5))
 })
+
+test_that("fused single-solve tier-2 entry (#958) is used and consistent", {
+  skip_on_cran()
+  skip_if_not(nlmixr2stan:::.stanHasCombSens(),
+              "nlmixr2est lacks the combined-sensitivity build (#958)")
+  .mod <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      kout <- 0.2
+      eta.ka ~ 0.6; eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center - kout * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  .d <- nlmixr2data::theo_sd
+  .h <- stanLinkSetup(.mod, .d, thetaSens = TRUE, cores = 1L)
+  on.exit({
+    .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+    stanLinkFree()
+  }, add = TRUE)
+  # the combined build is loaded: dims flag 0x80
+  .dm <- .Call(nlmixr2stan:::`_nlmixr2stan_dims`)
+  expect_true(bitwAnd(.dm[["flags"]], 0x80L) != 0L)
+  .Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(.h$initPar))
+  .map <- nlmixr2stan:::.stanMap(rxode2::rxode2(.mod))
+  .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, as.integer(.map$muRefIdx))
+  set.seed(3)
+  .eta <- matrix(stats::rnorm(.h$nid * .h$neta, 0, 0.2), .h$nid, .h$neta)
+  .th <- .h$initPar[seq_len(.h$ntheta)]
+  .g <- .Call(nlmixr2stan:::`_nlmixr2stan_condBatchTheta`, as.double(.th),
+              .eta)
+  # value + eta gradient from the fused entry are BITWISE identical to the
+  # separate condBatch entry on the same combined load (the fused theta
+  # pass reads the very solve the value pass produced)
+  .sep <- nlmixr2stan:::.condBatch(.eta)
+  expect_identical(.g$value, .sep$value)
+  expect_identical(.g$gradEta, .sep$grad)
+  # assembled theta gradient (fused sens columns + mu-ref scatter) FD-agrees
+  for (.jj in seq_len(.h$ntheta)) {
+    .hs <- 1e-5 * max(1, abs(.th[.jj]))
+    .tp <- .th; .tp[.jj] <- .tp[.jj] + .hs
+    .tm <- .th; .tm[.jj] <- .tm[.jj] - .hs
+    .vp <- .Call(nlmixr2stan:::`_nlmixr2stan_condBatchTheta`,
+                 as.double(.tp), .eta)$value
+    .vm <- .Call(nlmixr2stan:::`_nlmixr2stan_condBatchTheta`,
+                 as.double(.tm), .eta)$value
+    .fd <- (.vp - .vm) / (2 * .hs)
+    expect_lt(max(abs((.g$gradTheta[, .jj] - .fd) / (abs(.fd) + 1e-8))),
+              1e-4)
+  }
+})

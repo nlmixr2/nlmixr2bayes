@@ -240,16 +240,30 @@ int nlmixr2stan_cond_batch_theta(const double *theta, int ntheta,
   for (j = 0; j < (size_t) ntheta; j++) nlmixr2stanThetaBase[j] = theta[j];
   rc = nlmixr2FoceiSetThetaP(nlmixr2stanThetaBase, nlmixr2stanNpars);
   if (rc != 0) return -102;
-  rc = nlmixr2FoceiCondBatchP(eta, nid, neta, nlmixr2stanCores, value, gradEta);
-  if (rc < 0) return rc;
-  /* forward-sensitivity theta columns (zero-filled by the callee); -4 =
-   * model not wired, tolerable only when no sensitivity thetas exist */
-  rcT = nlmixr2FoceiCondThetaGradP(eta, nid, neta, nlmixr2stanCores, gradTheta);
-  if (rcT == -4) {
-    if (nlmixr2FoceiThetaSensIdxP(NULL, 0) != 0) return -103;
-    for (j = 0; j < (size_t) nid * ntheta; j++) gradTheta[j] = 0.0;
-  } else if (rcT < 0) {
-    return rcT;
+  /* #958 fused entry: value + d/d(eta) + d/d(theta) from ONE combined-model
+   * solve per subject.  Self-negotiating: -5 (not a combined build) and -4
+   * (sensitivities not wired) fall back to the two-call path; other
+   * negative codes are hard failures either way. */
+  rc = -5;
+  if (nlmixr2FoceiCondBatchThetaGradP != NULL) {
+    rc = nlmixr2FoceiCondBatchThetaGradP(eta, nid, neta, nlmixr2stanCores,
+                                         value, gradEta, gradTheta);
+    if (rc < 0 && rc != -5 && rc != -4) return rc;
+  }
+  if (rc < 0) {
+    rc = nlmixr2FoceiCondBatchP(eta, nid, neta, nlmixr2stanCores, value,
+                                gradEta);
+    if (rc < 0) return rc;
+    /* forward-sensitivity theta columns (zero-filled by the callee); -4 =
+     * model not wired, tolerable only when no sensitivity thetas exist */
+    rcT = nlmixr2FoceiCondThetaGradP(eta, nid, neta, nlmixr2stanCores,
+                                     gradTheta);
+    if (rcT == -4) {
+      if (nlmixr2FoceiThetaSensIdxP(NULL, 0) != 0) return -103;
+      for (j = 0; j < (size_t) nid * ntheta; j++) gradTheta[j] = 0.0;
+    } else if (rcT < 0) {
+      return rcT;
+    }
   }
   /* mu-referenced columns: d/dtheta_p = d/deta_k of the conditional */
   for (i = 0; i < nid; i++) {

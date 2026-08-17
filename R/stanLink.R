@@ -60,11 +60,19 @@ stanLinkSetup <- function(ui, data, likelihood = c("focei", "foce"),
   checkmate::assertIntegerish(maxOdeRecalc, lower = 0, len = 1,
                               any.missing = FALSE)
   checkmate::assertLogical(fallbackFD, len = 1, any.missing = FALSE)
-  .h <- nlmixr2est::foceiLikLoad(ui, data, likelihood, rxControl = rxControl,
-                                 scale = "natural", thetaSens = thetaSens,
-                                 est = "stan", literalFix = literalFix,
-                                 maxOdeRecalc = as.integer(maxOdeRecalc),
-                                 fallbackFD = fallbackFD)
+  # #958: when the loaded nlmixr2est supports the combined eta+theta
+  # sensitivity build, request it instead of the separate theta-sensitivity
+  # model -- the INNER model then carries the theta columns and the fused
+  # single-solve batch entry (condBatchThetaGrad) serves the whole tier-2
+  # gradient (~2x cheaper per evaluation)
+  .useComb <- isTRUE(thetaSens) && .stanHasCombSens()
+  .args <- list(ui, data, likelihood, rxControl = rxControl,
+                scale = "natural", thetaSens = thetaSens && !.useComb,
+                est = "stan", literalFix = literalFix,
+                maxOdeRecalc = as.integer(maxOdeRecalc),
+                fallbackFD = fallbackFD)
+  if (.useComb) .args$combSens <- TRUE
+  .h <- do.call(nlmixr2est::foceiLikLoad, .args)
   .d <- .Call(`_nlmixr2stan_dims`)
   if (.d[["status"]] != 0L) {
     nlmixr2est::foceiLikUnload()
