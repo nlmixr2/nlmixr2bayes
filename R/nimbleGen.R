@@ -65,7 +65,9 @@
     }
     return(invisible(TRUE))
   }
-  rxode2::rxReq("nimble")
+  # no rxode2::rxReq("nimble") here: .nimbleAssertBuildOk() at the top of
+  # this function already stopped with a clear message if nimble were
+  # missing, so by this point it is guaranteed installed.
   # nimble's model-building internals (e.g. init_isDataEnv() ->
   # getNimbleOption()) call unexported helpers by bare name, resolved via the
   # search path -- namespace-qualified nimble:: calls alone are not enough;
@@ -350,7 +352,11 @@ nimbleLinkedSample <- function(ui, data, niter = 2000L, nburnin = 1000L,
     checkmate::assertNumeric(thetaSd, finite = TRUE, any.missing = FALSE,
                              min.len = 1)
   }
-  rxode2::rxReq("nimble")
+  # no rxode2::rxReq("nimble") here: it used to intercept a missing-nimble
+  # session with a generic message before .nimbleCondLikSetup()'s own
+  # .nimbleAssertBuildOk() call (unconditional, at its very top) ever got a
+  # chance to give the clearer, function-specific one -- let that check run
+  # first instead of shadowing it.
   .nimbleCondLikSetup()
   .ui <- rxode2::rxode2(ui)
   .map <- .stanMap(.ui)
