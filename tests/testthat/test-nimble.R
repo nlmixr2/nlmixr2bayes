@@ -283,3 +283,27 @@ test_that(".nimbleAssertSupported refuses priors it cannot honor", {
     nlmixr2bayes:::.nimbleAssertSupported(.baseMap, priOmega = .omegaPrior),
     "omega")
 })
+
+test_that(".nimbleCondLikSetup() restores .GlobalEnv bindings wiped independently of its own cache", {
+  skip_if_not_installed("nimble")
+  skip_on_cran()
+  # dFoceiCondLik/rFoceiCondLik/condBatchExternal live in TWO places: the
+  # package-internal .nimbleGenEnv cache (what gates re-doing the expensive
+  # shim-compile/registerDistributions() work) and .GlobalEnv (what
+  # nimbleModel()'s plain-name lookup actually needs). Something as ordinary
+  # as the user's own rm(list=ls()) clears the second without touching the
+  # first -- remove just the three target objects (not a blanket
+  # rm(list=ls()), to avoid disturbing anything else this test run has in
+  # .GlobalEnv) and confirm a second setup call restores them rather than
+  # short-circuiting on the still-populated cache.
+  nlmixr2bayes:::.nimbleCondLikSetup()
+  expect_true(exists("dFoceiCondLik", envir = .GlobalEnv, inherits = FALSE))
+  rm(list = c("dFoceiCondLik", "rFoceiCondLik", "condBatchExternal"),
+     envir = .GlobalEnv)
+  expect_false(exists("dFoceiCondLik", envir = .GlobalEnv, inherits = FALSE))
+
+  nlmixr2bayes:::.nimbleCondLikSetup()
+  expect_true(exists("dFoceiCondLik", envir = .GlobalEnv, inherits = FALSE))
+  expect_true(exists("rFoceiCondLik", envir = .GlobalEnv, inherits = FALSE))
+  expect_true(exists("condBatchExternal", envir = .GlobalEnv, inherits = FALSE))
+})

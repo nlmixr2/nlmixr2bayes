@@ -26,7 +26,22 @@
 #' every nimbleLinkedSample() model uses.
 #' @noRd
 .nimbleCondLikSetup <- function() {
-  if (!is.null(.nimbleGenEnv$dFoceiCondLik)) return(invisible(TRUE))
+  if (!is.null(.nimbleGenEnv$dFoceiCondLik)) {
+    # the .GlobalEnv bindings below are a SEPARATE piece of state from this
+    # cache (something as ordinary as the user's own rm(list=ls()) wipes
+    # them without touching .nimbleGenEnv) -- restore them from the cache
+    # on every call rather than only on the first, or nimbleModel()'s
+    # plain-name lookup breaks for the rest of the session with a cryptic
+    # "R function 'dFoceiCondLik' ... does not exist" error, confirmed
+    # reproducible: .nimbleCondLikSetup(); rm(list=ls()); .nimbleCondLikSetup()
+    # leaves dFoceiCondLik absent from .GlobalEnv either way without this.
+    for (.nm in c("condBatchExternal", "dFoceiCondLik", "rFoceiCondLik")) {
+      if (!exists(.nm, envir = .GlobalEnv, inherits = FALSE)) {
+        assign(.nm, .nimbleGenEnv[[.nm]], envir = .GlobalEnv)
+      }
+    }
+    return(invisible(TRUE))
+  }
   rxode2::rxReq("nimble")
   # nimble's model-building internals (e.g. init_isDataEnv() ->
   # getNimbleOption()) call unexported helpers by bare name, resolved via the
@@ -42,10 +57,27 @@
   # ".cache" gets clipped to "ache", corrupting the path and breaking the
   # make rule). Sidestep by handing it a path guaranteed not to contain
   # ".c" anywhere, not just past the cache dir's content-hash cache.
-  .oSafe <- tempfile("nlmixr2bayes_nimble_shim_", fileext = ".o")
-  while (grepl(".c", .oSafe, fixed = TRUE)) {
-    .oSafe <- tempfile("nlmixr2bayes_nimble_shim_", fileext = ".o")
+  #
+  # tempfile()'s random component is alphanumeric and never contains a
+  # period, so retrying tempfile() cannot change whether the match came
+  # from the DIRECTORY portion -- every call in one session shares the same
+  # tempdir(). If tempdir() itself contains ".c" (an unusual but real
+  # possibility depending on TMPDIR/the OS's temp path), a `while
+  # (grepl(...)) tempfile()`-style retry loop never terminates: it keeps
+  # generating new filenames inside the same still-offending directory.
+  # Check the directory once, up front, and fall back rather than loop.
+  .oDir <- tempdir()
+  if (grepl(".c", .oDir, fixed = TRUE)) {
+    .oDir <- normalizePath(".", mustWork = TRUE)
+    if (grepl(".c", .oDir, fixed = TRUE)) {
+      stop("cannot find a directory without a literal '.c' substring for ",
+           "the nimble shim object file (both tempdir() and the working ",
+           "directory contain one) -- nimble's build machinery corrupts ",
+           "such paths; set a different TMPDIR or working directory and ",
+           "retry", call. = FALSE)
+    }
   }
+  .oSafe <- tempfile("nlmixr2bayes_nimble_shim_", tmpdir = .oDir, fileext = ".o")
   file.copy(.o, .oSafe, overwrite = TRUE)
   condBatchExternal <- nimble::nimbleExternalCall(
     function(theta = double(1), ntheta = integer(0), eta = double(1),
