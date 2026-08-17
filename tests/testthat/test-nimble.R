@@ -22,42 +22,42 @@ test_that(".nimbleAssertSupported refuses unsupported model shapes", {
                           covariate = character(0), name = character(0),
                           stringsAsFactors = FALSE),
     blocks = list(list(members = "eta.cl", k = 1L, fix = FALSE)))
-  expect_true(nlmixr2bayes:::.nimbleAssertSupported(.baseMap))
+  expect_true(.nimbleAssertSupported(.baseMap))
 
   .mix <- .baseMap
   .mix$nMix <- 2L
-  expect_error(nlmixr2bayes:::.nimbleAssertSupported(.mix), "mixtures")
+  expect_error(.nimbleAssertSupported(.mix), "mixtures")
 
   .cov <- .baseMap
   .cov$muRefCov <- data.frame(thetaIdx = 1L, etaIdx = 1L, covariate = "wt",
                               name = "tcl_wt", stringsAsFactors = FALSE)
-  expect_error(nlmixr2bayes:::.nimbleAssertSupported(.cov), "covariates")
+  expect_error(.nimbleAssertSupported(.cov), "covariates")
 
   .thetaFix <- .baseMap
   .thetaFix$theta$fix[1] <- TRUE
-  expect_error(nlmixr2bayes:::.nimbleAssertSupported(.thetaFix), "fix\\(\\)ed")
+  expect_error(.nimbleAssertSupported(.thetaFix), "fix\\(\\)ed")
 
   .oneTheta <- .baseMap
   .oneTheta$theta <- .baseMap$theta[1, , drop = FALSE]
-  expect_error(nlmixr2bayes:::.nimbleAssertSupported(.oneTheta),
+  expect_error(.nimbleAssertSupported(.oneTheta),
               "at least 2 population parameters")
 
   .corr <- .baseMap
   .corr$blocks <- list(list(members = c("eta.cl", "eta.v"), k = 2L,
                             fix = c(FALSE, FALSE)))
-  expect_error(nlmixr2bayes:::.nimbleAssertSupported(.corr), "diagonal omega")
+  expect_error(.nimbleAssertSupported(.corr), "diagonal omega")
 
   .fix <- .baseMap
   .fix$blocks <- list(list(members = "eta.cl", k = 1L, fix = TRUE))
-  expect_error(nlmixr2bayes:::.nimbleAssertSupported(.fix), "fixed-variance")
+  expect_error(.nimbleAssertSupported(.fix), "fixed-variance")
 })
 
 test_that("the NIMBLE shim compiles and caches", {
   skip_if_not_installed("nimble")
   skip_on_cran()
-  .o1 <- nlmixr2bayes:::.nimbleShimCompile()
+  .o1 <- .nimbleShimCompile()
   expect_true(file.exists(.o1))
-  .o2 <- nlmixr2bayes:::.nimbleShimCompile()
+  .o2 <- .nimbleShimCompile()
   expect_identical(.o1, .o2) # cache hit, not a fresh compile
 })
 
@@ -66,12 +66,12 @@ test_that("dFoceiCondLik's compiled log-density matches the ground truth", {
   skip_on_cran()
   h <- stanLinkSetup(.linkMod, .linkData(), thetaSens = FALSE, cores = 1L)
   on.exit({
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+    .Call(`_nlmixr2bayes_clearThetaBase`)
     stanLinkFree()
   }, add = TRUE)
-  .map <- nlmixr2bayes:::.stanMap(rxode2::rxode2(.linkMod))
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
+  .map <- .stanMap(rxode2::rxode2(.linkMod))
+  .Call(`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+  .Call(`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
 
   set.seed(99)
   .eta <- matrix(stats::rnorm(h$nid * h$neta, 0, 0.15), h$nid, h$neta)
@@ -80,7 +80,7 @@ test_that("dFoceiCondLik's compiled log-density matches the ground truth", {
     perturbed = { .t <- h$initPar[seq_len(h$ntheta)]; .t[1] <- .t[1] + 0.2; .t }
   )
 
-  nlmixr2bayes:::.nimbleCondLikSetup()
+  .nimbleCondLikSetup()
   # same flattening pattern as .nimbleBuildCode(): only a 1D range crosses
   # the distribution-call boundary (see the eta=double(1) design note in
   # R/nimbleGen.R -- a whole-array 2D slice collapses rank when nid or neta
@@ -104,7 +104,7 @@ test_that("dFoceiCondLik's compiled log-density matches the ground truth", {
   for (.nm in names(.thetaCases)) {
     .cm$theta <- .thetaCases[[.nm]]
     .cm$calculate()
-    .ref <- .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`,
+    .ref <- .Call(`_nlmixr2bayes_condBatchTheta`,
                   as.double(.thetaCases[[.nm]]), .eta)
     expect_equal(.cm$logProb_zero, sum(.ref$value), tolerance = 1e-8,
                 info = .nm)
@@ -162,7 +162,7 @@ test_that(".nimbleThetaPriorText translates ini() priors with correct bounds/den
     })
   }
   .ui <- rxode2::rxode2(.priorMod)
-  .map <- nlmixr2bayes:::.stanMap(.ui)
+  .map <- .stanMap(.ui)
   .pri <- stanPriors(.ui)
   .thetaSdVec <- pmax(3 * abs(.map$theta$est), 1)
 
@@ -173,7 +173,7 @@ test_that(".nimbleThetaPriorText translates ini() priors with correct bounds/den
   .idx <- function(nm) match(nm, .map$theta$name)
   .textFor <- function(nm) {
     .i <- .idx(nm)
-    nlmixr2bayes:::.nimbleThetaPriorText(
+    .nimbleThetaPriorText(
       nm, .map$theta$est[.i], .thetaSdVec[.i], .priRow(nm),
       .map$theta$lower[.i], .map$theta$upper[.i], .map$theta$name)
   }
@@ -233,12 +233,12 @@ test_that("a prior argument that references another parameter translates to its 
     })
   }
   .ui <- rxode2::rxode2(.hierMod)
-  .map <- nlmixr2bayes:::.stanMap(.ui)
+  .map <- .stanMap(.ui)
   .pri <- stanPriors(.ui)
   .w <- which(.pri$pop$name == "tv" & .pri$pop$kind != "multivariate")
   .tvIdx <- match("tv", .map$theta$name)
   .tclIdx <- match("tcl", .map$theta$name)
-  .txt <- nlmixr2bayes:::.nimbleThetaPriorText(
+  .txt <- .nimbleThetaPriorText(
     "tv", .map$theta$est[.tvIdx], 3, .pri$pop[.w, ],
     .map$theta$lower[.tvIdx], .map$theta$upper[.tvIdx], .map$theta$name)
   expect_identical(.txt, sprintf("dnorm(theta[%d], sd = 1)", .tclIdx))
@@ -260,7 +260,7 @@ test_that(".nimbleThetaPriorText refuses a prior distribution outside the catalo
   .priRow <- data.frame(prior = "dweibull(1, 2)", lower = -Inf, upper = Inf,
                         stringsAsFactors = FALSE)
   expect_error(
-    nlmixr2bayes:::.nimbleThetaPriorText("x", 1, 1, .priRow, -Inf, Inf, "x"),
+    .nimbleThetaPriorText("x", 1, 1, .priRow, -Inf, Inf, "x"),
     "not yet supported")
 })
 
@@ -275,12 +275,12 @@ test_that(".nimbleAssertSupported refuses priors it cannot honor", {
   .mvPrior <- data.frame(name = "tcl", kind = "multivariate",
                          stringsAsFactors = FALSE)
   expect_error(
-    nlmixr2bayes:::.nimbleAssertSupported(.baseMap, priPop = .mvPrior),
+    .nimbleAssertSupported(.baseMap, priPop = .mvPrior),
     "multivariate")
 
   .omegaPrior <- data.frame(name = "eta.cl", stringsAsFactors = FALSE)
   expect_error(
-    nlmixr2bayes:::.nimbleAssertSupported(.baseMap, priOmega = .omegaPrior),
+    .nimbleAssertSupported(.baseMap, priOmega = .omegaPrior),
     "omega")
 })
 
@@ -296,13 +296,13 @@ test_that(".nimbleCondLikSetup() restores .GlobalEnv bindings wiped independentl
   # rm(list=ls()), to avoid disturbing anything else this test run has in
   # .GlobalEnv) and confirm a second setup call restores them rather than
   # short-circuiting on the still-populated cache.
-  nlmixr2bayes:::.nimbleCondLikSetup()
+  .nimbleCondLikSetup()
   expect_true(exists("dFoceiCondLik", envir = .GlobalEnv, inherits = FALSE))
   rm(list = c("dFoceiCondLik", "rFoceiCondLik", "condBatchExternal"),
      envir = .GlobalEnv)
   expect_false(exists("dFoceiCondLik", envir = .GlobalEnv, inherits = FALSE))
 
-  nlmixr2bayes:::.nimbleCondLikSetup()
+  .nimbleCondLikSetup()
   expect_true(exists("dFoceiCondLik", envir = .GlobalEnv, inherits = FALSE))
   expect_true(exists("rFoceiCondLik", envir = .GlobalEnv, inherits = FALSE))
   expect_true(exists("condBatchExternal", envir = .GlobalEnv, inherits = FALSE))
@@ -316,12 +316,12 @@ test_that(".nimbleCondLikSetup() re-attaches nimble even on a cache hit", {
   # check used to live only in the slow (first-call) path, so a user
   # detaching nimble between two nimbleLinkedSample() calls left it
   # detached on the second, cache-hit call.
-  nlmixr2bayes:::.nimbleCondLikSetup()
+  .nimbleCondLikSetup()
   expect_true("package:nimble" %in% search())
   detach("package:nimble")
   expect_false("package:nimble" %in% search())
 
-  nlmixr2bayes:::.nimbleCondLikSetup()
+  .nimbleCondLikSetup()
   expect_true("package:nimble" %in% search())
 })
 
@@ -333,12 +333,12 @@ test_that(".nimbleCondLikSetup() rebuilds when the cached shim object file is go
   # externally within one session without the cache-hit gate previously
   # noticing, leaving a stale reference compileNimble() would fail on with
   # a C++ linker error rather than a clear R-level message.
-  nlmixr2bayes:::.nimbleCondLikSetup()
-  .oFile <- nlmixr2bayes:::.nimbleGenEnv$oFile
+  .nimbleCondLikSetup()
+  .oFile <- .nimbleGenEnv$oFile
   expect_true(file.exists(.oFile))
   unlink(.oFile)
   expect_false(file.exists(.oFile))
 
-  expect_true(nlmixr2bayes:::.nimbleCondLikSetup())
-  expect_true(file.exists(nlmixr2bayes:::.nimbleGenEnv$oFile))
+  expect_true(.nimbleCondLikSetup())
+  expect_true(file.exists(.nimbleGenEnv$oFile))
 })
