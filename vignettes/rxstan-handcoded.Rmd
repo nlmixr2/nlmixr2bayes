@@ -1,0 +1,253 @@
+---
+title: "Hand-coded Stan models with rxstan backend"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Hand-coded Stan models with rxstan backend}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+## Hand-coded Stan: ODE-level linking
+
+While `nlmixr2(model, data, est = "stan")` automatically generates a Stan program 
+(see `vignette("nlmixr2stan", "nlmixr2stan")`), you may want to **write your own Stan code** 
+to have full control over priors, derived quantities, and model structure.
+
+The `rxstan` component of `nlmixr2stan` lets you do exactly that. You register an rxode2 model 
+as a solver backend via `rxsRegister()`, then write ordinary Stan that declares and calls it.
+
+### When to use this approach
+
+- ✅ You want **full control over your Stan program**
+- ✅ You need **delay differential equations** (Stan has no DDE solver)
+- ✅ You want to write **custom priors or derived quantities** in Stan
+- ✅ Your model has **complex structure** beyond what automatic generation supports
+- ✅ You're fitting **hand-coded rxode2 models** outside the nlmixr2 framework
+
+### When to use automatic generation instead
+
+If you have a complete **nlmixr2-style model** with priors in the `ini({})` block, 
+prefer `nlmixr2(model, data, est = "stan")` — it's simpler, keeps one source of truth 
+for the likelihood, and is validated against every other nlmixr2 method. 
+See `vignette("nlmixr2stan", "nlmixr2stan")`.
+
+---
+
+## What this does
+
+While `nlmixr2(model, data, est = "stan")` automatically generates and compiles a Stan program,
+you may want to write your own Stan code to have full control over priors, derived quantities,
+and model structure. The `rxstan` component of `nlmixr2stan` lets you do exactly that.
+
+Stan can already solve ODEs, but it does so by autodiffing *through* the integrator, which is 
+expensive, and its interface has no concept of a dose, a lag time, or a delay differential equation.
+
+rxode2 has all of that, and it computes analytic first-order sensitivities $\partial y / \partial \theta$ 
+by augmenting the system with the forward sensitivity equations. Those are exactly the numbers Stan's 
+reverse-mode tape wants.
+
+So rxstan hands the solve to rxode2 and pushes rxode2's derivatives onto Stan's tape directly, 
+through `precomputed_gradients()`. Stan never differentiates the solver; it treats `rx_solve()` 
+as a function whose partials are simply known.
+
+```
+Stan  --- theta -->  rxstan bridge (C++)  --- theta -->  rxode2
+      <-- y, dy/dtheta ---                <-- states + rx__sens_* ---
+```
+
+On a one-compartment oral model with 100 observations, per gradient:
+
+| solver             | time per gradient |
+|--------------------|-------------------|
+| rxstan             | 0.055 ms          |
+| Stan `ode_rk45`    | 0.125 ms          |
+| Stan `ode_bdf`     | 0.400 ms          |
+
+Speed is the smaller half of the argument. The larger half is that dosing events and DDEs 
+are not expressible in Stan's ODE interface at all.
+
+`rstan` is required rather than optional: rxode2 has to be callable from the same process, 
+so the model must be compiled and run in-process.
+
+## The quick path: generate the Stan program
+
+If you already have an nlmixr2-style model, `rxsStanFromUi()` writes the Stan program, 
+registers the solver, and assembles the `standata`.
+
+```{r model, eval=FALSE}
+library(nlmixr2)
+
+oneCmt <- function() {
+  ini({
+    tka <- 0.5
+    tcl <- 1.0
+    tv <- 3.4
+    eta.cl ~ 0.09
+    add.sd <- 0.2
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv)
+    d/dt(depot) <- -ka * depot
+    d/dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd)
+  })
+}
+```
+
+Some data. Any data frame with `id`, `time`, `dv` and the usual event columns will do.
+
+```{r data, eval=FALSE}
+## sampling has to cover the absorption phase, or ka is not identified
+times <- c(0.25, 0.5, 1, 1.5, 2, 3, 4, 6, 8, 12, 24)
+dat <- do.call(rbind, lapply(1:8, function(i) {
+  e <- rxode2::et(amt = 100, cmt = "depot")
+  e <- rxode2::et(e, times)
+  d <- as.data.frame(e)
+  d$id <- i
+  d$dv <- 0
+  d
+}))
+```
+
+Generate the Stan program and solver handle:
+
+```{r gen, eval=FALSE}
+gen <- rxsStanFromUi(oneCmt, dat)
+names(gen)
+cat(gen$code)
+```
+
+`gen$code` is an ordinary Stan program, `gen$handle` is the live solver, and `gen$standata` 
+is what you pass to `sampling()`. Note that `cp = center / v` is formed **in Stan**, not in 
+rxode2 — see "What crosses the boundary" below.
+
+## Writing your own Stan program
+
+`rxsStanFromUi()` is convenient for quick fits, but to write your own program, use `rxsRegister()` 
+to set up the solver handle and build the Stan code yourself.
+
+```stan
+functions {
+  // Declared but not defined here; --allow_undefined tells the compiler
+  // to look for it in the linked C++ bridge
+  vector rx_solve(int handle, vector p);
+}
+data {
+  int<lower=1> nObs;
+  int<lower=1> handle;
+  vector<lower=0>[nObs] cpObs;
+}
+parameters {
+  real lka;
+  real lcl;
+  real lv;
+  real<lower=0> sigma;
+}
+model {
+  vector[3] p = [lka, lcl, lv]';
+  vector[nObs] centre = rx_solve(handle, p);
+  vector[nObs] cp = centre / exp(lv);
+
+  // Your priors here
+  lka ~ normal(0, 1);
+  lcl ~ normal(1.4, 1);
+  lv ~ normal(3.4, 1);
+  sigma ~ normal(0, 1);
+
+  // Likelihood
+  log(cpObs) ~ normal(log(cp), sigma);
+  target += -sum(log(cpObs));  // Jacobian of the log transform
+}
+```
+
+From R:
+
+```{r handcoded, eval=FALSE}
+library(nlmixr2)
+
+oneCmt <- function() {
+  ini({
+    tka <- 0.5
+    tcl <- 1.0
+    tv <- 3.4
+    eta.cl ~ 0.09
+    add.sd <- 0.2
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv)
+    d/dt(depot) <- -ka * depot
+    d/dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd)
+  })
+}
+
+# Register the model and set up the solver
+h <- rxsRegister(oneCmt, events = dat, 
+                 sens = c("lka", "lcl", "lv"), 
+                 output = "center")
+
+# Compile the Stan program
+f <- tempfile(fileext = ".stan")
+writeLines(stan_code, f)
+sm <- rxsStanModel(f, modelName = "one_cmt")
+
+# Prepare data for Stan
+standata <- list(
+  nObs = nrow(dat[is.na(dat$evid) | dat$evid == 0, ]),
+  handle = h,
+  cpObs = dat$dv[is.na(dat$evid) | dat$evid == 0]
+)
+
+# Sample
+fit <- rstan::sampling(sm, data = standata, 
+                       init = rxsInit(h), 
+                       chains = 4, iter = 2000)
+```
+
+## What crosses the boundary
+
+ODE **states**, never derived `lhs` quantities. rxode2 only emits `rx__sens_<state>_BY_<param>__` 
+for states, so any derived prediction (a concentration `central / v`, say) must be formed in the 
+Stan program, where Stan differentiates it itself. That keeps exactly one differentiation boundary.
+
+In the example above, `depot` and `center` are states; `cp` is derived and formed in Stan.
+
+## Checking the gradient
+
+Before fitting, use `rxsCheckGradient()` to verify that the analytic sensitivities agree with 
+finite differences:
+
+```{r check, eval=FALSE}
+# After compiling the Stan model
+fit_init <- rstan::sampling(sm, data = standata, chains = 0)
+
+# Test parameter vector
+test_pars <- c(lka = 0.5, lcl = 1.0, lv = 3.4, sigma = 0.2)
+
+# Check gradient
+check <- rxsCheckGradient(fit_init, test_pars, h = 1e-5)
+print(check)
+```
+
+Look for relative differences close to 1e-6 or better. Anything much worse suggests 
+a problem with the bridge or the solver tolerances.
+
+## Limits
+
+- **rstan only** — rxode2 must be in-process.
+- **Single-threaded** — do not use the bridge inside `map_rect()` or `reduce_sum()`. 
+  rxode2's solve structure is a process singleton, so concurrent entry is detected and throws 
+  rather than corrupting silently. Run chains as separate processes; leave subject-level 
+  parallelism to rxode2.
+- **First-order only** — `precomputed_gradients()` is `var`-only, so `laplace_marginal` 
+  and RHMC are out.

@@ -1,33 +1,28 @@
 # nlmixr2stan
 
-A Stan interface for nlmixr2: `nlmixr2(model, data, est = "stan")`.
+A Stan interface for nlmixr2 combining two complementary approaches:
 
-The idea is to **link** Stan to the likelihoods that already exist rather than
-re-express the model in Stan's language: rxode2 compiles the ODE/solving code
-and nlmixr2est holds the likelihood machinery, so Stan calls into those
-directly.  That keeps one source of truth for the likelihood and avoids
-reimplementing solving, censoring and the residual-error models.
+1. **Likelihood-level linking** (`nlmixr2(model, data, est = "stan")`): 
+   Link Stan to the likelihoods that already exist rather than re-express the model 
+   in Stan's language. rxode2 compiles the ODE/solving code and nlmixr2est holds 
+   the likelihood machinery, so Stan calls into those directly.  That keeps one source 
+   of truth for the likelihood and avoids reimplementing solving, censoring and the 
+   residual-error models.
+
+2. **ODE-level hand-coded Stan models** (via rxstan): 
+   Write your own Stan programs that declare rxode2 as the solver backend via `rxsRegister()`.
+   Keep dosing events, DDEs, and analytic parameter sensitivities in rxode2 while writing
+   priors, transformations, mixtures, and derived quantities directly in Stan.
 
 ## What linking buys
 
-Everything rxode2/nlmixr2est can express flows through `est="stan"` without a
-translation step, including things Stan's own ODE interface cannot express:
+Both approaches share the same fundamental advantage: **things Stan's ODE interface cannot express**
 
-- **dosing events** -- bolus, infusion, `addl`, steady state, multiple
-  compartments, exactly as the event table describes them (value and eta
-  gradient FD-verified on dosed models);
-- **derivatives with respect to modelled dose handling** — an *estimated*
-  lag time, bioavailability, duration or rate, whose dependence runs
-  through the event time rather than the ODE right-hand side and so needs
-  a **jump condition** at the event.  rxode2's analytic event
-  sensitivities (`eventSens = "jump"`) supply it, and nlmixr2est's
-  theta-sensitivity model carries it through the linked gradient
-  (nlmixr2est#946; the `alag` theta column FD-agrees at ~1e-5 where it was
-  once silently zero -- this package's finite-difference gate caught it and
-  now locks it in);
-- **delay differential equations**, via rxode2's `delay()` / `past()`;
-- **the residual-error and censoring machinery** (M2/M3/M4) already
-  validated in nlmixr2est.
+- **dosing events** (bolus, infusion, `addl`, steady state, multiple compartments) with exact event timing
+- **derivatives with respect to modelled dose handling** — an estimated lag time, bioavailability, duration or rate
+- **delay differential equations**, via rxode2's `delay()` / `past()`
+- **analytic parameter sensitivities** via forward sensitivity equations (no autodiff through the solver)
+- **the residual-error and censoring machinery** (M2/M3/M4) already validated in nlmixr2est (likelihood-level only)
 
 The model is compiled and linked **without engaging Stan's threading** —
 a second threading runtime layered on top of rxode2/nlmixr2est's would
@@ -63,15 +58,7 @@ embedded-Laplace (`laplace_marginal`) machinery — is out of scope.  That
 costs nothing in practice: NUTS, ADVI, optimization and Pathfinder are all
 first-order, and a Laplace-*marginalized* target is exactly what
 nlmixr2est's own (NONMEM-validated) FOCEi/Laplace machinery computes
-natively — linking that marginal would be the sensible route, not pushing
-second-order AD through the bridge.
-
-A planned companion (merging an existing standalone rxode2--Stan
-bridge) links at the **ODE level** instead: hand-written Stan programs
-that call rxode2's compiled solver and analytic sensitivities directly
--- your own Stan code, rxode2's events/DDEs/jump sensitivities.  This
-package links at the **likelihood level**: no Stan code is written at
-all.  Same architecture, two entry points.
+natively.
 
 Beyond NUTS, `stanControl(algorithm=)` runs Stan's ADVI variational
 approximations (`"meanfield"`, `"fullrank"`) and multi-path Pathfinder
@@ -88,16 +75,111 @@ distribution catalogue is deliberately one-to-one with Stan's — see
 `lotri::lotriPriorDists()` and `rxode2::rxUiPriors()`.  A model without
 priors is refused, printing the exact `prior()` lines to add.
 
+## Two Approaches: Automatic or Hand-Coded Stan
+
+### 1. Likelihood-level: Automatic Stan generation via nlmixr2 dispatch
+
+Use `nlmixr2(model, data, est = "stan")` to automatically generate and fit a Stan program.
+No Stan code to write — Stan calls rxode2's solver backend directly and receives analytic gradients.
+
+```r
+library(nlmixr2)
+
+model <- function() {
+  ini({
+    tka <- 0.5; tcl <- 1.0; tv <- 3.4
+    eta.cl ~ 0.09
+    add.sd <- 0.7
+    log.lkj <- 1.0
+  })
+  model({
+    ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+    d/dt(depot)  <- -ka * depot
+    d/dt(center) <-  ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd)
+  })
+}
+
+fit <- nlmixr2(model, data, est = "stan", stanControl(chains = 4, iter = 2000))
+```
+
+### 2. ODE-level: Hand-written Stan models with rxstan backend
+
+Write your own Stan program and link it to rxode2's solver via `rxsRegister()`.
+This approach gives you full control over your Stan program while keeping 
+dosing, DDEs, and solver sensitivities in rxode2.
+
+```r
+library(nlmixr2)
+library(rxstan)  # rxstan is now integrated
+
+oneCmt <- function() {
+  ini({
+    tka <- 0.5; tcl <- 1.0; tv <- 3.4
+    eta.cl ~ 0.09
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+    d/dt(depot)  <- -ka * depot
+    d/dt(center) <-  ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd)
+  })
+}
+
+# Generate Stan program and solver handle
+gen <- rxsStanFromUi(oneCmt, data)
+f <- tempfile(fileext = ".stan")
+writeLines(gen$code, f)
+
+# Compile Stan model against rxstan bridge
+sm <- rxsStanModel(f, modelName = "one_cmt")
+
+# Fit with rstan
+fit <- rstan::sampling(sm, data = gen$standata, 
+                       init = rxsInit(gen), 
+                       chains = 4, iter = 2000)
+```
+
+For hand-coded models, declare rxode2 as the solver backend:
+
+```stan
+functions {
+  vector rx_solve(int handle, vector p);
+}
+data {
+  int<lower=1> nObs;
+  int<lower=1> handle;
+  vector<lower=0>[nObs] cpObs;
+}
+parameters {
+  real lka;
+  real lcl;
+  real lv;
+  real<lower=0> sigma;
+}
+model {
+  vector[3] p = [lka, lcl, lv]';
+  vector[nObs] centre = rx_solve(handle, p);
+  vector[nObs] cp = centre / exp(lv);
+
+  lka ~ normal(0, 1);
+  lcl ~ normal(1.4, 1);
+  lv ~ normal(3.4, 1);
+  sigma ~ normal(0, 1);
+
+  log(cpObs) ~ normal(log(cp), sigma);
+  target += -sum(log(cpObs));
+}
+```
+
+See `vignette("rxstan")` for detailed examples of hand-coded Stan programs.
+
 ## Is it fast?
 
-Benchmarked against the *same* 1-compartment oral ODE population model
-(theo_sd, 12 subjects) written natively in Stan with `ode_rk45_tol` --
-identical priors, identical non-centred eta structure, matched inits,
-matched tolerances (1e-8), matched sampler settings (Stan defaults),
-and the same 4-core budget spent the way each method naturally can
-(native: parallel chains; nlmixr2stan: subject-parallel threads inside
-each gradient, chains sequential).  The linked solver is rxode2's dense
-Dormand-Prince (`dop853`, `dense=TRUE`), the twin of Stan's `ode_rk45`:
+### Likelihood-level (nlmixr2 dispatch)
 
 |  | native Stan | nlmixr2stan (linked) |
 |---|---|---|

@@ -11,12 +11,34 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 
-`nlmixr2stan` adds a Bayesian HMC estimation method to nlmixr2:
+## Automatic model generation: likelihood-level linking
+
+`nlmixr2stan` adds a Bayesian HMC estimation method to nlmixr2 that **automatically 
+generates and compiles a Stan program**:
 
 ```{r}
 library(nlmixr2stan)
 fit <- nlmixr2est::nlmixr2(model, data, est = "stan")
 ```
+
+You write your model once (in nlmixr2 syntax), declare priors in the `ini({})` block, 
+and let `est = "stan"` handle everything else: Stan program generation, compilation, 
+linking, and sampling. **No Stan code to write** — this vignette is for you.
+
+### When to use this approach
+
+- ✅ You want Bayesian estimation of a complete nlmixr2 model
+- ✅ You prefer automatic program generation over hand-coding Stan
+- ✅ Your model fits the supported scope (ODE, `linCmt()`, normal/censored errors, finite mixtures)
+- ✅ You want the same likelihood evaluated by every nlmixr2 method (FOCE, Stan, etc.)
+
+### When to use hand-coded Stan instead
+
+If you want **full control over your Stan program** — custom priors, derived quantities, 
+multiple endpoints with mixed structures, or you're fitting **delay differential equations** — 
+see `vignette("rxstan-handcoded", "nlmixr2stan")` for the rxstan approach.
+
+---
 
 Stan is **linked** to the compiled rxode2/nlmixr2est likelihood rather than
 the model being translated into Stan's language: rxode2 solves the ODEs

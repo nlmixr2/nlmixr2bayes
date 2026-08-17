@@ -1,0 +1,155 @@
+---
+title: "Delay differential equations through rxstan"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Delay differential equations through rxstan}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+## Delay differential equations: a Stan limitation
+
+**Stan has no DDE solver.** Not a slow one — none. There is no `ode_*` function that accepts 
+a lagged state, and you cannot write one in the Stan language, because the solution has to be 
+interpolated at $t - \tau$ while it is still being computed.
+
+However, **rxode2 has `delay()`**, and it propagates sensitivities through the delay correctly. 
+With rxstan's hand-coded approach (see `vignette("rxstan-handcoded", "nlmixr2stan")`), 
+a DDE becomes an ordinary Stan model.
+
+This vignette walks through a realistic example: delayed indirect response with feedback.
+
+### Other approaches
+
+- **Automatic generation**: `nlmixr2(model, data, est = "stan")` doesn't support DDEs yet. 
+  See `vignette("nlmixr2stan", "nlmixr2stan")` for automatic estimation of ODE models.
+- **Hand-coded ODEs**: See `vignette("rxstan-handcoded", "nlmixr2stan")` for the general pattern.
+
+---
+
+## Why this is the interesting case
+
+## A delayed indirect response
+
+Turnover with delayed feedback: the loss term depends on the response one delay ago 
+rather than now.
+
+$$\frac{dR}{dt} = k_{in} - k_{out}\,R(t - \tau), \qquad R(s) = 1 \ \text{for}\ s \le 0$$
+
+```{r model, eval=FALSE}
+library(nlmixr2)
+
+dde <- "
+kin  <- exp(lkin)
+kout <- exp(lkout)
+tau  <- exp(ltau)
+R(0) <- 1
+d/dt(R) <- kin - kout * delay(R, tau)
+"
+```
+
+`R(0) <- 1` does double duty: it is the initial condition *and* the pre-history, 
+so `delay(R, tau)` returns 1 whenever $t - \tau \le 0$.
+
+## Register the DDE model
+
+Register it the same way as any other model. All three parameters are differentiated, 
+including the delay:
+
+```{r register, eval=FALSE}
+tms <- seq(0.25, 25, by = 0.25)
+invisible(capture.output(  # swallow rxode2's compile progress bar
+  h <- rxsRegister(dde, events = rxode2::et(tms),
+                   sens = c("lkin", "lkout", "ltau"), output = "R",
+                   atol = 1e-10, rtol = 1e-10, method = "dop853")
+))
+h
+```
+
+`method = "dop853"` rather than the default `liblsoda`: the delay machinery needs 
+a solver that keeps a dense history to interpolate from.
+
+## Solve and inspect the sensitivities
+
+```{r solve, eval=FALSE}
+truth <- c(kin = 0.7, kout = 0.4, tau = 1.5)
+p <- log(unname(truth))
+res <- rxsSolve(h, p)
+head(res, 3)
+```
+
+Column 1 is $R$; the rest are $\partial R/\partial(\ell k_{in}, \ell k_{out}, \ell\tau)$.
+
+## Checking it without trusting finite differences
+
+Before the first delay has elapsed there is a closed form, and it makes a much better 
+test than differencing the solver against itself.
+
+While $t \le \tau$ the lagged term is still the constant pre-history, so the equation 
+collapses to $R' = k_{in} - k_{out}$, giving $R = 1 + (k_{in} - k_{out})t$. On the 
+log scale the sensitivities are then exactly $k_{in}t$ and $-k_{out}t$:
+
+```{r oracle, eval=FALSE}
+early <- which(tms <= truth[["tau"]])
+data.frame(t        = tms[early],
+           dlkin    = res[early, 2],
+           exact    = truth[["kin"]] * tms[early],
+           dlkout   = res[early, 3],
+           exact2   = -truth[["kout"]] * tms[early])
+```
+
+An exact match (to solver tolerances) verifies that the delay itself and its derivatives 
+are handled correctly.
+
+## Using the DDE in a hand-coded Stan program
+
+Once registered, use it in Stan exactly as you would an ODE:
+
+```stan
+functions {
+  vector rx_solve(int handle, vector p);
+}
+data {
+  int<lower=1> nObs;
+  int<lower=1> handle;
+  vector[nObs] tms;
+  vector<lower=0>[nObs] rObs;
+}
+parameters {
+  real lkin;
+  real lkout;
+  real<lower=0> ltau;
+  real<lower=0> sigma;
+}
+model {
+  vector[3] p = [lkin, lkout, ltau]';
+  vector[nObs] r = rx_solve(handle, p);
+  
+  lkin ~ normal(0, 1);
+  lkout ~ normal(-1, 1);
+  ltau ~ normal(0, 1);
+  sigma ~ exponential(1);
+  
+  rObs ~ normal(r, sigma);
+}
+```
+
+The bridge compiles the rxode2 model with the forward-sensitivity DDE system augmented, 
+solves it, and supplies both the solution and its derivatives to Stan's reverse-mode 
+autodiff. No DDE solver in Stan; no finite differencing; exact sensitivities.
+
+## Key points
+
+- **DDEs require dense output**: Use `method = "dop853"` or another dense solver, 
+  and set `dense = TRUE` in `rxControl()`.
+- **The delay itself is a parameter**: You can estimate the lag time $\tau$, and 
+  its gradient flows through the sensitivity equations correctly.
+- **Pre-history must be constant**: The initial condition `R(0) <- 1` defines both 
+  the condition at $t=0$ and the pre-history for $t < 0$. It must be a constant 
+  (not a function of time or parameters).
+- **The fast path is automatic**: rxstan detects DDEs and enables the fast path 
+  when safe; use `rxsFastAvailable(handle)` to check.
