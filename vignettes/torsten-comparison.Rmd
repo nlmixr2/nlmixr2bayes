@@ -45,7 +45,7 @@ have from a FOCEi/SAEM run, and the posterior is sampled against the
 | NONMEM-convention events (AMT/EVID/ADDL/SS/RATE) | yes | yes (rxode2 event table) |
 | estimated `alag`/`f`/`dur`/`rate` | parameters of the solve (Torsten notes an open adjoint issue at `tlag = 0`) | yes; jump-condition sensitivities, FD-verified |
 | residual models | hand-written (anything Stan can express) | nlmixr2 catalogue (add/prop/combined, lnorm, ...), censoring M2/M3/M4, user `ll()` |
-| eta structure | hand-written (any structure, incl. IOV by hand) | lotri blocks; non-centred or centred; fixed-variance etas (constant Cholesky factor); IOV wired through nlmixr2est's iov hook (gated on an upstream sensitivity fix, nlmixr2est#952 -- the occasion-indicator pattern below works today) |
+| eta structure | hand-written (any structure, incl. IOV by hand) | lotri blocks; non-centred or centred; fixed-variance etas (constant Cholesky factor); first-class IOV (`iov.x ~ v | OCC` through nlmixr2est's iov hook: per-occasion fixed unit-variance etas scaled by an estimated magnitude theta with an exact, FD-gated sensitivity -- nlmixr2est#952/#960) |
 | finite mixtures | hand-written | `mix()` (2 components): log-sum-exp marginalization, membership posteriors in `fit$env$mixProb` |
 | priors | any Stan distribution, hand-written | the 39-distribution lotri catalogue via `prior()` in `ini({})`, LKJ/inv-Wishart on omega |
 | single-subject (no etas) | yes | yes ("tier 0": the nlm path's likelihood + analytic theta gradients, one external scalar `nlmixr2_pop_ll(theta)`; needs nlmixr2est with nlmixr2est#953) |

@@ -284,7 +284,11 @@ attr(nlmixr2Est.stan, "unbounded") <- FALSE
 #' until that column FD-agrees.
 #' @noRd
 .stanHasIovSens <- function() {
-  FALSE # flip via a probe when nlmixr2/nlmixr2est#952 lands
+  # nlmixr2/nlmixr2est#952 (the IOV magnitude theta's sensitivity column
+  # scaled by a theta-dependent factor) was fixed together with an
+  # iovXform pass-through on foceiLikLoad -- probe that formal, the same
+  # structural-probe pattern as the other capability checks
+  "iovXform" %in% names(formals(nlmixr2est::foceiLikLoad))
 }
 # IOV via nlmixr2est's preprocessing hook (.uiApplyIov): occasion-level
 # random effects become per-occasion FIXED unit-variance etas scaled by an
