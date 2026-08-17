@@ -102,9 +102,10 @@ Dormand-Prince (`dop853`, `dense=TRUE`), the twin of Stan's `ode_rk45`:
 |  | native Stan | nlmixr2stan (linked) |
 |---|---|---|
 | wall, 2 chains x 1000 iter (chains sequential, 4 subject threads) | — | 408.8 s |
-| wall, 2 chains x 1000 iter (chains FORKED, serial inner) | 142.7 s | 302.6 s |
+| wall, forked chains, two-solve path | 142.7 s | 302.6 s |
+| wall, forked chains + fused single-solve entry (nlmixr2est#958) | 142.7 s | **203.8 s** |
 | worst bulk ESS | 236 | **286-378** |
-| worst ESS / s | 1.66 | 0.70 sequential / **1.25 forked** |
+| worst ESS / s | 1.66 | 0.70 sequential / 1.25 forked / **1.60 fused+forked** |
 | gradient evaluation | 1.98 ms | 2.80 ms via `grad_log_prob` (1.36 ms at the C level) |
 | posterior means | agree to < 0.01 on every parameter | |
 
@@ -118,8 +119,12 @@ two-integrations-per-gradient gap is closed: with nlmixr2est's combined
 eta+theta sensitivity build (nlmixr2est#958) the whole tier-2 gradient
 comes from ONE solve per subject through a fused batch entry --
 0.62 ms per full-population gradient at the C level (vs 1.26 ms
-two-model, and native's 1.98 ms coupled solve).  nlmixr2stan negotiates
-it automatically when the loaded nlmixr2est provides it.  Per gradient the linked C path is
+two-model, and native's 1.98 ms coupled solve), negotiated automatically
+when the loaded nlmixr2est provides it.  Net: **effective ESS/s parity
+with native Stan on the pure-ODE model** (1.60 vs 1.66, with MORE
+effective samples per draw), and an outright win wherever the analytic
+`linCmt()` tier applies -- a tier a native ODE implementation cannot
+express.  Per gradient the linked C path is
 cheaper than the native solve -- and for models with closed-form
 solutions the `linCmt()` tier evaluates ~5-10x cheaper still, an
 option a native ODE implementation does not have.  ADVI completes the
