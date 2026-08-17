@@ -307,3 +307,38 @@ test_that(".nimbleCondLikSetup() restores .GlobalEnv bindings wiped independentl
   expect_true(exists("rFoceiCondLik", envir = .GlobalEnv, inherits = FALSE))
   expect_true(exists("condBatchExternal", envir = .GlobalEnv, inherits = FALSE))
 })
+
+test_that(".nimbleCondLikSetup() re-attaches nimble even on a cache hit", {
+  skip_if_not_installed("nimble")
+  skip_on_cran()
+  # nimble's model-building internals need the package attached (bare-name
+  # lookups via the search path), not just namespace-loaded -- the attach
+  # check used to live only in the slow (first-call) path, so a user
+  # detaching nimble between two nimbleLinkedSample() calls left it
+  # detached on the second, cache-hit call.
+  nlmixr2bayes:::.nimbleCondLikSetup()
+  expect_true("package:nimble" %in% search())
+  detach("package:nimble")
+  expect_false("package:nimble" %in% search())
+
+  nlmixr2bayes:::.nimbleCondLikSetup()
+  expect_true("package:nimble" %in% search())
+})
+
+test_that(".nimbleCondLikSetup() rebuilds when the cached shim object file is gone", {
+  skip_if_not_installed("nimble")
+  skip_on_cran()
+  # the cached condBatchExternal references a session-tempdir copy of the
+  # compiled shim (.nimbleGenEnv$oFile); tempdir() contents can be cleared
+  # externally within one session without the cache-hit gate previously
+  # noticing, leaving a stale reference compileNimble() would fail on with
+  # a C++ linker error rather than a clear R-level message.
+  nlmixr2bayes:::.nimbleCondLikSetup()
+  .oFile <- nlmixr2bayes:::.nimbleGenEnv$oFile
+  expect_true(file.exists(.oFile))
+  unlink(.oFile)
+  expect_false(file.exists(.oFile))
+
+  expect_true(nlmixr2bayes:::.nimbleCondLikSetup())
+  expect_true(file.exists(nlmixr2bayes:::.nimbleGenEnv$oFile))
+})

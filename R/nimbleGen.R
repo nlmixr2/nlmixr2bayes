@@ -26,15 +26,33 @@
 #' every nimbleLinkedSample() model uses.
 #' @noRd
 .nimbleCondLikSetup <- function() {
-  if (!is.null(.nimbleGenEnv$dFoceiCondLik)) {
-    # the .GlobalEnv bindings below are a SEPARATE piece of state from this
-    # cache (something as ordinary as the user's own rm(list=ls()) wipes
-    # them without touching .nimbleGenEnv) -- restore them from the cache
-    # on every call rather than only on the first, or nimbleModel()'s
-    # plain-name lookup breaks for the rest of the session with a cryptic
-    # "R function 'dFoceiCondLik' ... does not exist" error, confirmed
-    # reproducible: .nimbleCondLikSetup(); rm(list=ls()); .nimbleCondLikSetup()
-    # leaves dFoceiCondLik absent from .GlobalEnv either way without this.
+  # The cache is only trustworthy if EVERY piece of state it gates is still
+  # actually true, not just "we did this once": (a) all three cached R
+  # objects exist (a session interrupted between the three end-of-function
+  # assigns below, or direct tampering with the internal env, could leave a
+  # partial cache -- registerDistributions() was confirmed idempotent-safe
+  # to call again, so falling through to a full re-setup on ANY gap is
+  # cheap and correct, not just defensive); (b) nimble is still attached
+  # (confirmed reproducible: detach("package:nimble") between two
+  # nimbleLinkedSample() calls left it detached after the second, since the
+  # attach check used to live only in the slow path below); (c) the cached
+  # shim object file still exists on disk (tempdir() contents can be
+  # cleared externally within one session without the directory itself
+  # going away). All confirmed independently, not merely plausible.
+  .cacheOk <- !is.null(.nimbleGenEnv$dFoceiCondLik) &&
+    !is.null(.nimbleGenEnv$rFoceiCondLik) &&
+    !is.null(.nimbleGenEnv$condBatchExternal) &&
+    !is.null(.nimbleGenEnv$oFile) && file.exists(.nimbleGenEnv$oFile)
+  if (.cacheOk) {
+    if (!"package:nimble" %in% search()) {
+      suppressPackageStartupMessages(attachNamespace("nimble"))
+    }
+    # the .GlobalEnv bindings below are a SEPARATE piece of state from the
+    # cache above (something as ordinary as the user's own rm(list=ls())
+    # wipes them without touching .nimbleGenEnv) -- restore them on every
+    # cache-hit call, not just the first, or nimbleModel()'s plain-name
+    # lookup breaks for the rest of the session with a cryptic "R function
+    # 'dFoceiCondLik' ... does not exist" error.
     for (.nm in c("condBatchExternal", "dFoceiCondLik", "rFoceiCondLik")) {
       if (!exists(.nm, envir = .GlobalEnv, inherits = FALSE)) {
         assign(.nm, .nimbleGenEnv[[.nm]], envir = .GlobalEnv)
@@ -150,6 +168,7 @@
   .nimbleGenEnv$condBatchExternal <- condBatchExternal
   .nimbleGenEnv$dFoceiCondLik <- dFoceiCondLik
   .nimbleGenEnv$rFoceiCondLik <- rFoceiCondLik
+  .nimbleGenEnv$oFile <- .oSafe
   invisible(TRUE)
 }
 
