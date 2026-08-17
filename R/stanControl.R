@@ -7,8 +7,8 @@
 #' processes (`chainCores`, inheriting the [rxode2::getRxThreads()]
 #' budget capped at `chains`) with serial evaluation inside each chain.
 #' On Windows, `chainCores > 1` runs one chain per PSOCK worker (each
-#' worker builds its own linked likelihood) with `cores=1` inside each
-#' worker.  With `chainCores = 1` the chains run sequentially and each
+#' worker builds its own linked likelihood); `cores` remains the
+#' subject-parallel setting per worker.  With `chainCores = 1` the chains run sequentially and each
 #' likelihood evaluation is subject-parallel instead (`cores`,
 #' defaulting to `getRxThreads()`).  `getRxThreads()` honors
 #' `OMP_THREAD_LIMIT`, which CRAN sets to 2, so checks stay within
@@ -96,8 +96,8 @@
 #'   forks' memory).  Set `chainCores = 1` for sequential chains with
 #'   subject-parallel evaluation and the iteration table.  On Windows
 #'   `chainCores > 1` uses PSOCK workers (one linked likelihood per
-#'   worker process) and runs one chain per worker with `cores=1` inside
-#'   each worker
+#'   worker process) and runs one chain per worker; `cores` remains the
+#'   subject-parallel setting per worker
 #' @param cores subject-parallel thread count inside each likelihood
 #'   evaluation (default [rxode2::getRxThreads()]; on CRAN this is capped
 #'   at 2 through `OMP_THREAD_LIMIT`).  This is the per-run analogue of the
@@ -216,13 +216,9 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
         cores <- 1L
       }
     } else {
-      if (cores > 1L) {
-        warning("Windows PSOCK chain parallelism runs one chain per worker ",
-                "with subject threads forced to cores = 1 inside each worker; ",
-                "set chainCores and/or cores to avoid oversubscription",
-                call. = FALSE)
-      }
-      cores <- 1L
+      # PSOCK workers are independent processes, so the OpenMP-after-fork
+      # hazard does not apply here; keep the requested per-worker thread
+      # count and guard with the aggregate-core warning below.
     }
   }
   if (as.integer(chainCores) * as.integer(cores) >

@@ -35,13 +35,12 @@ test_that("stanControl builds, validates, and pins its invariants", {
     # explicit both: honored with the hazard warning
     expect_warning(stanControl(chainCores = 2L, cores = 2L), "fork")
   } else {
-    # Windows chain parallelism uses PSOCK workers; subject threads inside
-    # workers are forced to 1.
-    .c2 <- suppressWarnings(stanControl(chains = 2L, chainCores = 2L))
+    # Windows chain parallelism uses PSOCK workers and keeps the
+    # user-requested per-worker subject-thread count.
+    .c2 <- suppressWarnings(stanControl(chains = 2L, chainCores = 2L,
+                                        cores = 2L))
     expect_equal(.c2$chainCores, 2L)
-    expect_equal(.c2$cores, 1L)
-    expect_warning(stanControl(chains = 2L, chainCores = 2L, cores = 2L),
-                   "PSOCK")
+    expect_equal(.c2$cores, 2L)
   }
 })
 

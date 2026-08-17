@@ -151,8 +151,8 @@ the iteration print is disabled (the ticks would happen in the
 forks' memory).  Set `chainCores = 1` for sequential chains with
 subject-parallel evaluation and the iteration table.  On Windows
 `chainCores > 1` uses PSOCK workers (one linked likelihood per
-worker process) and runs one chain per worker with `cores=1` inside
-each worker}
+worker process) and runs one chain per worker; `cores` remains the
+subject-parallel setting per worker}
 
 \item{diagOmegaSdPrior}{character template for the default half-Cauchy
 scale on an omega SD without its own prior; `%s` is replaced by the
@@ -212,8 +212,8 @@ Parallelism has two axes.  On unix, the CHAINS run in forked
 processes (`chainCores`, inheriting the [rxode2::getRxThreads()]
 budget capped at `chains`) with serial evaluation inside each chain.
 On Windows, `chainCores > 1` runs one chain per PSOCK worker (each
-worker builds its own linked likelihood) with `cores=1` inside each
-worker.  With `chainCores = 1` the chains run sequentially and each
+worker builds its own linked likelihood); `cores` remains the
+subject-parallel setting per worker.  With `chainCores = 1` the chains run sequentially and each
 likelihood evaluation is subject-parallel instead (`cores`,
 defaulting to `getRxThreads()`).  `getRxThreads()` honors
 `OMP_THREAD_LIMIT`, which CRAN sets to 2, so checks stay within
