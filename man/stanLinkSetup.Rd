@@ -11,7 +11,9 @@ stanLinkSetup(
   rxControl = rxode2::rxControl(),
   thetaSens = FALSE,
   literalFix = TRUE,
-  cores = rxode2::getRxThreads()
+  cores = rxode2::getRxThreads(),
+  maxOdeRecalc = 3L,
+  fallbackFD = TRUE
 )
 }
 \arguments{
@@ -34,6 +36,13 @@ nlmixr2est literal-fix hook); keep this matched with the est method's
 program agree on the parameter vector}
 
 \item{cores}{subject-parallel thread count for each likelihood evaluation}
+
+\item{maxOdeRecalc}{failed-solve tolerance relaxations before falling
+back (default 3, the tolerance-report calibration; 0 disables)}
+
+\item{fallbackFD}{after the relaxations, retry with the prediction
+model + shi21 central-difference eta gradients before rejecting with
+-Inf (default TRUE; FALSE rejects immediately)}
 }
 \value{
 invisibly, the link handle (the `foceiLikLoad` handle plus

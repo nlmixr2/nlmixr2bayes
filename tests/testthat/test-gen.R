@@ -10,7 +10,11 @@ test_that("run=FALSE returns the generated program without touching rstan", {
   .code <- .out$code
   # external declaration + call
   expect_match(.code, "vector nlmixr2_cond_all2\\(matrix etaMat, vector theta\\);")
-  expect_match(.code, "target \\+= sum\\(nlmixr2_cond_all2\\(eta, theta\\)\\);")
+  # the model block computes llCond once, adds sum(llCond), and ticks the
+  # nlmixr2est-style iteration print (a no-op unless armed)
+  expect_match(.code, "vector\\[N\\] llCond = nlmixr2_cond_all2\\(eta, theta\\);")
+  expect_match(.code, "target \\+= sumLL;")
+  expect_match(.code, "nlmixr2_iter_tick\\(parDisp, -2 \\* sumLL\\);")
   # free thetas declared with their (promoted) bounds
   expect_match(.code, "real tcl;")
   expect_match(.code, "real<lower=0> add_sd;")

@@ -27,6 +27,11 @@
 #'   `stanControl(literalFix=)` so the linked problem and the generated Stan
 #'   program agree on the parameter vector
 #' @param cores subject-parallel thread count for each likelihood evaluation
+#' @param maxOdeRecalc failed-solve tolerance relaxations before falling
+#'   back (default 3, the tolerance-report calibration; 0 disables)
+#' @param fallbackFD after the relaxations, retry with the prediction
+#'   model + shi21 central-difference eta gradients before rejecting with
+#'   -Inf (default TRUE; FALSE rejects immediately)
 #' @return invisibly, the link handle (the `foceiLikLoad` handle plus
 #'   `flags`, `setupHash`)
 #' @export
@@ -34,16 +39,32 @@
 stanLinkSetup <- function(ui, data, likelihood = c("focei", "foce"),
                           rxControl = rxode2::rxControl(),
                           thetaSens = FALSE, literalFix = TRUE,
-                          cores = rxode2::getRxThreads()) {
+                          cores = rxode2::getRxThreads(),
+                          maxOdeRecalc = 3L, fallbackFD = TRUE) {
   likelihood <- match.arg(likelihood)
   if (!is.null(.stanLinkEnv$handle)) {
     stop("an nlmixr2stan likelihood is already linked; call stanLinkFree() first\n",
          "(op_focei is a process-wide global: one linked problem at a time)",
          call. = FALSE)
   }
+  # The failure cascade for the batch entries, calibrated by the numerical
+  # study in the nlmixr2est tolerance report (2026-08-04) and matching the
+  # plain focei inner path: relax the ODE tolerance up to THREE times
+  # (odeRecalcFactor 10^0.5 each, x31.6 total -- inside the "mild
+  # loosening" zone where the analytic gradient stays 10-100x more
+  # accurate than FD), then fall back to the prediction model with shi21
+  # central-difference eta gradients, and only then reject with -Inf.
+  # Deeper loosening (the default 5 steps = x316) is where the
+  # loosened-analytic gradient LOSES to FD on stiff models (measured 132%
+  # error), so the depth is capped here.
+  checkmate::assertIntegerish(maxOdeRecalc, lower = 0, len = 1,
+                              any.missing = FALSE)
+  checkmate::assertLogical(fallbackFD, len = 1, any.missing = FALSE)
   .h <- nlmixr2est::foceiLikLoad(ui, data, likelihood, rxControl = rxControl,
                                  scale = "natural", thetaSens = thetaSens,
-                                 est = "stan", literalFix = literalFix)
+                                 est = "stan", literalFix = literalFix,
+                                 maxOdeRecalc = as.integer(maxOdeRecalc),
+                                 fallbackFD = fallbackFD)
   .d <- .Call(`_nlmixr2stan_dims`)
   if (.d[["status"]] != 0L) {
     nlmixr2est::foceiLikUnload()
@@ -149,10 +170,18 @@ stanLinkFree <- function() {
 #' @param ui rxode2 ui (or model function) WITHOUT etas
 #' @param data estimation data
 #' @param rxControl solving options
+#' @param cores subject-parallel thread count for the population solves
+#'   (applied through `rxControl$cores` when that is left at its 0/"auto"
+#'   default; an explicit `rxControl$cores` wins)
+#' @param print iteration-print cadence: every `print`-th evaluation of the
+#'   linked objective prints an nlmixr2est-style row (0 = off); the history
+#'   is collected by [nlmixr2est::nlmGetParHist()]
 #' @return invisibly, a handle (ntheta, nobs, flags, initPar, setupHash)
 #' @export
 #' @author Matthew L. Fidler
-stanPopLinkSetup <- function(ui, data, rxControl = rxode2::rxControl()) {
+stanPopLinkSetup <- function(ui, data, rxControl = rxode2::rxControl(),
+                             cores = rxode2::getRxThreads(),
+                             print = 0L) {
   if (!is.null(.stanLinkEnv$handle)) {
     stop("an nlmixr2stan likelihood is already linked; call stanLinkFree() ",
          "first", call. = FALSE)
@@ -161,8 +190,19 @@ stanPopLinkSetup <- function(ui, data, rxControl = rxode2::rxControl()) {
     stop("this nlmixr2est does not provide the nlm population-likelihood C ",
          "API; update nlmixr2est (nlmixr2/nlmixr2est#953)", call. = FALSE)
   }
+  # tier-0 parallelism lives in rxode2's subject-parallel solve, driven by
+  # rxControl$cores; honor an explicit setting, otherwise apply `cores`
+  checkmate::assertIntegerish(cores, lower = 1, len = 1, any.missing = FALSE)
+  if (identical(rxControl$cores, 0L)) {
+    rxControl$cores <- as.integer(cores)
+  }
+  # same tolerance-ladder cap as the mixed-model link (3 relaxations then
+  # FD then reject; see the tolerance-report rationale in stanLinkSetup)
+  checkmate::assertIntegerish(print, lower = 0, len = 1, any.missing = FALSE)
   .ini <- nlmixr2est::nlmObjectiveSetup(
-    ui, data, control = nlmixr2est::nlmControl(rxControl = rxControl),
+    ui, data, control = nlmixr2est::nlmControl(rxControl = rxControl,
+                                               maxOdeRecalc = 3L,
+                                               print = as.integer(print)),
     gradient = TRUE, scale = "natural")
   .d <- .Call(`_nlmixr2stan_nlmDims`)
   if (.d[["status"]] != 0L) {

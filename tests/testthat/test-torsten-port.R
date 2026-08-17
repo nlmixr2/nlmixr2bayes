@@ -223,3 +223,67 @@ test_that("IOV occasion-indicator pattern generates and parses", {
                                allow_undefined = TRUE))
   }
 })
+
+test_that("Torsten effCpt port (effect-compartment population PK/PD) generates and parses", {
+  skip_on_cran()
+  .effCpt <- function() {
+    ini({
+      lcl <- log(10)
+      lq <- log(15)
+      lv1 <- log(35)
+      lv2 <- log(105)
+      lka <- log(2)
+      lke0 <- log(1)
+      lec50 <- log(100)
+      prior(lcl) ~ dnorm(log(10), 0.25)
+      prior(lke0) ~ dnorm(log(1), 0.25)
+      prior(lec50) ~ dnorm(log(100), 0.5)
+      lnorm.sd <- c(0, 0.2)
+      resp.sd <- c(0, 5)
+      prior(lnorm.sd) ~ dcauchy(0, 1)
+      prior(resp.sd) ~ dcauchy(0, 5)
+      eta.cl ~ 0.06
+      eta.v1 ~ 0.06
+      eta.ke0 ~ 0.04
+      eta.ec50 ~ 0.04
+    })
+    model({
+      cl <- exp(lcl + eta.cl)
+      q <- exp(lq)
+      v1 <- exp(lv1 + eta.v1)
+      v2 <- exp(lv2)
+      ka <- exp(lka)
+      ke0 <- exp(lke0 + eta.ke0)
+      ec50 <- exp(lec50 + eta.ec50)
+      k10 <- cl / v1
+      k12 <- q / v1
+      k21 <- q / v2
+      d / dt(depot) <- -ka * depot
+      d / dt(cent) <- ka * depot - (k10 + k12) * cent + k21 * peri
+      d / dt(peri) <- k12 * cent - k21 * peri
+      cp <- 1000 * cent / v1
+      d / dt(ce) <- ke0 * (cp - ce)
+      resp <- 100 * ce / (ec50 + ce)
+      cp ~ lnorm(lnorm.sd)
+      resp ~ add(resp.sd)
+    })
+  }
+  .d <- do.call(rbind, lapply(1:3, function(id) {
+    rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 100, EVID = 1,
+                     CMT = "depot"),
+          data.frame(ID = id, TIME = c(0.5, 2, 8, 24),
+                     DV = c(400, 900, 500, 150), AMT = 0, EVID = 0,
+                     CMT = "cp"),
+          data.frame(ID = id, TIME = c(1, 4, 12, 24),
+                     DV = c(40, 70, 60, 30), AMT = 0, EVID = 0,
+                     CMT = "resp"))
+  }))
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.effCpt, .d, est = "stan",
+                        control = stanControl(run = FALSE)))
+  expect_s3_class(.code, "nlmixr2stanCode")
+  if (requireNamespace("rstan", quietly = TRUE)) {
+    expect_silent(rstan::stanc(model_code = .code$code,
+                               allow_undefined = TRUE))
+  }
+})

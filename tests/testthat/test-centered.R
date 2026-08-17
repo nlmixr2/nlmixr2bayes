@@ -43,7 +43,7 @@ test_that("centred == non-centred posterior (G13)", {
       .mod, .d, est = "stan",
       control = stanControl(chains = 2L, iter = 4000L, warmup = 1000L,
                             seed = 73L, etaParam = etaParam,
-                            adapt_delta = 0.95, likCores = 1L,
+                            adapt_delta = 0.95, cores = 1L,
                             calcTables = FALSE, onDiagnostic = "none"))))
   }
   .nc <- .fitWith("noncentered")

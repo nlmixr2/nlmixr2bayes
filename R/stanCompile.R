@@ -72,10 +72,32 @@ stanCompile <- function(code = .stanPhase0Code(), cache = TRUE,
     .m <- tryCatch(readRDS(.rds), error = function(e) NULL)
     if (!is.null(.m)) return(.m)
   }
+  # rstan::stan_model LEAKS compiler environment variables into the session
+  # (PKG_CPPFLAGS with a forced `-include .../Eigen.hpp`, PKG_LIBS with the
+  # Stan libraries, USE_CXX17) and never restores them, which then breaks
+  # every subsequent rxode2 C model compile in the session ("compilation
+  # terminated": gcc compiling C with a force-included C++ header).  est=
+  # "stan" compiles rxode2 models AFTER this point (the link), so snapshot
+  # and restore around the Stan compile.
+  .leak <- c("PKG_CPPFLAGS", "PKG_LIBS", "USE_CXX17", "PKG_CXXFLAGS")
+  .old <- Sys.getenv(.leak, unset = NA_character_)
+  on.exit({
+    for (.v in .leak) {
+      if (is.na(.old[[.v]])) {
+        Sys.unsetenv(.v)
+      } else {
+        do.call(Sys.setenv, stats::setNames(list(.old[[.v]]), .v))
+      }
+    }
+  }, add = TRUE)
+  # a fresh program shape takes 1-2 minutes to compile; say so, or the
+  # user reasonably concludes the session froze
+  cli::cli_inform("compiling Stan model (first time for this model shape; typically 1-2 minutes)...")
   .m <- rstan::stan_model(model_code = code, model_name = "nlmixr2stan",
                           allow_undefined = TRUE,
                           includes = paste0("\n#include \"", .hpp, "\"\n"),
                           auto_write = FALSE, verbose = verbose)
+  cli::cli_inform("done")
   if (cache) {
     dir.create(.dir, recursive = TRUE, showWarnings = FALSE)
     saveRDS(.m, .rds)

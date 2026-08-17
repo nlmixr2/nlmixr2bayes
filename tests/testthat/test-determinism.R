@@ -64,7 +64,7 @@ test_that("cond batch: 500 interleaved evaluations are bitwise identical (G2)", 
     }
   }
   expect_true(.ok)
-  # thread-count invariance: the same batch at likCores=2 is bitwise
+  # thread-count invariance: the same batch at cores=2 is bitwise
   # identical to the serial result (retry/tolerance state is subject-scoped
   # and reset per batch, so the parallel schedule cannot leak between
   # subjects)

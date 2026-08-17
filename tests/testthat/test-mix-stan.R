@@ -184,7 +184,7 @@ test_that("mixture end to end: assembled gradient + membership + fit contract", 
   .fit <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
     .mixMod, .d, est = "stan",
     control = stanControl(chains = 1L, iter = 500L, warmup = 250L,
-                          seed = 42L, likCores = 1L, calcTables = FALSE,
+                          seed = 42L, cores = 1L, calcTables = FALSE,
                           ofv = "none", onDiagnostic = "none"))))
   expect_true(inherits(.fit, "nlmixr2FitCore"))
   # membership posteriors: one row per subject, rows sum to 1

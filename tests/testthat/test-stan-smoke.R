@@ -59,3 +59,21 @@ test_that("stage 1+2: the linked model compiles, runs, and its gradient is right
   .refDiff <- (.cond(eta) + .prior(eta)) - (.cond(eta2) + .prior(eta2))
   expect_equal(.lpDiff, .refDiff, tolerance = 1e-6)
 })
+
+test_that("stanCompile does not leak rstan's compiler environment (rxode2 C compiles survive)", {
+  skip_if_not_installed("rstan")
+  skip_on_cran()
+  # rstan::stan_model permanently sets PKG_CPPFLAGS (with a forced C++
+  # -include), PKG_LIBS and USE_CXX17; unrestored, every later rxode2 C
+  # model compile in the session dies with "compilation terminated".
+  # stanCompile snapshots and restores them.
+  .before <- Sys.getenv(c("PKG_CPPFLAGS", "PKG_LIBS", "USE_CXX17"),
+                        unset = NA_character_)
+  .sm <- stanCompile(cache = TRUE) # cached: hits the fast path
+  # force a REAL compile path once per shape: a trivially different program
+  .code <- paste0(.stanPhase0Code(), "\n// leak-check variant")
+  .sm2 <- stanCompile(.code, cache = FALSE)
+  .after <- Sys.getenv(c("PKG_CPPFLAGS", "PKG_LIBS", "USE_CXX17"),
+                       unset = NA_character_)
+  expect_identical(.before, .after)
+})
