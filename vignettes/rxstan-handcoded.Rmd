@@ -13,11 +13,11 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 
 ## Hand-coded Stan: ODE-level linking
 
-While `nlmixr2(model, data, est = "stan")` automatically generates a Stan program 
-(see `vignette("nlmixr2bayes", "nlmixr2bayes")`), you may want to **write your own Stan code** 
+While `nlmixr2(model, data, est = "stan")` automatically generates a Stan program
+(see `vignette("nlmixr2bayes", "nlmixr2bayes")`), you may want to **write your own Stan code**
 to have full control over priors, derived quantities, and model structure.
 
-The `rxstan` component of `nlmixr2bayes` lets you do exactly that. You register an rxode2 model 
+The `rxstan` component of `nlmixr2bayes` lets you do exactly that. You register an rxode2 model
 as a solver backend via `rxsRegister()`, then write ordinary Stan that declares and calls it.
 
 ### When to use this approach

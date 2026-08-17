@@ -18,7 +18,7 @@ a lagged state, and you cannot write one in the Stan language, because the solut
 interpolated at $t - \tau$ while it is still being computed.
 
 However, **rxode2 has `delay()`**, and it propagates sensitivities through the delay correctly. 
-With rxstan's hand-coded approach (see `vignette("rxstan-handcoded", "nlmixr2bayes")`), 
+With rxstan's hand-coded approach (see `vignette("rxstan-handcoded", "nlmixr2bayes")`),
 a DDE becomes an ordinary Stan model.
 
 This vignette walks through a realistic example: delayed indirect response with feedback.
