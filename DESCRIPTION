@@ -31,6 +31,7 @@ Imports:
     utils
 Suggests:
     rstan (>= 2.26),
+    nimble,
     loo,
     posterior,
     testthat (>= 3.0.0),
