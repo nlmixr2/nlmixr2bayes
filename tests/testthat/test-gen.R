@@ -6,7 +6,7 @@ test_that("run=FALSE returns the generated program without touching rstan", {
   .out <- suppressMessages(
                            nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan",
                                                control = stanControl(run = FALSE)))
-  expect_s3_class(.out, "nlmixr2stanCode")
+  expect_s3_class(.out, "nlmixr2bayesCode")
   .code <- .out$code
   # external declaration + call
   expect_match(.code, "vector nlmixr2_cond_all2\\(matrix etaMat, vector theta\\);")

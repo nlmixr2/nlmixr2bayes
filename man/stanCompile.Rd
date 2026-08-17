@@ -17,7 +17,7 @@ stanCompile(
 \item{cache}{use (and populate) the on-disk cache}
 
 \item{cacheDir}{cache directory (default
-`tools::R_user_dir("nlmixr2stan", "cache")`)}
+`tools::R_user_dir("nlmixr2bayes", "cache")`)}
 
 \item{verbose}{show the compiler output}
 }
@@ -26,8 +26,8 @@ an `rstan::stanmodel`
 }
 \description{
 Wraps [rstan::stan_model()] with `allow_undefined=TRUE` and the
-`nlmixr2stan_lp.hpp` header injected via `includes=`.  Compiled models are
-cached by a hash of the program, the header, and the rstan/nlmixr2stan
+`nlmixr2bayes_lp.hpp` header injected via `includes=`.  Compiled models are
+cached by a hash of the program, the header, and the rstan/nlmixr2bayes
 versions.
 }
 \author{

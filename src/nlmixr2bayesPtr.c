@@ -2,13 +2,13 @@
  * external-pointer table (inst/include/nlmixr2estFoceiPtr.h, installed at
  * .onLoad from nlmixr2est::.nlmixr2estFoceiPtrs()), and re-export ONE plain-C
  * symbol via R_RegisterCCallable for the injected Stan header
- * (inst/include/nlmixr2stan_lp.hpp) to find with R_GetCCallable.
+ * (inst/include/nlmixr2bayes_lp.hpp) to find with R_GetCCallable.
  *
  * Deliberately NO Rcpp, NO Armadillo, NO Eigen, NO StanHeaders here: the
  * external function is compiled into rstan's own translation unit, and
  * everything crossing a shared-object boundary is a double pointer or an int,
  * so no C++ type ever appears in more than one DSO (see the design notes in
- * nlmixr2/nlmixr2stan#1). */
+ * nlmixr2/nlmixr2bayes#1). */
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
@@ -24,13 +24,13 @@ iniNlmixr2estNlmGlobals
 /* Subject-parallel thread count for the batch entries, set from R before
  * sampling (rxode2/nlmixr2est parallelize over subjects inside each call;
  * Stan itself stays single-threaded). */
-static int nlmixr2stanCores = 1;
+static int nlmixr2bayesCores = 1;
 
-SEXP _nlmixr2stan_setCores(SEXP n) {
+SEXP _nlmixr2bayes_setCores(SEXP n) {
   int c = Rf_asInteger(n);
   if (c == NA_INTEGER || c < 1) c = 1;
-  nlmixr2stanCores = c;
-  return Rf_ScalarInteger(nlmixr2stanCores);
+  nlmixr2bayesCores = c;
+  return Rf_ScalarInteger(nlmixr2bayesCores);
 }
 
 /* Iteration tick from inside the compiled Stan model's model block: the
@@ -38,12 +38,12 @@ SEXP _nlmixr2stan_setCores(SEXP n) {
  * current -2*sum(conditional log-lik).  Forwards to nlmixr2est's scale.h
  * iteration print (entry 8 of the FOCEi table); no-op (-1) when that
  * entry is absent (older nlmixr2est) or printing is not armed. */
-int nlmixr2stan_iter_tick(const double *par, int n, double objf) {
+int nlmixr2bayes_iter_tick(const double *par, int n, double objf) {
   if (nlmixr2FoceiIterPrintRowP == NULL) return -1;
   return nlmixr2FoceiIterPrintRowP(par, n, objf);
 }
 
-SEXP _nlmixr2stan_apiVersion(void) {
+SEXP _nlmixr2bayes_apiVersion(void) {
   if (nlmixr2FoceiApiVersionP == NULL) return Rf_ScalarInteger(-1);
   return Rf_ScalarInteger(nlmixr2FoceiApiVersionP());
 }
@@ -51,7 +51,7 @@ SEXP _nlmixr2stan_apiVersion(void) {
 /* mixture component count of the loaded problem (#955): 1 non-mixture, K
  * mixture, -1 not loaded, -2 when the loaded nlmixr2est predates the entry
  * (treat as refuse-mixtures) */
-SEXP _nlmixr2stan_nMix(void) {
+SEXP _nlmixr2bayes_nMix(void) {
   if (nlmixr2FoceiNMixP == NULL) return Rf_ScalarInteger(-2);
   return Rf_ScalarInteger(nlmixr2FoceiNMixP());
 }
@@ -60,18 +60,18 @@ SEXP _nlmixr2stan_nMix(void) {
  * The nlm entry returns MINUS log-likelihood + its analytic theta gradient
  * (natural scale); the injected header negates.  -100 = table not
  * installed (older nlmixr2est without the nlm API). */
-int nlmixr2stan_pop_eval(const double *theta, int ntheta,
+int nlmixr2bayes_pop_eval(const double *theta, int ntheta,
                          double *value, double *dTheta) {
   if (nlmixr2NlmEvalP == NULL) return -100;
   return nlmixr2NlmEvalP(theta, ntheta, value, dTheta);
 }
 
-SEXP _nlmixr2stan_nlmApiVersion(void) {
+SEXP _nlmixr2bayes_nlmApiVersion(void) {
   if (nlmixr2NlmApiVersionP == NULL) return Rf_ScalarInteger(-1);
   return Rf_ScalarInteger(nlmixr2NlmApiVersionP());
 }
 
-SEXP _nlmixr2stan_nlmDims(void) {
+SEXP _nlmixr2bayes_nlmDims(void) {
   SEXP ret, nm;
   int ntheta = 0, nobs = 0, flags = 0, rc;
   if (nlmixr2NlmDimsP == NULL) Rf_error("nlmixr2est nlm pointer table not installed");
@@ -93,7 +93,7 @@ SEXP _nlmixr2stan_nlmDims(void) {
 
 /* R-callable mirror over the exact C path the compiled Stan model uses;
  * returns the RAW nlm convention (value = -logLik) -- the header negates */
-SEXP _nlmixr2stan_popEval(SEXP thetaS) {
+SEXP _nlmixr2bayes_popEval(SEXP thetaS) {
   int ntheta, rc, i;
   double value = NA_REAL;
   SEXP val, grd, ret, nm;
@@ -101,10 +101,10 @@ SEXP _nlmixr2stan_popEval(SEXP thetaS) {
   ntheta = (int) Rf_xlength(thetaS);
   grd = PROTECT(Rf_allocVector(REALSXP, ntheta));
   for (i = 0; i < ntheta; i++) REAL(grd)[i] = 0.0;
-  rc = nlmixr2stan_pop_eval(REAL(thetaS), ntheta, &value, REAL(grd));
+  rc = nlmixr2bayes_pop_eval(REAL(thetaS), ntheta, &value, REAL(grd));
   if (rc < 0) {
     UNPROTECT(1);
-    Rf_error("nlmixr2stan_pop_eval failed with status %d", rc);
+    Rf_error("nlmixr2bayes_pop_eval failed with status %d", rc);
   }
   val = PROTECT(Rf_ScalarReal(value));
   ret = PROTECT(Rf_allocVector(VECSXP, 3));
@@ -121,13 +121,13 @@ SEXP _nlmixr2stan_popEval(SEXP thetaS) {
 }
 
 /* THE symbol the compiled Stan model resolves via
- * R_GetCCallable("nlmixr2stan", "nlmixr2stan_cond_batch").  Signature frozen
+ * R_GetCCallable("nlmixr2bayes", "nlmixr2bayes_cond_batch").  Signature frozen
  * by the injected header; never change it without bumping the header's guard.
  * eta/grad are nid x neta ROW-MAJOR (the nlmixr2est ABI). */
-int nlmixr2stan_cond_batch(const double *eta, int nid, int neta,
+int nlmixr2bayes_cond_batch(const double *eta, int nid, int neta,
                            double *value, double *grad) {
   if (nlmixr2FoceiCondBatchP == NULL) return -100; /* table not installed */
-  return nlmixr2FoceiCondBatchP(eta, nid, neta, nlmixr2stanCores, value, grad);
+  return nlmixr2FoceiCondBatchP(eta, nid, neta, nlmixr2bayesCores, value, grad);
 }
 
 /* ---- tier-2 state: theta base vector + mu-reference map -------------------
@@ -138,43 +138,43 @@ int nlmixr2stan_cond_batch(const double *eta, int nid, int neta,
  * the pair stays exact).  muRef[k] holds the 1-based theta index that
  * mu-references eta k (0 = none): for such a theta,
  * d/dtheta_p log p(y_i|eta_i) equals the eta_k gradient. */
-static double *nlmixr2stanThetaBase = NULL;
-static int nlmixr2stanNpars = 0;
-static int *nlmixr2stanMuRef = NULL;
-static int nlmixr2stanNeta = 0;
+static double *nlmixr2bayesThetaBase = NULL;
+static int nlmixr2bayesNpars = 0;
+static int *nlmixr2bayesMuRef = NULL;
+static int nlmixr2bayesNeta = 0;
 /* mu-referenced covariate coefficients: for mu_k = ... + theta_p * cov + eta_k
  * the chain rule gives d/dtheta_p = cov_i * d/deta_k.  covTheta[c] is the
  * 1-based theta index, covEta[c] the 0-based eta index, covVal the nid-per-
  * entry per-subject covariate values (entry-major: covVal[c*nid + i]). */
-static int nlmixr2stanNCov = 0;
-static int nlmixr2stanCovNid = 0;
-static int *nlmixr2stanCovTheta = NULL;
-static int *nlmixr2stanCovEta = NULL;
-static double *nlmixr2stanCovVal = NULL;
+static int nlmixr2bayesNCov = 0;
+static int nlmixr2bayesCovNid = 0;
+static int *nlmixr2bayesCovTheta = NULL;
+static int *nlmixr2bayesCovEta = NULL;
+static double *nlmixr2bayesCovVal = NULL;
 
-SEXP _nlmixr2stan_setThetaBase(SEXP thetaS) {
+SEXP _nlmixr2bayes_setThetaBase(SEXP thetaS) {
   int n = (int) Rf_xlength(thetaS), i;
   if (TYPEOF(thetaS) != REALSXP || n < 1) Rf_error("'theta' must be a numeric vector");
-  if (nlmixr2stanThetaBase != NULL) { R_Free(nlmixr2stanThetaBase); nlmixr2stanThetaBase = NULL; }
-  nlmixr2stanThetaBase = R_Calloc((size_t) n, double);
-  for (i = 0; i < n; i++) nlmixr2stanThetaBase[i] = REAL(thetaS)[i];
-  nlmixr2stanNpars = n;
+  if (nlmixr2bayesThetaBase != NULL) { R_Free(nlmixr2bayesThetaBase); nlmixr2bayesThetaBase = NULL; }
+  nlmixr2bayesThetaBase = R_Calloc((size_t) n, double);
+  for (i = 0; i < n; i++) nlmixr2bayesThetaBase[i] = REAL(thetaS)[i];
+  nlmixr2bayesNpars = n;
   return Rf_ScalarInteger(n);
 }
 
-SEXP _nlmixr2stan_setMuRef(SEXP idxS) {
+SEXP _nlmixr2bayes_setMuRef(SEXP idxS) {
   int n = (int) Rf_xlength(idxS), i;
   if (TYPEOF(idxS) != INTSXP) Rf_error("'muRef' must be an integer vector");
-  if (nlmixr2stanMuRef != NULL) { R_Free(nlmixr2stanMuRef); nlmixr2stanMuRef = NULL; }
-  nlmixr2stanMuRef = R_Calloc((size_t) (n > 0 ? n : 1), int);
-  for (i = 0; i < n; i++) nlmixr2stanMuRef[i] = INTEGER(idxS)[i];
-  nlmixr2stanNeta = n;
+  if (nlmixr2bayesMuRef != NULL) { R_Free(nlmixr2bayesMuRef); nlmixr2bayesMuRef = NULL; }
+  nlmixr2bayesMuRef = R_Calloc((size_t) (n > 0 ? n : 1), int);
+  for (i = 0; i < n; i++) nlmixr2bayesMuRef[i] = INTEGER(idxS)[i];
+  nlmixr2bayesNeta = n;
   return Rf_ScalarInteger(n);
 }
 
 /* thetaIdxS: 1-based theta index per entry; etaIdxS: 0-based eta index per
  * entry; covValS: nid x nCov (col-major, which IS entry-major here) */
-SEXP _nlmixr2stan_setMuRefCov(SEXP thetaIdxS, SEXP etaIdxS, SEXP covValS) {
+SEXP _nlmixr2bayes_setMuRefCov(SEXP thetaIdxS, SEXP etaIdxS, SEXP covValS) {
   int nc = (int) Rf_xlength(thetaIdxS), nid, i;
   SEXP dim;
   if (TYPEOF(thetaIdxS) != INTSXP || TYPEOF(etaIdxS) != INTSXP ||
@@ -187,36 +187,36 @@ SEXP _nlmixr2stan_setMuRefCov(SEXP thetaIdxS, SEXP etaIdxS, SEXP covValS) {
     Rf_error("'covVal' must be a numeric nid x length(thetaIdx) matrix");
   }
   nid = INTEGER(dim)[0];
-  if (nlmixr2stanCovTheta != NULL) { R_Free(nlmixr2stanCovTheta); nlmixr2stanCovTheta = NULL; }
-  if (nlmixr2stanCovEta != NULL) { R_Free(nlmixr2stanCovEta); nlmixr2stanCovEta = NULL; }
-  if (nlmixr2stanCovVal != NULL) { R_Free(nlmixr2stanCovVal); nlmixr2stanCovVal = NULL; }
-  nlmixr2stanNCov = 0;
-  nlmixr2stanCovNid = 0;
+  if (nlmixr2bayesCovTheta != NULL) { R_Free(nlmixr2bayesCovTheta); nlmixr2bayesCovTheta = NULL; }
+  if (nlmixr2bayesCovEta != NULL) { R_Free(nlmixr2bayesCovEta); nlmixr2bayesCovEta = NULL; }
+  if (nlmixr2bayesCovVal != NULL) { R_Free(nlmixr2bayesCovVal); nlmixr2bayesCovVal = NULL; }
+  nlmixr2bayesNCov = 0;
+  nlmixr2bayesCovNid = 0;
   if (nc > 0) {
-    nlmixr2stanCovTheta = R_Calloc((size_t) nc, int);
-    nlmixr2stanCovEta = R_Calloc((size_t) nc, int);
-    nlmixr2stanCovVal = R_Calloc((size_t) nc * nid, double);
+    nlmixr2bayesCovTheta = R_Calloc((size_t) nc, int);
+    nlmixr2bayesCovEta = R_Calloc((size_t) nc, int);
+    nlmixr2bayesCovVal = R_Calloc((size_t) nc * nid, double);
     for (i = 0; i < nc; i++) {
-      nlmixr2stanCovTheta[i] = INTEGER(thetaIdxS)[i];
-      nlmixr2stanCovEta[i] = INTEGER(etaIdxS)[i];
+      nlmixr2bayesCovTheta[i] = INTEGER(thetaIdxS)[i];
+      nlmixr2bayesCovEta[i] = INTEGER(etaIdxS)[i];
     }
-    for (i = 0; i < nc * nid; i++) nlmixr2stanCovVal[i] = REAL(covValS)[i];
-    nlmixr2stanNCov = nc;
-    nlmixr2stanCovNid = nid;
+    for (i = 0; i < nc * nid; i++) nlmixr2bayesCovVal[i] = REAL(covValS)[i];
+    nlmixr2bayesNCov = nc;
+    nlmixr2bayesCovNid = nid;
   }
   return Rf_ScalarInteger(nc);
 }
 
-SEXP _nlmixr2stan_clearThetaBase(void) {
-  if (nlmixr2stanThetaBase != NULL) { R_Free(nlmixr2stanThetaBase); nlmixr2stanThetaBase = NULL; }
-  if (nlmixr2stanMuRef != NULL) { R_Free(nlmixr2stanMuRef); nlmixr2stanMuRef = NULL; }
-  if (nlmixr2stanCovTheta != NULL) { R_Free(nlmixr2stanCovTheta); nlmixr2stanCovTheta = NULL; }
-  if (nlmixr2stanCovEta != NULL) { R_Free(nlmixr2stanCovEta); nlmixr2stanCovEta = NULL; }
-  if (nlmixr2stanCovVal != NULL) { R_Free(nlmixr2stanCovVal); nlmixr2stanCovVal = NULL; }
-  nlmixr2stanNpars = 0;
-  nlmixr2stanNeta = 0;
-  nlmixr2stanNCov = 0;
-  nlmixr2stanCovNid = 0;
+SEXP _nlmixr2bayes_clearThetaBase(void) {
+  if (nlmixr2bayesThetaBase != NULL) { R_Free(nlmixr2bayesThetaBase); nlmixr2bayesThetaBase = NULL; }
+  if (nlmixr2bayesMuRef != NULL) { R_Free(nlmixr2bayesMuRef); nlmixr2bayesMuRef = NULL; }
+  if (nlmixr2bayesCovTheta != NULL) { R_Free(nlmixr2bayesCovTheta); nlmixr2bayesCovTheta = NULL; }
+  if (nlmixr2bayesCovEta != NULL) { R_Free(nlmixr2bayesCovEta); nlmixr2bayesCovEta = NULL; }
+  if (nlmixr2bayesCovVal != NULL) { R_Free(nlmixr2bayesCovVal); nlmixr2bayesCovVal = NULL; }
+  nlmixr2bayesNpars = 0;
+  nlmixr2bayesNeta = 0;
+  nlmixr2bayesNCov = 0;
+  nlmixr2bayesCovNid = 0;
   return R_NilValue;
 }
 
@@ -228,17 +228,17 @@ SEXP _nlmixr2stan_clearThetaBase(void) {
  * (number of non-finite subjects) or <0 on hard failure; -101 when the
  * tier-2 state was never installed, -102 on a theta-set failure, -103 when
  * the theta-sensitivity model is not wired but non-mu thetas exist. */
-int nlmixr2stan_cond_batch_theta(const double *theta, int ntheta,
+int nlmixr2bayes_cond_batch_theta(const double *theta, int ntheta,
                                  const double *eta, int nid, int neta,
                                  double *value, double *gradEta,
                                  double *gradTheta) {
   int rc, rcT, i, k, p;
   size_t j;
   if (nlmixr2FoceiCondBatchP == NULL) return -100;
-  if (nlmixr2stanThetaBase == NULL || nlmixr2stanMuRef == NULL ||
-      ntheta > nlmixr2stanNpars || neta != nlmixr2stanNeta) return -101;
-  for (j = 0; j < (size_t) ntheta; j++) nlmixr2stanThetaBase[j] = theta[j];
-  rc = nlmixr2FoceiSetThetaP(nlmixr2stanThetaBase, nlmixr2stanNpars);
+  if (nlmixr2bayesThetaBase == NULL || nlmixr2bayesMuRef == NULL ||
+      ntheta > nlmixr2bayesNpars || neta != nlmixr2bayesNeta) return -101;
+  for (j = 0; j < (size_t) ntheta; j++) nlmixr2bayesThetaBase[j] = theta[j];
+  rc = nlmixr2FoceiSetThetaP(nlmixr2bayesThetaBase, nlmixr2bayesNpars);
   if (rc != 0) return -102;
   /* #958 fused entry: value + d/d(eta) + d/d(theta) from ONE combined-model
    * solve per subject.  Self-negotiating: -5 (not a combined build) and -4
@@ -246,17 +246,17 @@ int nlmixr2stan_cond_batch_theta(const double *theta, int ntheta,
    * negative codes are hard failures either way. */
   rc = -5;
   if (nlmixr2FoceiCondBatchThetaGradP != NULL) {
-    rc = nlmixr2FoceiCondBatchThetaGradP(eta, nid, neta, nlmixr2stanCores,
+    rc = nlmixr2FoceiCondBatchThetaGradP(eta, nid, neta, nlmixr2bayesCores,
                                          value, gradEta, gradTheta);
     if (rc < 0 && rc != -5 && rc != -4) return rc;
   }
   if (rc < 0) {
-    rc = nlmixr2FoceiCondBatchP(eta, nid, neta, nlmixr2stanCores, value,
+    rc = nlmixr2FoceiCondBatchP(eta, nid, neta, nlmixr2bayesCores, value,
                                 gradEta);
     if (rc < 0) return rc;
     /* forward-sensitivity theta columns (zero-filled by the callee); -4 =
      * model not wired, tolerable only when no sensitivity thetas exist */
-    rcT = nlmixr2FoceiCondThetaGradP(eta, nid, neta, nlmixr2stanCores,
+    rcT = nlmixr2FoceiCondThetaGradP(eta, nid, neta, nlmixr2bayesCores,
                                      gradTheta);
     if (rcT == -4) {
       if (nlmixr2FoceiThetaSensIdxP(NULL, 0) != 0) return -103;
@@ -268,7 +268,7 @@ int nlmixr2stan_cond_batch_theta(const double *theta, int ntheta,
   /* mu-referenced columns: d/dtheta_p = d/deta_k of the conditional */
   for (i = 0; i < nid; i++) {
     for (k = 0; k < neta; k++) {
-      p = nlmixr2stanMuRef[k];
+      p = nlmixr2bayesMuRef[k];
       if (p >= 1 && p <= ntheta) {
         gradTheta[(size_t) i * ntheta + (p - 1)] +=
           gradEta[(size_t) i * neta + k];
@@ -276,16 +276,16 @@ int nlmixr2stan_cond_batch_theta(const double *theta, int ntheta,
     }
   }
   /* mu-referenced covariate coefficients: d/dtheta_p = cov_i * d/deta_k */
-  if (nlmixr2stanNCov > 0) {
+  if (nlmixr2bayesNCov > 0) {
     int c;
-    if (nlmixr2stanCovNid != nid) return -104;
-    for (c = 0; c < nlmixr2stanNCov; c++) {
-      p = nlmixr2stanCovTheta[c];
-      k = nlmixr2stanCovEta[c];
+    if (nlmixr2bayesCovNid != nid) return -104;
+    for (c = 0; c < nlmixr2bayesNCov; c++) {
+      p = nlmixr2bayesCovTheta[c];
+      k = nlmixr2bayesCovEta[c];
       if (p < 1 || p > ntheta || k < 0 || k >= neta) return -105;
       for (i = 0; i < nid; i++) {
         gradTheta[(size_t) i * ntheta + (p - 1)] +=
-          nlmixr2stanCovVal[(size_t) c * nid + i] *
+          nlmixr2bayesCovVal[(size_t) c * nid + i] *
           gradEta[(size_t) i * neta + k];
       }
     }
@@ -294,7 +294,7 @@ int nlmixr2stan_cond_batch_theta(const double *theta, int ntheta,
 }
 
 /* R-callable mirror (col-major in/out) for tests and the FD oracle */
-SEXP _nlmixr2stan_condBatchTheta(SEXP thetaS, SEXP etaS) {
+SEXP _nlmixr2bayes_condBatchTheta(SEXP thetaS, SEXP etaS) {
   int nid, neta, ntheta, i, j, rc;
   double *eta, *value, *gradEta, *gradTheta, *in;
   SEXP dim, val, ge, gt, ret, nm;
@@ -312,9 +312,9 @@ SEXP _nlmixr2stan_condBatchTheta(SEXP thetaS, SEXP etaS) {
   for (i = 0; i < nid; i++) {
     for (j = 0; j < neta; j++) eta[(size_t) i * neta + j] = in[i + (size_t) j * nid];
   }
-  rc = nlmixr2stan_cond_batch_theta(REAL(thetaS), ntheta, eta, nid, neta,
+  rc = nlmixr2bayes_cond_batch_theta(REAL(thetaS), ntheta, eta, nid, neta,
                                     value, gradEta, gradTheta);
-  if (rc < 0) Rf_error("nlmixr2stan_cond_batch_theta failed with status %d", rc);
+  if (rc < 0) Rf_error("nlmixr2bayes_cond_batch_theta failed with status %d", rc);
   val = PROTECT(Rf_allocVector(REALSXP, nid));
   ge = PROTECT(Rf_allocMatrix(REALSXP, nid, neta));
   gt = PROTECT(Rf_allocMatrix(REALSXP, nid, ntheta));
@@ -344,7 +344,7 @@ SEXP _nlmixr2stan_condBatchTheta(SEXP thetaS, SEXP etaS) {
  * without Stan in the picture.  R matrices are COLUMN-major; the ABI is
  * row-major, so the wrappers transpose on the way in and out. */
 
-SEXP _nlmixr2stan_dims(void) {
+SEXP _nlmixr2bayes_dims(void) {
   SEXP ret, nm;
   int nid = 0, neta = 0, ntheta = 0, npars = 0, flags = 0, rc;
   if (nlmixr2FoceiDimsP == NULL) Rf_error("nlmixr2est FOCEi pointer table not installed");
@@ -368,13 +368,13 @@ SEXP _nlmixr2stan_dims(void) {
   return ret;
 }
 
-SEXP _nlmixr2stan_setTheta(SEXP thetaS) {
+SEXP _nlmixr2bayes_setTheta(SEXP thetaS) {
   if (nlmixr2FoceiSetThetaP == NULL) Rf_error("nlmixr2est FOCEi pointer table not installed");
   if (TYPEOF(thetaS) != REALSXP) Rf_error("'theta' must be a numeric vector");
   return Rf_ScalarInteger(nlmixr2FoceiSetThetaP(REAL(thetaS), (int)Rf_xlength(thetaS)));
 }
 
-SEXP _nlmixr2stan_setOmegaInv(SEXP m) {
+SEXP _nlmixr2bayes_setOmegaInv(SEXP m) {
   int n, i, j, rc;
   double *oi, *in;
   SEXP dim;
@@ -399,7 +399,7 @@ SEXP _nlmixr2stan_setOmegaInv(SEXP m) {
 /* value + d/d(eta) of the conditional log-likelihood; etaS is an R (col-major)
  * nid x neta matrix.  Returns list(value=, grad=, nBad=); errors on a hard
  * failure code so R callers cannot mistake it for a rejection. */
-SEXP _nlmixr2stan_condBatch(SEXP etaS) {
+SEXP _nlmixr2bayes_condBatch(SEXP etaS) {
   int nid, neta, i, j, rc;
   double *eta, *value, *grad, *in, *gv, *gg;
   SEXP dim, val, grd, nbad, ret, nm;
@@ -418,8 +418,8 @@ SEXP _nlmixr2stan_condBatch(SEXP etaS) {
       eta[(size_t) i * neta + j] = in[i + (size_t) j * nid];
     }
   }
-  rc = nlmixr2stan_cond_batch(eta, nid, neta, value, grad);
-  if (rc < 0) Rf_error("nlmixr2stan_cond_batch failed with status %d", rc);
+  rc = nlmixr2bayes_cond_batch(eta, nid, neta, value, grad);
+  if (rc < 0) Rf_error("nlmixr2bayes_cond_batch failed with status %d", rc);
   val = PROTECT(Rf_allocVector(REALSXP, nid));
   grd = PROTECT(Rf_allocMatrix(REALSXP, nid, neta));
   gv = REAL(val);

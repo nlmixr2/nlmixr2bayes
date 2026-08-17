@@ -179,7 +179,7 @@
   .mixP <- tryCatch(ui$mixProbs, error = function(e) NULL)
   .nMixUi <- length(.mixP) + 1L
   if (.nMixUi > 1L) {
-    if (identical(.Call(`_nlmixr2stan_nMix`), -2L)) {
+    if (identical(.Call(`_nlmixr2bayes_nMix`), -2L)) {
       stop("est=\"stan\" mixture support needs an nlmixr2est whose FOCEi C ",
            "API blesses the component-major layout ",
            "(nlmixr2/nlmixr2est#955); update nlmixr2est", call. = FALSE)
@@ -251,7 +251,7 @@
 #'
 #' @param env nlmixr2 estimation environment
 #' @param ... passed through
-#' @return an nlmixr2 fit (or an `nlmixr2stanCode` when
+#' @return an nlmixr2 fit (or an `nlmixr2bayesCode` when
 #'   `stanControl(run=FALSE)`)
 #' @keywords internal
 #' @author Matthew L Fidler
@@ -332,7 +332,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     .out <- list(code = .gen$code, data = .gen$data, map = .map,
                  priors = .pri, notes = .gen$notes, ui = ui,
                  control = control, env = .env, dispNames = .gen$dispNames)
-    class(.out) <- "nlmixr2stanCode"
+    class(.out) <- "nlmixr2bayesCode"
     return(.out)
   }
   rxode2::rxReq("rstan")
@@ -379,7 +379,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
                       maxOdeRecalc = control$maxOdeRecalc,
                       fallbackFD = control$fallbackFD)
   on.exit(stanLinkFree(), add = TRUE)
-  on.exit(.Call(`_nlmixr2stan_clearThetaBase`), add = TRUE)
+  on.exit(.Call(`_nlmixr2bayes_clearThetaBase`), add = TRUE)
   if (!identical(.h$etaNames, .map$eta$name) ||
         .h$ntheta != nrow(.map$theta)) {
     stop("the linked problem's parameters do not match the model map",
@@ -388,8 +388,8 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   .stanAssertThetaGradCover(.map, .h$thetaSensIdx)
   # tier-2 state: base parameter vector (omega tail fixed at link values) +
   # the mu-reference map for the theta-gradient assembly
-  .Call(`_nlmixr2stan_setThetaBase`, as.double(.h$initPar))
-  .Call(`_nlmixr2stan_setMuRef`, as.integer(.map$muRefIdx))
+  .Call(`_nlmixr2bayes_setThetaBase`, as.double(.h$initPar))
+  .Call(`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
   # covariate-coefficient scatter: d/dtheta_p = cov_i * d/deta_k.  Only for
   # SUBJECT-CONSTANT coefficients the theta-sensitivity model does NOT
   # already carry -- when upstream classifies the coefficient as a plain
@@ -418,13 +418,13 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
       # component-major expanded rows share the physical subject's covariate
       .cv <- do.call(rbind, rep(list(.cv), .map$nMix))
     }
-    .Call(`_nlmixr2stan_setMuRefCov`,
+    .Call(`_nlmixr2bayes_setMuRefCov`,
           as.integer(.map$muRefCov$thetaIdx[.mrcS]),
           as.integer(.map$muRefCov$etaIdx[.mrcS] - 1L),
           .cv)
   }
   if (.map$nMix > 1L) {
-    .nm <- .Call(`_nlmixr2stan_nMix`)
+    .nm <- .Call(`_nlmixr2bayes_nMix`)
     if (!identical(.nm, .map$nMix)) {
       stop("the linked problem reports ", .nm, " mixture component(s) but ",
            "the model map expects ", .map$nMix, call. = FALSE) # nocov
@@ -473,7 +473,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   if (.usePsock) {
     # Windows PSOCK workers must build their OWN link state; free the
     # parent's preflight link before the workers start.
-    .Call(`_nlmixr2stan_clearThetaBase`)
+    .Call(`_nlmixr2bayes_clearThetaBase`)
     stanLinkFree()
     .sf <- .stanRunInferencePsock(.sm, .gen, .map, .cov, .needSens, .nid,
                                   control, ui, env$data)
@@ -486,7 +486,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     if (is.data.frame(.ph)) .ret$parHistData <- .ph
   }
   .dx <- .stanDiagnostics(.sf, control)
-  if (inherits(.sf, "nlmixr2stanPathfinder")) {
+  if (inherits(.sf, "nlmixr2bayesPathfinder")) {
     # the generated-quantities pass (rstan::gqs -> nlmixr2_cond_all2)
     # needs the linked likelihood, so it must run BEFORE the teardown
     # below; NUTS/ADVI evaluate their GQ inside rstan while sampling
@@ -497,7 +497,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   # and rebuilds the process-global inner problem -- our link would be stale
   # underneath them either way, and nothing after sampling evaluates it.  The
   # on.exit registrations above stay as no-op safety.
-  .Call(`_nlmixr2stan_clearThetaBase`)
+  .Call(`_nlmixr2bayes_clearThetaBase`)
   stanLinkFree()
   .stanFinalizeEnv(.ret, ui, env, .sf, .map, .gen, .dx, control)
 }
@@ -542,8 +542,8 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
          call. = FALSE) # nocov
   }
   .stanAssertThetaGradCover(map, .h$thetaSensIdx)
-  .Call(`_nlmixr2stan_setThetaBase`, as.double(.h$initPar))
-  .Call(`_nlmixr2stan_setMuRef`, as.integer(map$muRefIdx))
+  .Call(`_nlmixr2bayes_setThetaBase`, as.double(.h$initPar))
+  .Call(`_nlmixr2bayes_setMuRef`, as.integer(map$muRefIdx))
   .mrcFree <- !map$theta$fix[map$muRefCov$thetaIdx]
   .mrcTvBad <- which(cov$timeVarying & .mrcFree &
                        !(map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
@@ -558,13 +558,13 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   if (length(.mrcS) > 0L) {
     .cv <- cov$val[, .mrcS, drop = FALSE]
     if (map$nMix > 1L) .cv <- do.call(rbind, rep(list(.cv), map$nMix))
-    .Call(`_nlmixr2stan_setMuRefCov`,
+    .Call(`_nlmixr2bayes_setMuRefCov`,
           as.integer(map$muRefCov$thetaIdx[.mrcS]),
           as.integer(map$muRefCov$etaIdx[.mrcS] - 1L),
           .cv)
   }
   if (map$nMix > 1L) {
-    .nm <- .Call(`_nlmixr2stan_nMix`)
+    .nm <- .Call(`_nlmixr2bayes_nMix`)
     if (!identical(.nm, map$nMix)) {
       stop("the linked problem reports ", .nm, " mixture component(s) but ",
            "the model map expects ", map$nMix, call. = FALSE) # nocov
@@ -598,17 +598,17 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   .cl <- parallel::makePSOCKcluster(control$chainCores)
   on.exit(parallel::stopCluster(.cl), add = TRUE)
   parallel::clusterEvalQ(.cl, {
-    requireNamespace("nlmixr2stan", quietly = TRUE)
+    requireNamespace("nlmixr2bayes", quietly = TRUE)
     requireNamespace("rstan", quietly = TRUE)
     requireNamespace("rxode2", quietly = TRUE)
     requireNamespace("nlmixr2est", quietly = TRUE)
     NULL
   })
   .sfl <- parallel::parLapply(.cl, .chainIds, function(.cid) {
-    nlmixr2stan:::.stanLinkSetupForRun(ui, data, map, cov, needSens, control)
-    on.exit(nlmixr2stan:::stanLinkFree(), add = TRUE)
-    on.exit(.Call(`_nlmixr2stan_clearThetaBase`), add = TRUE)
-    .i1 <- nlmixr2stan:::.stanChainInit(.init, .cid, control$chains)
+    nlmixr2bayes:::.stanLinkSetupForRun(ui, data, map, cov, needSens, control)
+    on.exit(nlmixr2bayes:::stanLinkFree(), add = TRUE)
+    on.exit(.Call(`_nlmixr2bayes_clearThetaBase`), add = TRUE)
+    .i1 <- nlmixr2bayes:::.stanChainInit(.init, .cid, control$chains)
     rstan::sampling(sm, data = gen$data, chains = 1L, chain_id = .cid,
                     iter = control$iter, warmup = control$warmup,
                     thin = control$thin, seed = control$seed,
@@ -1013,7 +1013,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   # conditional on the eta factorization (the only one the linkage exposes;
   # per-observation granularity is a possible upstream extension).
   if (requireNamespace("loo", quietly = TRUE)) {
-    if (inherits(sf, "nlmixr2stanPathfinder")) {
+    if (inherits(sf, "nlmixr2bayesPathfinder")) {
       # resampled draws have no chain structure; r_eff stays NULL
       .ll <- .stanExtract(sf, pars = "logLikSubj")$logLikSubj
       .llArr <- array(.ll, dim = c(nrow(.ll), 1L, ncol(.ll)))
@@ -1057,7 +1057,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
 
 #' @author Matthew L Fidler
 #' @export
-print.nlmixr2stanCode <- function(x, ...) {
+print.nlmixr2bayesCode <- function(x, ...) {
   cat(x$code, sep = "\n")
   invisible(x)
 }

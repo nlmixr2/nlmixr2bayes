@@ -47,11 +47,11 @@ test_that("half-Cauchy branch (b): explicit T[0,] shifts the target by exactly a
   .smB <- stanCompile(paste(.linesT, collapse = "\n"))
   h <- stanLinkSetup(.g7Mod, .linkData(), thetaSens = TRUE, cores = 1L)
   on.exit({
-    .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
     stanLinkFree()
   }, add = TRUE)
-  .Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(h$initPar))
-  .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, 1L)
+  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
   .sfA <- rstan::sampling(.smA, data = .code$data, chains = 1, iter = 2,
                           warmup = 1, refresh = 0, cores = 1,
                           show_messages = FALSE)
@@ -81,11 +81,11 @@ test_that("fixed seed: bitwise-identical draws within a session (G9)", {
   .sm <- stanCompile(.code$code)
   h <- stanLinkSetup(.g7Mod, .linkData(), thetaSens = TRUE, cores = 1L)
   on.exit({
-    .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
     stanLinkFree()
   }, add = TRUE)
-  .Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(h$initPar))
-  .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, 1L)
+  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
   .run <- function() {
     rstan::extract(
       rstan::sampling(.sm, data = .code$data, chains = 1L, iter = 300L,
@@ -102,7 +102,7 @@ test_that("compile cache: content-keyed hit; code-changing knobs re-key (G9d)", 
   .code <- suppressMessages(
     nlmixr2est::nlmixr2(.g7Mod, .linkData(), est = "stan",
                         control = stanControl(run = FALSE)))
-  .dir <- file.path(tempdir(), "nlmixr2stan-cache-test")
+  .dir <- file.path(tempdir(), "nlmixr2bayes-cache-test")
   unlink(.dir, recursive = TRUE)
   .t1 <- system.time(stanCompile(.code$code, cacheDir = .dir))[["elapsed"]]
   expect_length(list.files(.dir, pattern = "^stanmodel-.*rds$"), 1L)

@@ -43,7 +43,7 @@ stanLinkSetup <- function(ui, data, likelihood = c("focei", "foce"),
                           maxOdeRecalc = 3L, fallbackFD = TRUE) {
   likelihood <- match.arg(likelihood)
   if (!is.null(.stanLinkEnv$handle)) {
-    stop("an nlmixr2stan likelihood is already linked; call stanLinkFree() first\n",
+    stop("an nlmixr2bayes likelihood is already linked; call stanLinkFree() first\n",
          "(op_focei is a process-wide global: one linked problem at a time)",
          call. = FALSE)
   }
@@ -73,7 +73,7 @@ stanLinkSetup <- function(ui, data, likelihood = c("focei", "foce"),
                 fallbackFD = fallbackFD)
   if (.useComb) .args$combSens <- TRUE
   .h <- do.call(nlmixr2est::foceiLikLoad, .args)
-  .d <- .Call(`_nlmixr2stan_dims`)
+  .d <- .Call(`_nlmixr2bayes_dims`)
   if (.d[["status"]] != 0L) {
     nlmixr2est::foceiLikUnload()
     stop("the linked problem did not come up (dims status ", .d[["status"]], ")",
@@ -95,7 +95,7 @@ stanLinkSetup <- function(ui, data, likelihood = c("focei", "foce"),
          " noise breaks a gradient-based sampler", call. = FALSE)
   }
   if (bitwAnd(.flags, 0x10L) != 0L &&
-        identical(.Call(`_nlmixr2stan_nMix`), -2L)) {
+        identical(.Call(`_nlmixr2bayes_nMix`), -2L)) {
     # 0x10 marks the component-major mixture LAYOUT; with the blessed
     # batch entries (nlmixr2/nlmixr2est#955, the nMix table entry) the
     # linkage handles it -- only an older nlmixr2est refuses
@@ -136,19 +136,19 @@ stanLinkFree <- function() {
 
 #' value + d/d(eta) of the conditional log-likelihood, through the exact C
 #' path the compiled Stan model uses (R_RegisterCCallable ->
-#' nlmixr2stan_cond_batch -> nlmixr2est's pointer table)
+#' nlmixr2bayes_cond_batch -> nlmixr2est's pointer table)
 #'
 #' @param eta nid x neta matrix
 #' @return list(value=, grad=, nBad=)
 #' @noRd
 .condBatch <- function(eta) {
-  .Call(`_nlmixr2stan_condBatch`, as.matrix(eta))
+  .Call(`_nlmixr2bayes_condBatch`, as.matrix(eta))
 }
 
 #' Write the natural-scale parameter vector into the linked problem
 #' @noRd
 .linkSetTheta <- function(theta) {
-  .rc <- .Call(`_nlmixr2stan_setTheta`, as.double(theta))
+  .rc <- .Call(`_nlmixr2bayes_setTheta`, as.double(theta))
   if (.rc != 0L) {
     stop("setting theta failed with status ", .rc, call. = FALSE)
   }
@@ -158,7 +158,7 @@ stanLinkFree <- function() {
 #' Install a caller-side Omega^-1 for gradient conditioning
 #' @noRd
 .linkSetOmegaInv <- function(omegaInv) {
-  .rc <- .Call(`_nlmixr2stan_setOmegaInv`, as.matrix(omegaInv))
+  .rc <- .Call(`_nlmixr2bayes_setOmegaInv`, as.matrix(omegaInv))
   if (.rc != 0L) {
     stop("setting Omega^-1 failed with status ", .rc, call. = FALSE)
   }
@@ -191,7 +191,7 @@ stanPopLinkSetup <- function(ui, data, rxControl = rxode2::rxControl(),
                              cores = rxode2::getRxThreads(),
                              print = 0L) {
   if (!is.null(.stanLinkEnv$handle)) {
-    stop("an nlmixr2stan likelihood is already linked; call stanLinkFree() ",
+    stop("an nlmixr2bayes likelihood is already linked; call stanLinkFree() ",
          "first", call. = FALSE)
   }
   if (!.stanHasNlmApi()) {
@@ -212,7 +212,7 @@ stanPopLinkSetup <- function(ui, data, rxControl = rxode2::rxControl(),
                                                maxOdeRecalc = 3L,
                                                print = as.integer(print)),
     gradient = TRUE, scale = "natural")
-  .d <- .Call(`_nlmixr2stan_nlmDims`)
+  .d <- .Call(`_nlmixr2bayes_nlmDims`)
   if (.d[["status"]] != 0L) {
     nlmixr2est::.nlmFreeEnv() # nocov
     stop("the tier-0 problem did not come up (dims status ", .d[["status"]],
@@ -255,5 +255,5 @@ stanPopLinkSetup <- function(ui, data, rxControl = rxode2::rxControl(),
 #' injected header negates)
 #' @noRd
 .popEval <- function(theta) {
-  .Call(`_nlmixr2stan_popEval`, as.double(theta))
+  .Call(`_nlmixr2bayes_popEval`, as.double(theta))
 }

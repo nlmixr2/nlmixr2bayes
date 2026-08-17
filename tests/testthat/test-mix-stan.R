@@ -37,7 +37,7 @@
   }))
 }
 
-.stanHasMixApi <- function() !identical(.Call(nlmixr2stan:::`_nlmixr2stan_nMix`), -2L)
+.stanHasMixApi <- function() !identical(.Call(nlmixr2bayes:::`_nlmixr2bayes_nMix`), -2L)
 
 test_that("mixture codegen: component-major etas + log_sum_exp + membership", {
   skip_on_cran()
@@ -46,7 +46,7 @@ test_that("mixture codegen: component-major etas + log_sum_exp + membership", {
   .code <- suppressMessages(
     nlmixr2est::nlmixr2(.mixMod, .mixData(), est = "stan",
                         control = stanControl(run = FALSE)))
-  expect_s3_class(.code, "nlmixr2stanCode")
+  expect_s3_class(.code, "nlmixr2bayesCode")
   .lines <- strsplit(.code$code, "\n")[[1]]
   # the mixing probability is constrained to (0,1) regardless of iniDf
   expect_true(any(grepl("real<lower=0,upper=1> p1;", .lines, fixed = TRUE)))
@@ -97,16 +97,16 @@ test_that("mixture tier-2 shim: component-conditional value + gradients FD-agree
   .d <- .mixData()
   h <- stanLinkSetup(.mixMod, .d, thetaSens = TRUE, cores = 1L)
   on.exit({
-    .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
     stanLinkFree()
   }, add = TRUE)
-  expect_identical(.Call(nlmixr2stan:::`_nlmixr2stan_nMix`), 2L)
-  .map <- nlmixr2stan:::.stanMap(rxode2::rxode2(.mixMod))
+  expect_identical(.Call(nlmixr2bayes:::`_nlmixr2bayes_nMix`), 2L)
+  .map <- nlmixr2bayes:::.stanMap(rxode2::rxode2(.mixMod))
   expect_equal(.map$nMix, 2L)
-  .Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(h$initPar))
-  .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, as.integer(.map$muRefIdx))
+  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
   .bt <- function(theta, e) {
-    .Call(nlmixr2stan:::`_nlmixr2stan_condBatchTheta`, as.double(theta),
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta),
           as.matrix(e))
   }
   set.seed(7)
@@ -200,12 +200,12 @@ test_that("mixture end to end: assembled gradient + membership + fit contract", 
   if (requireNamespace("numDeriv", quietly = TRUE)) {
     h <- stanLinkSetup(.mixMod, .d, thetaSens = TRUE, cores = 1L)
     on.exit({
-      .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
       stanLinkFree()
     }, add = TRUE)
-    .map <- nlmixr2stan:::.stanMap(rxode2::rxode2(.mixMod))
-    .Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(h$initPar))
-    .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, as.integer(.map$muRefIdx))
+    .map <- nlmixr2bayes:::.stanMap(rxode2::rxode2(.mixMod))
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
     .sf <- .fit$env$stanfit
     set.seed(3)
     .pt <- list(tcl1 = 1.05, tcl2 = 1.95, tv = 2.95, p1 = 0.35,

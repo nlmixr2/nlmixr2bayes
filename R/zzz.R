@@ -1,4 +1,4 @@
-#' @useDynLib nlmixr2stan, .registration=TRUE
+#' @useDynLib nlmixr2bayes, .registration=TRUE
 #' @importFrom stats setNames
 #' @importFrom methods is
 #' @importFrom nlmixr2est nlmixr2Est getValidNlmixrCtl nmObjGetControl nmObjHandleControlObject
@@ -13,7 +13,6 @@ NULL
   # The nlm (tier-0, population-only) table is OPTIONAL: an older nlmixr2est
   # without nlmixr2/nlmixr2est#953 just leaves tier 0 unavailable.
   .iniNlmPtrs()
-  .Call(`_nlmixr2stan_iniRxodePtrs`, rxode2::.rxode2ptrs())
 }
 
 #' Install (or refresh) the nlmixr2est nlm pointer table (tier 0, #953);
@@ -23,12 +22,12 @@ NULL
   .fun <- tryCatch(getExportedValue("nlmixr2est", ".nlmixr2estNlmPtrs"),
                    error = function(e) NULL)
   if (is.null(.fun)) return(invisible(FALSE))
-  .Call(`_nlmixr2stan_iniNlmPtrs`, .fun())
-  .v <- .Call(`_nlmixr2stan_nlmApiVersion`)
+  .Call(`_nlmixr2bayes_iniNlmPtrs`, .fun())
+  .v <- .Call(`_nlmixr2bayes_nlmApiVersion`)
   if (!identical(.v, 1L)) {
-    stop("nlmixr2stan was built against nlm C API version 1, but the loaded ",
+    stop("nlmixr2bayes was built against nlm C API version 1, but the loaded ",
          "nlmixr2est provides version ", .v,
-         "; reinstall nlmixr2stan against this nlmixr2est", call. = FALSE)
+         "; reinstall nlmixr2bayes against this nlmixr2est", call. = FALSE)
   }
   invisible(TRUE)
 }
@@ -44,7 +43,7 @@ NULL
 #' Is the tier-0 (population-only) nlm C API available?
 #' @noRd
 .stanHasNlmApi <- function() {
-  identical(.Call(`_nlmixr2stan_nlmApiVersion`), 1L)
+  identical(.Call(`_nlmixr2bayes_nlmApiVersion`), 1L)
 }
 
 #' Install (or refresh) the nlmixr2est FOCEi pointer table
@@ -60,12 +59,12 @@ NULL
          "(nlmixr2/nlmixr2est#937)",
          call. = FALSE)
   }
-  .Call(`_nlmixr2stan_iniFoceiPtrs`, .fun())
-  .v <- .Call(`_nlmixr2stan_apiVersion`)
+  .Call(`_nlmixr2bayes_iniFoceiPtrs`, .fun())
+  .v <- .Call(`_nlmixr2bayes_apiVersion`)
   if (!identical(.v, 1L)) {
-    stop("nlmixr2stan was built against FOCEi C API version 1, but the ",
+    stop("nlmixr2bayes was built against FOCEi C API version 1, but the ",
          "loaded nlmixr2est provides version ", .v,
-         "; reinstall nlmixr2stan against this nlmixr2est",
+         "; reinstall nlmixr2bayes against this nlmixr2est",
          call. = FALSE)
   }
   invisible(.v)
@@ -73,7 +72,7 @@ NULL
 
 #' Set the subject-parallel thread count for the linked likelihood
 #'
-#' Stan itself runs single-threaded in nlmixr2stan; the parallelism lives in
+#' Stan itself runs single-threaded in nlmixr2bayes; the parallelism lives in
 #' the rxode2/nlmixr2est subject loop inside each likelihood evaluation.  This
 #' sets how many threads that loop uses (clamped to what the loaded solve pool
 #' supports, and to 1 when the ODE method is not thread safe).
@@ -84,5 +83,5 @@ NULL
 #' @export
 stanSetCores <- function(cores = rxode2::getRxThreads()) {
   checkmate::assertIntegerish(cores, lower = 1, len = 1, any.missing = FALSE)
-  invisible(.Call(`_nlmixr2stan_setCores`, as.integer(cores)))
+  invisible(.Call(`_nlmixr2bayes_setCores`, as.integer(cores)))
 }

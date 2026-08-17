@@ -34,7 +34,7 @@
 #'
 #' 1. `callShape`: stanc3 still emits the external call as
 #'    `nlmixr2_cond_all(<expr>, pstream__)` with no template-argument list --
-#'    the shape `inst/include/nlmixr2stan_lp.hpp`'s concrete overloads bind to.
+#'    the shape `inst/include/nlmixr2bayes_lp.hpp`'s concrete overloads bind to.
 #' 2. `injectionPoint`: the first `class <ident>` in the generated code sits
 #'    inside `namespace <model>_namespace`, which is where
 #'    `rstan::stan_model(includes=)` splices the header.
@@ -45,7 +45,7 @@
 #'   `rstanVersion`; `ok=NA` when rstan is not installed
 #' @export
 #' @author Matthew L Fidler
-nlmixr2stanBuildInfo <- function(force = FALSE) {
+nlmixr2bayesBuildInfo <- function(force = FALSE) {
   if (!force && !is.null(.stanBuildEnv$info)) return(.stanBuildEnv$info)
   if (!requireNamespace("rstan", quietly = TRUE)) {
     .ret <- list(ok = NA, callShape = NA, injectionPoint = NA,
@@ -53,7 +53,7 @@ nlmixr2stanBuildInfo <- function(force = FALSE) {
     .stanBuildEnv$info <- .ret
     return(.ret)
   }
-  .sc <- rstan::stanc(model_code = .stanProbeCode(), model_name = "nlmixr2stan_probe",
+  .sc <- rstan::stanc(model_code = .stanProbeCode(), model_name = "nlmixr2bayes_probe",
                       allow_undefined = TRUE)
   .cpp <- .sc$cppcode
   # (1) call shape: the plain two-argument form, no template arguments
@@ -78,20 +78,20 @@ nlmixr2stanBuildInfo <- function(force = FALSE) {
 #' Error unless the Stan build environment probes pass
 #' @noRd
 .stanAssertBuildOk <- function() {
-  .i <- nlmixr2stanBuildInfo()
+  .i <- nlmixr2bayesBuildInfo()
   if (isTRUE(is.na(.i$ok))) {
     stop("rstan is not installed; install rstan to compile the linked Stan model",
          call. = FALSE)
   }
   if (!isTRUE(.i$callShape)) {
     stop("this stanc3 no longer emits the external-function call shape ",
-         "nlmixr2stan's header binds to (nlmixr2_cond_all(eta, pstream__)); ",
-         "nlmixr2stan needs updating for rstan ", .i$rstanVersion,
+         "nlmixr2bayes's header binds to (nlmixr2_cond_all(eta, pstream__)); ",
+         "nlmixr2bayes needs updating for rstan ", .i$rstanVersion,
          call. = FALSE)
   }
   if (!isTRUE(.i$injectionPoint)) {
     stop("this rstan no longer injects includes= inside the model namespace; ",
-         "nlmixr2stan needs updating for rstan ", .i$rstanVersion,
+         "nlmixr2bayes needs updating for rstan ", .i$rstanVersion,
          call. = FALSE)
   }
   invisible(TRUE)

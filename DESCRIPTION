@@ -1,6 +1,6 @@
-Package: nlmixr2stan
+Package: nlmixr2bayes
 Type: Package
-Title: Stan Interface for 'nlmixr2'
+Title: Bayesian Interface for 'nlmixr2'
 Version: 0.0.1
 Authors@R: c(
     person("Matthew L.", "Fidler", role = c("aut", "cre"),
@@ -16,8 +16,8 @@ Description: Bayesian estimation for 'nlmixr2' models by linking Stan (via
     distributions come from the model's 'ini({})' block, whose distribution
     catalogue is one-to-one with Stan's.
 License: MIT
-URL: https://github.com/nlmixr2/nlmixr2stan
-BugReports: https://github.com/nlmixr2/nlmixr2stan/issues
+URL: https://github.com/nlmixr2/nlmixr2bayes
+BugReports: https://github.com/nlmixr2/nlmixr2bayes/issues
 Depends: R (>= 4.2)
 Imports:
     nlmixr2est (> 7.0.2),

@@ -69,9 +69,9 @@ test_that("a high khat is surfaced through onDiagnostic", {
   .sim <- list(diagnostics = list(psis = list(pareto_k = 1.2)))
   .fake <- methods::setClass("fakeVb", representation(sim = "list"))(sim = .sim)
   .ctl <- list(algorithm = "meanfield", onDiagnostic = "warn")
-  expect_warning(nlmixr2stan:::.stanDiagnosticsVb(.fake, .ctl),
+  expect_warning(nlmixr2bayes:::.stanDiagnosticsVb(.fake, .ctl),
                  "khat")
   .ctl$onDiagnostic <- "none"
-  .dx <- nlmixr2stan:::.stanDiagnosticsVb(.fake, .ctl)
+  .dx <- nlmixr2bayes:::.stanDiagnosticsVb(.fake, .ctl)
   expect_equal(.dx$khat, 1.2)
 })

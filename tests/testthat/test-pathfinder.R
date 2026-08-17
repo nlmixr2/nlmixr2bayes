@@ -9,7 +9,7 @@ test_that("pathfinder core recovers an analytic correlated Gaussian", {
   .mu <- c(3, -1)
   .fn <- function(x) -0.5 * as.numeric(t(x - .mu) %*% .si %*% (x - .mu))
   .gr <- function(x) as.numeric(-.si %*% (x - .mu))
-  .r <- nlmixr2stan:::.pathfinderMulti(.fn, .gr, c(-5, 5), paths = 4L,
+  .r <- nlmixr2bayes:::.pathfinderMulti(.fn, .gr, c(-5, 5), paths = 4L,
                                        jitterSd = 1, drawsPerPath = 2000L,
                                        nDraws = 4000L)
   expect_equal(.r$nPathsOk, 4L)
@@ -26,7 +26,7 @@ test_that("pathfinder core survives a -Inf region (half support)", {
   # line-search rejection path
   .fn <- function(x) if (x[1] <= 0) -Inf else -x[1]
   .gr <- function(x) -1
-  .r <- nlmixr2stan:::.pathfinderMulti(.fn, .gr, 2, paths = 2L,
+  .r <- nlmixr2bayes:::.pathfinderMulti(.fn, .gr, 2, paths = 2L,
                                        jitterSd = 0.5,
                                        drawsPerPath = 500L, nDraws = 500L)
   # a boundary-running target has no interior optimum; either outcome

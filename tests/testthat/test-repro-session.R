@@ -11,10 +11,10 @@ test_that("fixed seed: bitwise-identical draws across fresh sessions (G9)", {
   skip_if_not_installed("callr")
   skip_if_not(nzchar(Sys.getenv("NLMIXR2STAN_SLOW")),
               "set NLMIXR2STAN_SLOW=TRUE for the cross-session gate")
-  # the fresh callr sessions load the INSTALLED nlmixr2stan (a load_all-only
+  # the fresh callr sessions load the INSTALLED nlmixr2bayes (a load_all-only
   # dev tree cannot serve a subprocess)
-  skip_if_not(nzchar(system.file(package = "nlmixr2stan")),
-              "nlmixr2stan must be installed for the cross-session gate")
+  skip_if_not(nzchar(system.file(package = "nlmixr2bayes")),
+              "nlmixr2bayes must be installed for the cross-session gate")
   .run <- function() {
     callr::r(function() {
       .mod <- function() {
@@ -42,7 +42,7 @@ test_that("fixed seed: bitwise-identical draws across fresh sessions (G9)", {
       }))
       .fit <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
         .mod, .d, est = "stan",
-        control = nlmixr2stan::stanControl(chains = 1L, iter = 400L,
+        control = nlmixr2bayes::stanControl(chains = 1L, iter = 400L,
                                            warmup = 200L, seed = 42L,
                                            cores = 1L,
                                            calcTables = FALSE,

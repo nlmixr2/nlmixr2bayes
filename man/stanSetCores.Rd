@@ -13,7 +13,7 @@ stanSetCores(cores = rxode2::getRxThreads())
 invisibly, the thread count set
 }
 \description{
-Stan itself runs single-threaded in nlmixr2stan; the parallelism lives in
+Stan itself runs single-threaded in nlmixr2bayes; the parallelism lives in
 the rxode2/nlmixr2est subject loop inside each likelihood evaluation.  This
 sets how many threads that loop uses (clamped to what the loaded solve pool
 supports, and to 1 when the ODE method is not thread safe).

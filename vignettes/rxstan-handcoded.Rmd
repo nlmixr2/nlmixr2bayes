@@ -14,10 +14,10 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 ## Hand-coded Stan: ODE-level linking
 
 While `nlmixr2(model, data, est = "stan")` automatically generates a Stan program 
-(see `vignette("nlmixr2stan", "nlmixr2stan")`), you may want to **write your own Stan code** 
+(see `vignette("nlmixr2bayes", "nlmixr2bayes")`), you may want to **write your own Stan code** 
 to have full control over priors, derived quantities, and model structure.
 
-The `rxstan` component of `nlmixr2stan` lets you do exactly that. You register an rxode2 model 
+The `rxstan` component of `nlmixr2bayes` lets you do exactly that. You register an rxode2 model 
 as a solver backend via `rxsRegister()`, then write ordinary Stan that declares and calls it.
 
 ### When to use this approach
@@ -33,7 +33,7 @@ as a solver backend via `rxsRegister()`, then write ordinary Stan that declares 
 If you have a complete **nlmixr2-style model** with priors in the `ini({})` block, 
 prefer `nlmixr2(model, data, est = "stan")` — it's simpler, keeps one source of truth 
 for the likelihood, and is validated against every other nlmixr2 method. 
-See `vignette("nlmixr2stan", "nlmixr2stan")`.
+See `vignette("nlmixr2bayes", "nlmixr2bayes")`.
 
 ---
 
@@ -41,7 +41,7 @@ See `vignette("nlmixr2stan", "nlmixr2stan")`.
 
 While `nlmixr2(model, data, est = "stan")` automatically generates and compiles a Stan program,
 you may want to write your own Stan code to have full control over priors, derived quantities,
-and model structure. The `rxstan` component of `nlmixr2stan` lets you do exactly that.
+and model structure. The `rxstan` component of `nlmixr2bayes` lets you do exactly that.
 
 Stan can already solve ODEs, but it does so by autodiffing *through* the integrator, which is 
 expensive, and its interface has no concept of a dose, a lag time, or a delay differential equation.

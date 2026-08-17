@@ -45,7 +45,7 @@ test_that("Torsten poppk2cpt port generates and parses", {
   .code <- suppressMessages(
     nlmixr2est::nlmixr2(.poppk2cpt, .d, est = "stan",
                         control = stanControl(run = FALSE)))
-  expect_s3_class(.code, "nlmixr2stanCode")
+  expect_s3_class(.code, "nlmixr2bayesCode")
   # the announced default omega prior mirrors Torsten's hand-coded choice
   expect_true(any(grepl("lkj_corr_cholesky", strsplit(.code$code, "\n")[[1]],
                         fixed = TRUE)))
@@ -128,7 +128,7 @@ test_that("Torsten Friberg-Karlsson port (two endpoints) generates and parses", 
   .code <- suppressMessages(
     nlmixr2est::nlmixr2(.fk, .d, est = "stan",
                         control = stanControl(run = FALSE)))
-  expect_s3_class(.code, "nlmixr2stanCode")
+  expect_s3_class(.code, "nlmixr2bayesCode")
   if (requireNamespace("rstan", quietly = TRUE)) {
     expect_silent(rstan::stanc(model_code = .code$code,
                                allow_undefined = TRUE))
@@ -137,7 +137,7 @@ test_that("Torsten Friberg-Karlsson port (two endpoints) generates and parses", 
 
 test_that("Torsten pk2cpt port (single patient, no etas) generates and parses", {
   skip_on_cran()
-  skip_if_not(nlmixr2stan:::.stanHasNlmApi(),
+  skip_if_not(nlmixr2bayes:::.stanHasNlmApi(),
               "nlmixr2est lacks the nlm C API (#953)")
   # the single-patient two-compartment example, Torsten's informative
   # lognormal priors verbatim (normal on the log-scale parameters)
@@ -174,7 +174,7 @@ test_that("Torsten pk2cpt port (single patient, no etas) generates and parses", 
   .code <- suppressMessages(
     nlmixr2est::nlmixr2(.pk2cpt, .d, est = "stan",
                         control = stanControl(run = FALSE)))
-  expect_s3_class(.code, "nlmixr2stanCode")
+  expect_s3_class(.code, "nlmixr2bayesCode")
   .lines <- strsplit(.code$code, "\n")[[1]]
   expect_true(any(grepl("nlmixr2_pop_ll", .lines, fixed = TRUE)))
   if (requireNamespace("rstan", quietly = TRUE)) {
@@ -217,7 +217,7 @@ test_that("IOV occasion-indicator pattern generates and parses", {
   .code <- suppressMessages(
     nlmixr2est::nlmixr2(.iov, .d, est = "stan",
                         control = stanControl(run = FALSE)))
-  expect_s3_class(.code, "nlmixr2stanCode")
+  expect_s3_class(.code, "nlmixr2bayesCode")
   if (requireNamespace("rstan", quietly = TRUE)) {
     expect_silent(rstan::stanc(model_code = .code$code,
                                allow_undefined = TRUE))
@@ -281,7 +281,7 @@ test_that("Torsten effCpt port (effect-compartment population PK/PD) generates a
   .code <- suppressMessages(
     nlmixr2est::nlmixr2(.effCpt, .d, est = "stan",
                         control = stanControl(run = FALSE)))
-  expect_s3_class(.code, "nlmixr2stanCode")
+  expect_s3_class(.code, "nlmixr2bayesCode")
   if (requireNamespace("rstan", quietly = TRUE)) {
     expect_silent(rstan::stanc(model_code = .code$code,
                                allow_undefined = TRUE))

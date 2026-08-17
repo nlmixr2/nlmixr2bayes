@@ -7,7 +7,7 @@
 test_that("stan build probes pass", {
   skip_if_not_installed("rstan")
   skip_on_cran()
-  .i <- nlmixr2stanBuildInfo(force = TRUE)
+  .i <- nlmixr2bayesBuildInfo(force = TRUE)
   expect_true(isTRUE(.i$ok))
   expect_true(isTRUE(.i$callShape))
   expect_true(isTRUE(.i$injectionPoint))
@@ -19,11 +19,11 @@ test_that("stage 1+2: the linked model compiles, runs, and its gradient is right
   skip_on_cran()
   h <- stanLinkSetup(.linkMod, .linkData(), cores = 1L)
   on.exit(stanLinkFree(), add = TRUE)
-  nlmixr2stan:::.linkSetTheta(h$initPar)
+  nlmixr2bayes:::.linkSetTheta(h$initPar)
   # keep nlmixr2est's internal Omega^-1 aligned with the Omega Stan uses so
   # the gradient assembly is well conditioned (value is Omega-free)
   .om <- matrix(0.1, 1, 1)
-  nlmixr2stan:::.linkSetOmegaInv(solve(.om))
+  nlmixr2bayes:::.linkSetOmegaInv(solve(.om))
 
   # ---- stage 1: compiles and links ----------------------------------------
   sm <- stanCompile(cache = TRUE)
@@ -52,7 +52,7 @@ test_that("stage 1+2: the linked model compiles, runs, and its gradient is right
   up2 <- rstan::unconstrain_pars(sf, list(eta = eta2))
   .lpDiff <- rstan::log_prob(sf, up, adjust_transform = FALSE) -
     rstan::log_prob(sf, up2, adjust_transform = FALSE)
-  .cond <- function(e) sum(nlmixr2stan:::.condBatch(e)$value)
+  .cond <- function(e) sum(nlmixr2bayes:::.condBatch(e)$value)
   .prior <- function(e) {
     sum(stats::dnorm(as.numeric(e), 0, sqrt(0.1), log = TRUE))
   }

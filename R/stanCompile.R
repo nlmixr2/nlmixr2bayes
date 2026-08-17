@@ -10,7 +10,7 @@
   paste(
         "functions {",
         "  // external (allow_undefined): value + analytic d/d(eta) supplied by",
-        "  // the linked rxode2/nlmixr2est likelihood via nlmixr2stan_lp.hpp",
+        "  // the linked rxode2/nlmixr2est likelihood via nlmixr2bayes_lp.hpp",
         "  vector nlmixr2_cond_all(matrix etaMat);",
         "}",
         "data {",
@@ -35,8 +35,8 @@
 #' Path to the injected external-function header
 #' @noRd
 .stanLpHeader <- function() {
-  .h <- system.file("include", "nlmixr2stan_lp.hpp", package = "nlmixr2stan")
-  if (!nzchar(.h)) stop("nlmixr2stan_lp.hpp not found", call. = FALSE) # nocov
+  .h <- system.file("include", "nlmixr2bayes_lp.hpp", package = "nlmixr2bayes")
+  if (!nzchar(.h)) stop("nlmixr2bayes_lp.hpp not found", call. = FALSE) # nocov
   # forward slashes: rstan uses includes= as a sub() replacement, where
   # backslashes are escape characters
   normalizePath(.h, winslash = "/")
@@ -45,14 +45,14 @@
 #' Compile a Stan program against the linked likelihood
 #'
 #' Wraps [rstan::stan_model()] with `allow_undefined=TRUE` and the
-#' `nlmixr2stan_lp.hpp` header injected via `includes=`.  Compiled models are
-#' cached by a hash of the program, the header, and the rstan/nlmixr2stan
+#' `nlmixr2bayes_lp.hpp` header injected via `includes=`.  Compiled models are
+#' cached by a hash of the program, the header, and the rstan/nlmixr2bayes
 #' versions.
 #'
 #' @param code Stan program text (default: the phase-0 eta-only program)
 #' @param cache use (and populate) the on-disk cache
 #' @param cacheDir cache directory (default
-#'   `tools::R_user_dir("nlmixr2stan", "cache")`)
+#'   `tools::R_user_dir("nlmixr2bayes", "cache")`)
 #' @param verbose show the compiler output
 #' @return an `rstan::stanmodel`
 #' @export
@@ -64,9 +64,9 @@ stanCompile <- function(code = .stanPhase0Code(), cache = TRUE,
   .hpp <- .stanLpHeader()
   .key <- digest::digest(list(code, readLines(.hpp),
                               as.character(utils::packageVersion("rstan")),
-                              as.character(utils::packageVersion("nlmixr2stan")),
+                              as.character(utils::packageVersion("nlmixr2bayes")),
                               R.version.string))
-  .dir <- if (is.null(cacheDir)) tools::R_user_dir("nlmixr2stan", "cache") else cacheDir
+  .dir <- if (is.null(cacheDir)) tools::R_user_dir("nlmixr2bayes", "cache") else cacheDir
   .rds <- file.path(.dir, paste0("stanmodel-", .key, ".rds"))
   if (cache && file.exists(.rds)) {
     .m <- tryCatch(readRDS(.rds), error = function(e) NULL)
@@ -93,7 +93,7 @@ stanCompile <- function(code = .stanPhase0Code(), cache = TRUE,
   # a fresh program shape takes 1-2 minutes to compile; say so, or the
   # user reasonably concludes the session froze
   cli::cli_inform("compiling Stan model (first time for this model shape; typically 1-2 minutes)...")
-  .m <- rstan::stan_model(model_code = code, model_name = "nlmixr2stan",
+  .m <- rstan::stan_model(model_code = code, model_name = "nlmixr2bayes",
                           allow_undefined = TRUE,
                           includes = paste0("\n#include \"", .hpp, "\"\n"),
                           auto_write = FALSE, verbose = verbose)

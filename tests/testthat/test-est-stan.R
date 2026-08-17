@@ -77,7 +77,7 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
 test_that("iteration print + parameter history over the sampler", {
   skip_on_cran()
   skip_if_not_installed("rstan")
-  skip_if_not(nlmixr2stan:::.stanHasIterPrint())
+  skip_if_not(nlmixr2bayes:::.stanHasIterPrint())
   # the scale.h table prints via Rprintf (stdout); nlmixr2's own progress
   # goes to the message stream -- capture both
   .out <- utils::capture.output(type = "output", {

@@ -72,15 +72,15 @@ test_that("M3 censoring: value = textbook + the documented constant; gradients c
   .d <- .censData()
   h <- stanLinkSetup(.censMod, .d, thetaSens = TRUE, cores = 1L)
   on.exit({
-    .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
     stanLinkFree()
   }, add = TRUE)
-  .Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(h$initPar))
-  .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, 1L)
+  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
   .eta <- matrix(c(-0.1, 0.05, 0.2, -0.15), 4, 1)
   .th <- c(1, 3, 0.5)
   .bt <- function(theta, e) {
-    .Call(nlmixr2stan:::`_nlmixr2stan_condBatchTheta`, as.double(theta),
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta),
           as.matrix(e))
   }
   got <- .bt(.th, .eta)
@@ -113,15 +113,15 @@ test_that("M4 censoring (LIMIT column): value constant + FD gradients", {
   .d <- .censData(limit = 0)
   h <- stanLinkSetup(.censMod, .d, thetaSens = TRUE, cores = 1L)
   on.exit({
-    .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
     stanLinkFree()
   }, add = TRUE)
-  .Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(h$initPar))
-  .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, 1L)
+  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
   .eta <- matrix(c(-0.1, 0.05, 0.2, -0.15), 4, 1)
   .th <- c(1, 3, 0.5)
   .bt <- function(theta, e) {
-    .Call(nlmixr2stan:::`_nlmixr2stan_condBatchTheta`, as.double(theta),
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta),
           as.matrix(e))
   }
   got <- .bt(.th, .eta)
@@ -173,22 +173,22 @@ test_that("ll() endpoint: twin of add() up to the per-obs constant; FD gradients
   .eta <- matrix(c(-0.1, 0.05, 0.2, -0.15), 4, 1)
   .th <- c(1, 3, 0.5)
   .bt <- function(theta, e) {
-    .Call(nlmixr2stan:::`_nlmixr2stan_condBatchTheta`, as.double(theta),
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta),
           as.matrix(e))
   }
   h <- stanLinkSetup(.censMod, .d, thetaSens = TRUE, cores = 1L)
-  .Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(h$initPar))
-  .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, 1L)
+  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
   .addV <- .bt(.th, .eta)
   stanLinkFree()
-  .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+  .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
   h2 <- stanLinkSetup(.llMod, .d, thetaSens = TRUE, cores = 1L)
   on.exit({
-    .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
     stanLinkFree()
   }, add = TRUE)
-  .Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(h2$initPar))
-  .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, 1L)
+  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h2$initPar))
+  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
   got <- .bt(.th, .eta)
   expect_equal(got$nBad, 0L)
   # ll() value = the full textbook density; add() twin = same + 5*0.5*log(2pi)

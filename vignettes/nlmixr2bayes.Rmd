@@ -13,11 +13,11 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 
 ## Automatic model generation: likelihood-level linking
 
-`nlmixr2stan` adds a Bayesian HMC estimation method to nlmixr2 that **automatically 
+`nlmixr2bayes` adds a Bayesian HMC estimation method to nlmixr2 that **automatically 
 generates and compiles a Stan program**:
 
 ```{r}
-library(nlmixr2stan)
+library(nlmixr2bayes)
 fit <- nlmixr2est::nlmixr2(model, data, est = "stan")
 ```
 
@@ -36,7 +36,7 @@ linking, and sampling. **No Stan code to write** — this vignette is for you.
 
 If you want **full control over your Stan program** — custom priors, derived quantities, 
 multiple endpoints with mixed structures, or you're fitting **delay differential equations** — 
-see `vignette("rxstan-handcoded", "nlmixr2stan")` for the rxstan approach.
+see `vignette("rxstan-handcoded", "nlmixr2bayes")` for the rxstan approach.
 
 ---
 
@@ -153,7 +153,7 @@ same generated program and the same linked likelihood:
   scale (Stan's `rstan::vb()`).
 * `"fullrank"` -- ADVI with one full-covariance Gaussian.
 * `"pathfinder"` -- multi-path Pathfinder (Zhang, Carpenter, Gelman &
-  Vehtari 2022), implemented in nlmixr2stan against the compiled model's
+  Vehtari 2022), implemented in nlmixr2bayes against the compiled model's
   exact log density and analytic gradient (rstan does not expose the
   Pathfinder service): L-BFGS trajectories from jittered starts, an
   ELBO-selected local Gaussian per path, and Pareto-smoothed importance

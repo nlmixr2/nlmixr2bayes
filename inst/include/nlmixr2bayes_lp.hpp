@@ -9,28 +9,28 @@
 //     stan::math::var, precomputed_gradients, throw_domain_error).
 //   * everything here must be legal inside a namespace.
 //   * each compiled model gets its own copy in its own namespace -- no ODR
-//     question, and no Stan symbol is ever exported from nlmixr2stan's own
+//     question, and no Stan symbol is ever exported from nlmixr2bayes's own
 //     shared object (which contains no Stan code at all).
 //
-// The C ABI it resolves lives in nlmixr2stan's DLL
-// (src/nlmixr2stanPtr.c::nlmixr2stan_cond_batch), which forwards to
+// The C ABI it resolves lives in nlmixr2bayes's DLL
+// (src/nlmixr2bayesPtr.c::nlmixr2bayes_cond_batch), which forwards to
 // nlmixr2est's FOCEi conditional-likelihood entry-point table: value is
 // log p(y_i | eta_i) (identical to foceiLikRun(type="cond")) and grad is
 // d/d(eta_i) of that value, assembled inside nlmixr2est so the sign
 // convention is never reconstructed here.  Row-major nid x neta.
 
-typedef int (*nlmixr2stan_cond_batch_t)(const double *eta, int nid, int neta,
+typedef int (*nlmixr2bayes_cond_batch_t)(const double *eta, int nid, int neta,
                                         double *value, double *grad);
 
-inline nlmixr2stan_cond_batch_t nlmixr2stan__fn() {
-  static nlmixr2stan_cond_batch_t fn = 0;
+inline nlmixr2bayes_cond_batch_t nlmixr2bayes__fn() {
+  static nlmixr2bayes_cond_batch_t fn = 0;
   if (fn == 0) {
-    // R_GetCCallable Rf_error()s (longjmp) if nlmixr2stan is not loaded.
+    // R_GetCCallable Rf_error()s (longjmp) if nlmixr2bayes is not loaded.
     // That can only happen on the FIRST log_prob call, before any sampling
     // work; the R-side wrapper forces one evaluation up front so the failure
     // surfaces there rather than mid-chain.
-    fn = reinterpret_cast<nlmixr2stan_cond_batch_t>(
-      R_GetCCallable("nlmixr2stan", "nlmixr2stan_cond_batch"));
+    fn = reinterpret_cast<nlmixr2bayes_cond_batch_t>(
+      R_GetCCallable("nlmixr2bayes", "nlmixr2bayes_cond_batch"));
   }
   return fn;
 }
@@ -40,11 +40,11 @@ inline nlmixr2stan_cond_batch_t nlmixr2stan__fn() {
 // as a rejection, not a crash).  rc > 0 means some subjects' values are -Inf
 // with zeroed gradient rows -- also a rejection, handled by Stan when the
 // -Inf reaches the target.
-inline int nlmixr2stan__batch(const double *eta, int nid, int neta,
+inline int nlmixr2bayes__batch(const double *eta, int nid, int neta,
                               double *value, double *grad,
                               std::ostream *pstream__) {
   (void)pstream__;
-  const int rc = nlmixr2stan__fn()(eta, nid, neta, value, grad);
+  const int rc = nlmixr2bayes__fn()(eta, nid, neta, value, grad);
   if (rc < 0) {
     stan::math::throw_domain_error("nlmixr2_cond_all", "nlmixr2est status",
                                    rc, "was ", " (<0 is a hard failure)");
@@ -67,7 +67,7 @@ nlmixr2_cond_all(const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>& et
       e[static_cast<size_t>(i) * neta + j] = eta(i, j);
     }
   }
-  nlmixr2stan__batch(e.data(), nid, neta, v.data(), g.data(), pstream__);
+  nlmixr2bayes__batch(e.data(), nid, neta, v.data(), g.data(), pstream__);
   Eigen::Matrix<double, Eigen::Dynamic, 1> out(nid);
   for (int i = 0; i < nid; ++i) {
     // defensive: a non-finite value must reach Stan as -Inf (a rejection),
@@ -98,7 +98,7 @@ nlmixr2_cond_all(const Eigen::Matrix<stan::math::var, Eigen::Dynamic,
       e[static_cast<size_t>(i) * neta + j] = eta(i, j).val();
     }
   }
-  nlmixr2stan__batch(e.data(), nid, neta, v.data(), g.data(), pstream__);
+  nlmixr2bayes__batch(e.data(), nid, neta, v.data(), g.data(), pstream__);
   Eigen::Matrix<var, Eigen::Dynamic, 1> out(nid);
   std::vector<var> ops(static_cast<size_t>(neta));
   std::vector<double> gi(static_cast<size_t>(neta));
@@ -121,35 +121,35 @@ nlmixr2_cond_all(const Eigen::Matrix<stan::math::var, Eigen::Dynamic,
 }
 
 // ============================================================================
-// Tier 2: theta sampled too.  nlmixr2stan_cond_batch_theta writes the
+// Tier 2: theta sampled too.  nlmixr2bayes_cond_batch_theta writes the
 // natural-scale theta into the loaded problem (the omega tail of the
 // parameter vector stays at its link-time values; the conditional does not
 // depend on it) and returns value + d/d(eta) + d/d(theta), the theta columns
 // combining nlmixr2est's forward sensitivities (non-mu structural and
 // residual thetas) with the mu-reference identity d/dtheta_p = d/deta_k.
 
-typedef int (*nlmixr2stan_cond_batch_theta_t)(const double *theta, int ntheta,
+typedef int (*nlmixr2bayes_cond_batch_theta_t)(const double *theta, int ntheta,
                                               const double *eta, int nid,
                                               int neta, double *value,
                                               double *gradEta,
                                               double *gradTheta);
 
-inline nlmixr2stan_cond_batch_theta_t nlmixr2stan__fnTheta() {
-  static nlmixr2stan_cond_batch_theta_t fn = 0;
+inline nlmixr2bayes_cond_batch_theta_t nlmixr2bayes__fnTheta() {
+  static nlmixr2bayes_cond_batch_theta_t fn = 0;
   if (fn == 0) {
-    fn = reinterpret_cast<nlmixr2stan_cond_batch_theta_t>(
-      R_GetCCallable("nlmixr2stan", "nlmixr2stan_cond_batch_theta"));
+    fn = reinterpret_cast<nlmixr2bayes_cond_batch_theta_t>(
+      R_GetCCallable("nlmixr2bayes", "nlmixr2bayes_cond_batch_theta"));
   }
   return fn;
 }
 
-inline int nlmixr2stan__batchTheta(const double *theta, int ntheta,
+inline int nlmixr2bayes__batchTheta(const double *theta, int ntheta,
                                    const double *eta, int nid, int neta,
                                    double *value, double *gradEta,
                                    double *gradTheta,
                                    std::ostream *pstream__) {
   (void)pstream__;
-  const int rc = nlmixr2stan__fnTheta()(theta, ntheta, eta, nid, neta,
+  const int rc = nlmixr2bayes__fnTheta()(theta, ntheta, eta, nid, neta,
                                         value, gradEta, gradTheta);
   if (rc < 0) {
     stan::math::throw_domain_error("nlmixr2_cond_all2", "nlmixr2est status",
@@ -177,7 +177,7 @@ nlmixr2_cond_all2(const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>& e
     }
   }
   for (int j = 0; j < nth; ++j) th[j] = theta(j);
-  nlmixr2stan__batchTheta(th.data(), nth, e.data(), nid, neta,
+  nlmixr2bayes__batchTheta(th.data(), nth, e.data(), nid, neta,
                           v.data(), ge.data(), gt.data(), pstream__);
   Eigen::Matrix<double, Eigen::Dynamic, 1> out(nid);
   for (int i = 0; i < nid; ++i) {
@@ -208,7 +208,7 @@ nlmixr2_cond_all2(const Eigen::Matrix<stan::math::var, Eigen::Dynamic,
     }
   }
   for (int j = 0; j < nth; ++j) th[j] = theta(j).val();
-  nlmixr2stan__batchTheta(th.data(), nth, e.data(), nid, neta,
+  nlmixr2bayes__batchTheta(th.data(), nth, e.data(), nid, neta,
                           v.data(), ge.data(), gt.data(), pstream__);
   Eigen::Matrix<var, Eigen::Dynamic, 1> out(nid);
   std::vector<var> ops(static_cast<size_t>(neta + nth));
@@ -244,23 +244,23 @@ nlmixr2_cond_all2(const Eigen::Matrix<stan::math::var, Eigen::Dynamic,
 // theta gradient on the natural scale, so log p = -value and
 // d/d(theta) log p = -dTheta.  One scalar, one vari.
 
-typedef int (*nlmixr2stan_pop_eval_t)(const double *theta, int ntheta,
+typedef int (*nlmixr2bayes_pop_eval_t)(const double *theta, int ntheta,
                                       double *value, double *dTheta);
 
-inline nlmixr2stan_pop_eval_t nlmixr2stan__fnPop() {
-  static nlmixr2stan_pop_eval_t fn = 0;
+inline nlmixr2bayes_pop_eval_t nlmixr2bayes__fnPop() {
+  static nlmixr2bayes_pop_eval_t fn = 0;
   if (fn == 0) {
-    fn = reinterpret_cast<nlmixr2stan_pop_eval_t>(
-      R_GetCCallable("nlmixr2stan", "nlmixr2stan_pop_eval"));
+    fn = reinterpret_cast<nlmixr2bayes_pop_eval_t>(
+      R_GetCCallable("nlmixr2bayes", "nlmixr2bayes_pop_eval"));
   }
   return fn;
 }
 
-inline int nlmixr2stan__popEval(const double *theta, int ntheta,
+inline int nlmixr2bayes__popEval(const double *theta, int ntheta,
                                 double *value, double *dTheta,
                                 std::ostream *pstream__) {
   (void)pstream__;
-  const int rc = nlmixr2stan__fnPop()(theta, ntheta, value, dTheta);
+  const int rc = nlmixr2bayes__fnPop()(theta, ntheta, value, dTheta);
   if (rc < 0) {
     stan::math::throw_domain_error("nlmixr2_pop_ll", "nlmixr2est status",
                                    rc, "was ", " (<0 is a hard failure)");
@@ -277,7 +277,7 @@ nlmixr2_pop_ll(const Eigen::Matrix<double, Eigen::Dynamic, 1>& theta,
   std::vector<double> g(static_cast<size_t>(nth));
   double v = 0;
   for (int j = 0; j < nth; ++j) th[j] = theta(j);
-  const int rc = nlmixr2stan__popEval(th.data(), nth, &v, g.data(),
+  const int rc = nlmixr2bayes__popEval(th.data(), nth, &v, g.data(),
                                       pstream__);
   if (rc > 0) return -std::numeric_limits<double>::infinity();
   return -v;
@@ -293,7 +293,7 @@ nlmixr2_pop_ll(const Eigen::Matrix<stan::math::var, Eigen::Dynamic, 1>& theta,
   std::vector<double> g(static_cast<size_t>(nth));
   double v = 0;
   for (int j = 0; j < nth; ++j) th[j] = theta(j).val();
-  const int rc = nlmixr2stan__popEval(th.data(), nth, &v, g.data(),
+  const int rc = nlmixr2bayes__popEval(th.data(), nth, &v, g.data(),
                                       pstream__);
   std::vector<var> ops(static_cast<size_t>(nth));
   std::vector<double> gi(static_cast<size_t>(nth));
@@ -308,18 +308,18 @@ nlmixr2_pop_ll(const Eigen::Matrix<stan::math::var, Eigen::Dynamic, 1>& theta,
 // --- iteration tick ---------------------------------------------------------
 // One call per model-block evaluation carrying the natural-scale display
 // vector (thetas + actual omega variances/covariances) and the current
-// -2*sum(conditional log-lik).  Forwards to nlmixr2stan_iter_tick, which
+// -2*sum(conditional log-lik).  Forwards to nlmixr2bayes_iter_tick, which
 // no-ops (rc -1) unless the R side armed the nlmixr2est scale.h iteration
 // print (foceiLikIterPrintStart); contributes NOTHING to the target.
 // Templated because stanc3 may instantiate par/objf as double (fixed
 // parameters, generated quantities) or stan::math::var (model block).
-typedef int (*nlmixr2stan_iter_tick_t)(const double *par, int n, double objf);
+typedef int (*nlmixr2bayes_iter_tick_t)(const double *par, int n, double objf);
 
-inline nlmixr2stan_iter_tick_t nlmixr2stan__tickFn() {
-  static nlmixr2stan_iter_tick_t fn = 0;
+inline nlmixr2bayes_iter_tick_t nlmixr2bayes__tickFn() {
+  static nlmixr2bayes_iter_tick_t fn = 0;
   if (fn == 0) {
-    fn = reinterpret_cast<nlmixr2stan_iter_tick_t>(
-      R_GetCCallable("nlmixr2stan", "nlmixr2stan_iter_tick"));
+    fn = reinterpret_cast<nlmixr2bayes_iter_tick_t>(
+      R_GetCCallable("nlmixr2bayes", "nlmixr2bayes_iter_tick"));
   }
   return fn;
 }
@@ -331,7 +331,7 @@ inline double nlmixr2_iter_tick(const TPar& par, const TObj& objf,
   const int n = static_cast<int>(par.size());
   std::vector<double> v(static_cast<size_t>(n));
   for (int j = 0; j < n; ++j) v[j] = stan::math::value_of(par(j));
-  nlmixr2stan__tickFn()(v.data(), n, stan::math::value_of(objf));
+  nlmixr2bayes__tickFn()(v.data(), n, stan::math::value_of(objf));
   return 0.0;
 }
 #endif

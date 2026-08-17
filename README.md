@@ -1,4 +1,4 @@
-# nlmixr2stan
+# nlmixr2bayes
 
 A Stan interface for nlmixr2 combining two complementary approaches:
 
@@ -181,7 +181,7 @@ See `vignette("rxstan")` for detailed examples of hand-coded Stan programs.
 
 ### Likelihood-level (nlmixr2 dispatch)
 
-|  | native Stan | nlmixr2stan (linked) |
+|  | native Stan | nlmixr2bayes (linked) |
 |---|---|---|
 | wall, chains sequential, two-solve path | — | 408.8 s |
 | wall, forked chains, two-solve path | 142.7 s | 302.6 s |

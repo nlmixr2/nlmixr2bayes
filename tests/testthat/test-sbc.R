@@ -70,8 +70,8 @@ test_that("simulation-based calibration: ranks are uniform (G5)", {
     # this is byte-for-byte the same target (same program, same link path)
     .sf <- try({
       h <- stanLinkSetup(.mod, .d, thetaSens = TRUE, cores = 1L)
-      .Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(h$initPar))
-      .Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, 1L)
+      .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+      .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
       suppressWarnings(rstan::sampling(
         .sm, data = .stanData, chains = 1L, iter = 1200L, warmup = 400L,
         thin = 8L, seed = repSeed, refresh = 0, cores = 1,
@@ -81,7 +81,7 @@ test_that("simulation-based calibration: ranks are uniform (G5)", {
                          z_b1 = matrix(0, .nid, 1))),
         control = list(adapt_delta = 0.95)))
     }, silent = TRUE)
-    .Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
     stanLinkFree()
     if (inherits(.sf, "try-error")) return(NULL)
     .sp <- rstan::get_sampler_params(.sf, inc_warmup = FALSE)

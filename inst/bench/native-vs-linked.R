@@ -14,9 +14,9 @@
 # FAIR CORE BUDGET: both methods get the same number of cores
 # (BENCH_CORES), each spent the way the method naturally parallelizes --
 # native rstan runs its chains in parallel processes (its only built-in
-# parallelism without reduce_sum), nlmixr2stan runs chains sequentially
+# parallelism without reduce_sum), nlmixr2bayes runs chains sequentially
 # with BENCH_CORES subject-parallel threads inside every gradient.
-library(nlmixr2stan)
+library(nlmixr2bayes)
 BENCH_CORES <- max(2L, min(4L, rxode2::getRxThreads()))
 cat(sprintf("core budget per method: %d\n", BENCH_CORES))
 d <- nlmixr2data::theo_sd
@@ -122,7 +122,7 @@ report <- function(tag, sf, wall) {
 ## ---- native Stan ---------------------------------------------------------
 cat("compiling native model...\n")
 # rstan::stan_model leaks PKG_CPPFLAGS/PKG_LIBS/USE_CXX17 into the session,
-# which breaks later rxode2 C compiles; snapshot and restore (nlmixr2stan's
+# which breaks later rxode2 C compiles; snapshot and restore (nlmixr2bayes's
 # own stanCompile() does this internally)
 .leak <- c("PKG_CPPFLAGS", "PKG_LIBS", "USE_CXX17", "PKG_CXXFLAGS")
 .old <- Sys.getenv(.leak, unset = NA_character_)
@@ -144,8 +144,8 @@ sfN <- rstan::sampling(smN, data = stanData, chains = 2, iter = 1000,
 wallN <- proc.time()[["elapsed"]] - t0
 report("native ode_rk45", sfN, wallN)
 
-## ---- nlmixr2stan (warm compile: run twice, report the second) -----------
-cat("nlmixr2stan cold run (compiles + caches)...\n")
+## ---- nlmixr2bayes (warm compile: run twice, report the second) -----------
+cat("nlmixr2bayes cold run (compiles + caches)...\n")
 fit1 <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
   odeMod, d, est = "stan",
   control = stanControl(chains = 2L, iter = 1000L, warmup = 500L,
@@ -178,7 +178,7 @@ fit2 <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
                                                       rtol = 1e-8),
                         ofv = "none", onDiagnostic = "none"))))
 wallL <- proc.time()[["elapsed"]] - t0
-report("nlmixr2stan", fit2$env$stanfit, wallL)
+report("nlmixr2bayes", fit2$env$stanfit, wallL)
 
 ## ---- linked, retry ladder + FD fallback disabled -------------------------
 # isolates the failure-cascade cost: failed solves reject immediately
@@ -211,13 +211,13 @@ h <- stanLinkSetup(odeMod, d, thetaSens = TRUE, cores = BENCH_CORES,
                    rxControl = rxode2::rxControl(method = "dop853",
                                                  dense = TRUE,
                                                  atol = 1e-8, rtol = 1e-8))
-.map <- nlmixr2stan:::.stanMap(rxode2::rxode2(odeMod))
-.Call(nlmixr2stan:::`_nlmixr2stan_setThetaBase`, as.double(h$initPar))
-.Call(nlmixr2stan:::`_nlmixr2stan_setMuRef`, as.integer(.map$muRefIdx))
+.map <- nlmixr2bayes:::.stanMap(rxode2::rxode2(odeMod))
+.Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+.Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
 upL <- rep(0.1, npar)
 tL <- system.time(for (i in 1:50) rstan::grad_log_prob(sfL, upL))[["elapsed"]]
 cat(sprintf("linked  grad eval: %6.2f ms\n", 1000 * tL / 50))
-.Call(nlmixr2stan:::`_nlmixr2stan_clearThetaBase`)
+.Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
 stanLinkFree()
 
 ## ---- posterior sanity ----------------------------------------------------

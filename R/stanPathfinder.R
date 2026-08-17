@@ -242,7 +242,7 @@
   .pf <- list(fit0 = .f0, draws = .res$draws, khat = .res$khat,
               lp = .res$lp, nPathsOk = .res$nPathsOk, gen = gen,
               cache = new.env(parent = emptyenv()))
-  class(.pf) <- "nlmixr2stanPathfinder"
+  class(.pf) <- "nlmixr2bayesPathfinder"
   .pf
 }
 
@@ -291,7 +291,7 @@
 #' extract() equivalent over a Pathfinder result
 #' @noRd
 .stanExtract <- function(sf, pars) {
-  if (inherits(sf, "nlmixr2stanPathfinder")) {
+  if (inherits(sf, "nlmixr2bayesPathfinder")) {
     .con <- .pathfinderConstrain(sf)
     .miss <- setdiff(pars, names(.con))
     if (length(.miss) > 0L) {
@@ -347,7 +347,7 @@
 #' are no chains)
 #' @noRd
 .stanSummaryDf <- function(sf) {
-  if (!inherits(sf, "nlmixr2stanPathfinder")) {
+  if (!inherits(sf, "nlmixr2bayesPathfinder")) {
     return(rstan::summary(sf)$summary)
   }
   .con <- .pathfinderConstrain(sf)

@@ -12,7 +12,7 @@
 \item{...}{passed through}
 }
 \value{
-an nlmixr2 fit (or an `nlmixr2stanCode` when
+an nlmixr2 fit (or an `nlmixr2bayesCode` when
   `stanControl(run=FALSE)`)
 }
 \description{

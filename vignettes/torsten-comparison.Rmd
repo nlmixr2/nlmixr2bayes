@@ -1,8 +1,8 @@
 ---
-title: "nlmixr2stan and Torsten"
+title: "nlmixr2bayes and Torsten"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{nlmixr2stan and Torsten}
+  %\VignetteIndexEntry{nlmixr2bayes and Torsten}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -12,7 +12,7 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 
 [Torsten](https://github.com/metrumresearchgroup/Torsten) (Metrum Research
-Group) and nlmixr2stan both bring Stan's NUTS sampler to pharmacometric
+Group) and nlmixr2bayes both bring Stan's NUTS sampler to pharmacometric
 models, from opposite directions:
 
 - **Torsten** is a *library of Stan functions* (`pmx_solve_onecpt`,
@@ -22,7 +22,7 @@ models, from opposite directions:
   hand: data block, parameter transforms, the eta hierarchy, the residual
   model, generated quantities.  Total control, and total responsibility.
 
-- **nlmixr2stan** is a *full nlmixr2 estimation method*: the model is the
+- **nlmixr2bayes** is a *full nlmixr2 estimation method*: the model is the
   same `ini({})`/`model({})` function every other nlmixr2 method fits, the
   Stan program is generated, and Stan is **linked** to the compiled
   rxode2/nlmixr2est likelihood (with analytic gradients) rather than the
@@ -30,13 +30,13 @@ models, from opposite directions:
   standard `nlmixr2FitData` with GOF tables, plus the full `stanfit`.
 
 The practical consequence: a Torsten model is ~100-200 lines of Stan; the
-same model in nlmixr2stan is the ~20-line nlmixr2 function you may already
+same model in nlmixr2bayes is the ~20-line nlmixr2 function you may already
 have from a FOCEi/SAEM run, and the posterior is sampled against the
 *identical* likelihood code those methods used.
 
 ## Capability comparison
 
-| capability | Torsten | nlmixr2stan |
+| capability | Torsten | nlmixr2bayes |
 |---|---|---|
 | 1/2-cmt analytic models | `pmx_solve_onecpt/twocpt` | `linCmt()` (1/2/3-cmt + absorption) |
 | general linear ODE | matrix exponential (`pmx_solve_linode`) | rxode2 solvers |
@@ -57,7 +57,7 @@ have from a FOCEi/SAEM run, and the posterior is sampled against the
 
 Where Torsten is the right tool: hand-tuned Stan programs, structures
 outside the nlmixr2 ui (e.g. exotic hierarchies), and cmdstan-ecosystem
-workflows.  Where nlmixr2stan is the right tool: standard
+workflows.  Where nlmixr2bayes is the right tool: standard
 population PK/PD where the model already exists in nlmixr2 form, and the
 Bayesian run should be comparable line-for-line with the frequentist ones.
 
@@ -76,7 +76,7 @@ ODE level instead of the likelihood level.
 Torsten's `example-models/poppk2cpt` is ~150 lines of Stan:
 NONMEM-style arrays in `data`, `pmx_solve_twocpt` per subject, Matt's
 trick (Matt Hoffman) for the etas, lognormal priors, lognormal
-residual.  The same model in nlmixr2stan:
+residual.  The same model in nlmixr2bayes:
 
 ```{r}
 poppk2cpt <- function() {
@@ -144,7 +144,7 @@ d <- with(e, data.frame(ID = rep(seq_len(nSubjects),
 d$DV[e$iObs] <- e$cObs
 ```
 
-A note on the eta parameterization: nlmixr2stan's generated program uses
+A note on the eta parameterization: nlmixr2bayes's generated program uses
 **the same Matt's trick** Torsten's examples hand-code -- by default the
 etas are non-centred, with `z ~ std_normal()` sampled and
 `eta = z * L'` assembled from the omega Cholesky factor in
@@ -272,7 +272,7 @@ terms, and the analytic gradients flow through the same linkage.
 Torsten "supports" IOV the way it supports everything: you write it --
 occasion-level etas declared as extra parameters and added into the
 occasion's parameters by hand.  The **same hand-written pattern works in
-nlmixr2stan today**, because as far as the linked likelihood is concerned
+nlmixr2bayes today**, because as far as the linked likelihood is concerned
 an occasion eta is just another subject-level eta gated by an occasion
 indicator covariate:
 
@@ -345,7 +345,7 @@ what a Torsten user would have written by hand anyway.
   gradients.
 
 - Torsten's `pmx_solve_group_*` **MPI parallelism** distributes subjects
-  across processes; nlmixr2stan parallelizes subjects with OpenMP threads
+  across processes; nlmixr2bayes parallelizes subjects with OpenMP threads
   inside each likelihood call (`cores`) -- same axis, different
   mechanics, no user-visible model difference.
 
