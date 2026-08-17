@@ -101,11 +101,12 @@ Dormand-Prince (`dop853`, `dense=TRUE`), the twin of Stan's `ode_rk45`:
 
 |  | native Stan | nlmixr2stan (linked) |
 |---|---|---|
-| wall, 2 chains x 1000 iter (chains sequential, 4 subject threads) | — | 408.8 s |
+| wall, chains sequential, two-solve path | — | 408.8 s |
 | wall, forked chains, two-solve path | 142.7 s | 302.6 s |
-| wall, forked chains + fused single-solve entry (nlmixr2est#958) | 142.7 s | **203.8 s** |
+| wall, forked + fused single-solve entry (nlmixr2est#958) | 142.7 s | 203.8 s |
+| wall, forked + fused + C-side omega rebuild | 142.7 s | **80.8 s** |
 | worst bulk ESS | 236 | **286-378** |
-| worst ESS / s | 1.66 | 0.70 sequential / 1.25 forked / **1.60 fused+forked** |
+| worst ESS / s | 1.66 | 0.70 → 1.25 → 1.60 → **4.04** |
 | gradient evaluation | 1.98 ms | 2.80 ms via `grad_log_prob` (1.36 ms at the C level) |
 | posterior means | agree to < 0.01 on every parameter | |
 
@@ -120,11 +121,15 @@ eta+theta sensitivity build (nlmixr2est#958) the whole tier-2 gradient
 comes from ONE solve per subject through a fused batch entry --
 0.62 ms per full-population gradient at the C level (vs 1.26 ms
 two-model, and native's 1.98 ms coupled solve), negotiated automatically
-when the loaded nlmixr2est provides it.  Net: **effective ESS/s parity
-with native Stan on the pure-ODE model** (1.60 vs 1.66, with MORE
-effective samples per draw), and an outright win wherever the analytic
-`linCmt()` tier applies -- a tier a native ODE implementation cannot
-express.  Per gradient the linked C path is
+when the loaded nlmixr2est provides it.  The last
+per-evaluation drag -- fetching Omega^-1 by evaluating rxode2's
+precomputed R closure every call (~1.2 ms, more than the ODE solve) --
+is replaced by a C-side chol-factor rebuild (probe-mapped at setup,
+verified against the R path, 0.015 ms).  Net: **2.4x native Stan's
+ESS/s on the pure-ODE model** (4.04 vs 1.66, with more effective
+samples per draw and bit-identical reproducibility), and a larger win
+wherever the analytic `linCmt()` tier applies -- a tier a native ODE
+implementation cannot express.  Per gradient the linked C path is
 cheaper than the native solve -- and for models with closed-form
 solutions the `linCmt()` tier evaluates ~5-10x cheaper still, an
 option a native ODE implementation does not have.  ADVI completes the
