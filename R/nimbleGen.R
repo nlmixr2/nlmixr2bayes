@@ -26,6 +26,11 @@
 #' every nimbleLinkedSample() model uses.
 #' @noRd
 .nimbleCondLikSetup <- function() {
+  # Cheap (no compilation) -- run on EVERY call, not just the first, so a
+  # cache hit can't bypass it: reported as running "before every
+  # nimbleLinkedSample() call" and a cache-gated placement would silently
+  # contradict that for the entire rest of a session after the first call.
+  .nimbleAssertBuildOk()
   # The cache is only trustworthy if EVERY piece of state it gates is still
   # actually true, not just "we did this once": (a) all three cached R
   # objects exist (a session interrupted between the three end-of-function
@@ -61,7 +66,6 @@
     return(invisible(TRUE))
   }
   rxode2::rxReq("nimble")
-  .nimbleAssertBuildOk()
   # nimble's model-building internals (e.g. init_isDataEnv() ->
   # getNimbleOption()) call unexported helpers by bare name, resolved via the
   # search path -- namespace-qualified nimble:: calls alone are not enough;

@@ -46,8 +46,14 @@
   }, character(1))
   .w <- which(grepl(paste0("^", distName, "\\("), .bugs))
   if (length(.w) != 1L) return(FALSE)
-  all(vapply(expectedArgs, function(a) grepl(a, .bugs[.w], fixed = TRUE),
-             logical(1)))
+  # exact-token match against the parsed argument list, not a substring
+  # search: a plain grepl(a, ..., fixed=TRUE) would count "shape" as found
+  # inside a renamed "shape1", reporting the distribution as still ok when
+  # the argument name our templates actually use no longer exists.
+  .argList <- sub("^[^(]*\\(", "", .bugs[.w])
+  .argList <- sub("\\)\\s*$", "", .argList)
+  .argNames <- trimws(strsplit(.argList, ",")[[1]])
+  all(expectedArgs %in% .argNames)
 }
 
 #' Probe the NIMBLE build environment

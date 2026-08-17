@@ -16,6 +16,34 @@ test_that("nimble build probes pass", {
   expect_true(isTRUE(.i$externalCallOk))
 })
 
+test_that(".nimbleAssertBuildOk() actually refuses on each failure shape", {
+  skip_if_not_installed("nimble")
+  skip_on_cran()
+  # nimbleBuildInfo(force=TRUE) exercises only the (current, passing)
+  # success path -- poke the cache directly to exercise .nimbleAssertBuildOk's
+  # actual error messages for each failure shape, restoring the real probe
+  # result afterward so it doesn't leak into other tests.
+  .real <- nimbleBuildInfo(force = TRUE)
+  on.exit(assign("info", .real, envir = .nimbleBuildEnv), add = TRUE)
+
+  assign("info", list(ok = NA, distArgsOk = NA, externalCallOk = NA,
+                      nimbleVersion = NA_character_),
+         envir = .nimbleBuildEnv)
+  expect_error(.nimbleAssertBuildOk(), "nimble is not installed")
+
+  assign("info", list(ok = FALSE,
+                      distArgsOk = c(dnorm = TRUE, dgamma = FALSE),
+                      externalCallOk = TRUE, nimbleVersion = "9.9.9"),
+         envir = .nimbleBuildEnv)
+  expect_error(.nimbleAssertBuildOk(), "dgamma")
+
+  assign("info", list(ok = FALSE,
+                      distArgsOk = c(dnorm = TRUE),
+                      externalCallOk = FALSE, nimbleVersion = "9.9.9"),
+         envir = .nimbleBuildEnv)
+  expect_error(.nimbleAssertBuildOk(), "nimbleExternalCall")
+})
+
 test_that(".nimbleAssertSupported refuses unsupported model shapes", {
   # mirrors .stanMap()'s actual column structure (R/stanMap.R) so a shape
   # .stanMap() never emits can't accidentally pass/fail this test for the
