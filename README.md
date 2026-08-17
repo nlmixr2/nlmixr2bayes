@@ -1,37 +1,45 @@
 # nlmixr2stan
 
-A Stan interface for nlmixr2: `nlmixr2(model, data, est = "stan")`.
+A Stan interface for nlmixr2 (`nlmixr2(model, data, est = "stan")`)
+and `rxode2` (`rxsStanFromUi(oneCmt, data)`)
 
-The idea is to **link** Stan to the likelihoods that already exist rather than
-re-express the model in Stan's language: rxode2 compiles the ODE/solving code
-and nlmixr2est holds the likelihood machinery, so Stan calls into those
-directly.  That keeps one source of truth for the likelihood and avoids
-reimplementing solving, censoring and the residual-error models.
+The idea is to **link** Stan to the likelihoods and ode solvers that
+already exist rather than re-express them in Stan's language.
 
-## What linking buys
+In the nlmixr2 workflow, `rxode2` compiles the ODE/solving code and
+`nlmixr2est` holds the likelihood machinery, so Stan calls into those
+directly.  That keeps one source of truth for the likelihood and
+avoids re-implementing solving, censoring and the residual-error
+models.
 
-Everything rxode2/nlmixr2est can express flows through `est="stan"` without a
+In the `rxsStanFromUi()` workflow, the model is generated with the
+`rxode2` ode solving implemented and you can use this to generate your
+own linked stan model.
+
+## What linking buys in `nlmixr2` method
+
+Everything `rxode2`/`nlmixr2est` can express flows through `est="stan"` without a
 translation step, including things Stan's own ODE interface cannot express:
 
 - **dosing events** -- bolus, infusion, `addl`, steady state, multiple
   compartments, exactly as the event table describes them (value and eta
   gradient FD-verified on dosed models);
+
 - **derivatives with respect to modelled dose handling** — an *estimated*
   lag time, bioavailability, duration or rate, whose dependence runs
   through the event time rather than the ODE right-hand side and so needs
   a **jump condition** at the event.  rxode2's analytic event
   sensitivities (`eventSens = "jump"`) supply it, and nlmixr2est's
   theta-sensitivity model carries it through the linked gradient
-  (nlmixr2est#946; the `alag` theta column FD-agrees at ~1e-5 where it was
-  once silently zero -- this package's finite-difference gate caught it and
-  now locks it in);
+
 - **delay differential equations**, via rxode2's `delay()` / `past()`;
+
 - **the residual-error and censoring machinery** (M2/M3/M4) already
   validated in nlmixr2est.
 
 The model is compiled and linked **without engaging Stan's threading** —
 a second threading runtime layered on top of rxode2/nlmixr2est's would
-contend with it.  Parallelism has two axes instead: by default (unix)
+contend with it.  Parallelism has two axes instead: by default (Mac/Linux)
 the **chains run in forked processes** (`stanControl(chainCores=)`,
 inheriting the `rxode2::getRxThreads()` budget capped at the chain
 count; each fork gets a copy-on-write duplicate of the linked state,
@@ -46,32 +54,32 @@ via `precomputed_gradients` (nothing is re-derived by autodiff):
 
 1. per-individual conditional gradients `d/d(eta) log p(y_i|eta_i)` through
    nlmixr2est;
-2. plus `d/d(theta)` of the conditional at fixed eta (forward sensitivities
-   for non-mu structural and residual thetas; the mu-reference identity
-   `d/dtheta_p = d/deta_k` for the rest, extended to mu-referenced
-   covariate coefficients as `d/dtheta_p = cov_i * d/deta_k` when the
-   sensitivity model does not already carry them), so Stan samples theta +
-   Omega + etas jointly.  Stan owns the full, normalized eta prior
-   (non-centred, `eta = z L'`), so its autodiff composes the supplied
-   gradients through the Omega parameterization for free.
+2. plus `d/d(theta)` of the conditional at fixed eta so Stan samples
+   theta + Omega + etas jointly.
 
-The bridge is **first-order only**: `precomputed_gradients()` builds a
-reverse-mode `var`, and Stan Math has no forward-mode (`fvar`) counterpart
-for externally supplied partials, so anything needing higher-order autodiff
-of the target through the external term — Riemannian HMC's metric, the
-embedded-Laplace (`laplace_marginal`) machinery — is out of scope.  That
-costs nothing in practice: NUTS, ADVI, optimization and Pathfinder are all
-first-order, and a Laplace-*marginalized* target is exactly what
-nlmixr2est's own (NONMEM-validated) FOCEi/Laplace machinery computes
-natively — linking that marginal would be the sensible route, not pushing
-second-order AD through the bridge.
 
-A planned companion (merging an existing standalone rxode2--Stan
-bridge) links at the **ODE level** instead: hand-written Stan programs
-that call rxode2's compiled solver and analytic sensitivities directly
--- your own Stan code, rxode2's events/DDEs/jump sensitivities.  This
-package links at the **likelihood level**: no Stan code is written at
-all.  Same architecture, two entry points.
+Stan owns the full, normalized eta prior (non-centred, `eta = z L'`),
+so its autodiff composes the supplied gradients through the Omega
+parameterization in conjunction to what was supplied by `nlmixr2est`.
+
+The bridge is **first-order only**, so anything needing higher-order autodiff
+of the target through the external term (Riemannian HMC's metric, the
+embedded-Laplace) cannot be generated.
+
+That costs nothing in practice: NUTS, ADVI, optimization and
+Pathfinder are all first-order, and a Laplace-*marginalized* target is
+exactly what nlmixr2est's own (NONMEM-validated) FOCEi/Laplace
+machinery computes natively — linking that marginal would be the
+sensible route, not pushing second-order AD through the bridge.
+
+The `rxsStanFromUi()` links at the **ODE level** instead: hand-written
+Stan programs that call rxode2's compiled solver and analytic
+sensitivities directly -- your own Stan code, rxode2's
+events/DDEs/jump sensitivities can be used directly.
+
+In contrast, the `nlmixr2` estimation method links at the **likelihood
+level** and no Stan code is written by the user at all.  Same
+architecture, two entry points.
 
 Beyond NUTS, `stanControl(algorithm=)` runs Stan's ADVI variational
 approximations (`"meanfield"`, `"fullrank"`) and multi-path Pathfinder
@@ -101,41 +109,24 @@ Dormand-Prince (`dop853`, `dense=TRUE`), the twin of Stan's `ode_rk45`:
 
 |  | native Stan | nlmixr2stan (linked) |
 |---|---|---|
-| wall, chains sequential, two-solve path | — | 408.8 s |
-| wall, forked chains, two-solve path | 142.7 s | 302.6 s |
-| wall, forked + fused single-solve entry (nlmixr2est#958) | 142.7 s | 203.8 s |
 | wall, forked + fused + C-side omega rebuild | 142.7 s | **80.8 s** |
 | worst bulk ESS | 236 | **286-378** |
-| worst ESS / s | 1.66 | 0.70 → 1.25 → 1.60 → **4.04** |
+| worst ESS / s | 1.66 |  **4.04** |
 | gradient evaluation | 1.98 ms | 2.80 ms via `grad_log_prob` (1.36 ms at the C level) |
 | posterior means | agree to < 0.01 on every parameter | |
 
 The posteriors are the same; the linked run extracts *more* effective
-samples per draw; forked chains (now the default) close most of
-native's wall-clock edge, and disabling the failure cascade
-(`maxOdeRecalc=0, fallbackFD=FALSE`) changes nothing measurable -- the
-cascade never fires on a healthy trajectory (the forked retry-on run
-reproduced the sequential retry-off draws bit-for-bit).  The former
-two-integrations-per-gradient gap is closed: with nlmixr2est's combined
-eta+theta sensitivity build (nlmixr2est#958) the whole tier-2 gradient
-comes from ONE solve per subject through a fused batch entry --
-0.62 ms per full-population gradient at the C level (vs 1.26 ms
-two-model, and native's 1.98 ms coupled solve), negotiated automatically
-when the loaded nlmixr2est provides it.  The last
-per-evaluation drag -- fetching Omega^-1 by evaluating rxode2's
-precomputed R closure every call (~1.2 ms, more than the ODE solve) --
-is replaced by a C-side chol-factor rebuild (probe-mapped at setup,
-verified against the R path, 0.015 ms).  Net: **2.4x native Stan's
-ESS/s on the pure-ODE model** (4.04 vs 1.66, with more effective
-samples per draw and bit-identical reproducibility), and a larger win
-wherever the analytic `linCmt()` tier applies -- a tier a native ODE
-implementation cannot express.  Per gradient the linked C path is
-cheaper than the native solve -- and for models with closed-form
-solutions the `linCmt()` tier evaluates ~5-10x cheaper still, an
-option a native ODE implementation does not have.  ADVI completes the
-same fit in ~30-40 s and Pathfinder in ~90 s (with the Pareto-k-hat
-diagnostic guarding both).  Reproduce with
-`Rscript inst/bench/native-vs-linked.R`.
+samples per draw; forked chains close most of native's wall-clock
+edge, and disabling the failure cascade (`maxOdeRecalc=0,
+fallbackFD=FALSE`) changes nothing measurable -- the cascade never
+fires on a healthy trajectory (the forked retry-on run reproduced the
+sequential retry-off draws bit-for-bit). Per gradient the linked C
+path is cheaper than the native solve -- and for models with
+closed-form solutions the `linCmt()` tier evaluates ~5-10x cheaper
+still, an option a native ODE implementation does not have.  ADVI
+completes the same fit in ~30-40 s and Pathfinder in ~90 s (with the
+Pareto-k-hat diagnostic guarding both).  Reproduce with `Rscript
+inst/bench/native-vs-linked.R`.
 
 ## Is it right?
 
@@ -177,12 +168,7 @@ mismatch itself locked in as a test upstream.
 
 ## Current scope
 
-Supported: mixed AND population-only models (a no-eta model -- e.g. a
-single-subject Bayesian fit -- runs as "tier 0" through nlmixr2est's nlm
-path: one external scalar `nlmixr2_pop_ll(theta)` carrying the complete
-data log-likelihood and its analytic gradient, value tied to a
-hand-written density and FD-gate-verified; needs nlmixr2est with
-nlmixr2est#953), ODE and `linCmt()` models, normal residual models
+Supported: mixed and population-only models, ODE and `linCmt()` models, normal residual models
 (add/prop/combined and transforms with fixed lambda), censored data
 (M2/M3/M4 via CENS/LIMIT) and user-written `ll()` endpoints (both
 gate-verified: values tie to textbook densities up to a parameter-free
@@ -199,7 +185,7 @@ regressor); both routes are FD-verified.
 
 Estimated transform-both-sides lambda (Box-Cox / Yeo-Johnson) is
 supported: the linked conditional supplies the transformed-scale density
-with an exact d/dlambda column (nlmixr2est#949; FD-verified at ~1e-10),
+with an exact d/dlambda column,
 and the generator adds the DV-transform Jacobian Stan-side as
 `target += (lambda - 1) * sumLogJac` — a pure data statistic, so lambda's
 full gradient is exact end to end (the assembled target is gate-verified
@@ -218,8 +204,4 @@ Refused with an explanatory error (not silently wrong): mixtures with
 more than 2 components (for now), IOV (until nlmixr2est#952), and the 8
 discrete distributions (every `ini({})` parameter is real-valued).
 
-This package requires nlmixr2est with the FOCEi conditional-likelihood C API
-(nlmixr2est#937, #939, #941).  See the issue tracker for the roadmap
-(WAIC/LOO, covariate gradients, SBC).
-
-Supersedes the prior-specification blocker in nlmixr2/nlmixr2est#799.
+See the issue tracker for the roadmap (WAIC/LOO, covariate gradients, SBC).
