@@ -13,6 +13,7 @@ NULL
   # The nlm (tier-0, population-only) table is OPTIONAL: an older nlmixr2est
   # without nlmixr2/nlmixr2est#953 just leaves tier 0 unavailable.
   .iniNlmPtrs()
+  .Call(`_nlmixr2stan_iniRxodePtrs`, rxode2::.rxode2ptrs())
 }
 
 #' Install (or refresh) the nlmixr2est nlm pointer table (tier 0, #953);
@@ -79,6 +80,7 @@ NULL
 #'
 #' @param cores number of threads (default [rxode2::getRxThreads()])
 #' @return invisibly, the thread count set
+#' @author Matthew L Fidler
 #' @export
 stanSetCores <- function(cores = rxode2::getRxThreads()) {
   checkmate::assertIntegerish(cores, lower = 1, len = 1, any.missing = FALSE)

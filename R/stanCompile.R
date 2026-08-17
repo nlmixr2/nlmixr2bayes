@@ -56,7 +56,7 @@
 #' @param verbose show the compiler output
 #' @return an `rstan::stanmodel`
 #' @export
-#' @author Matthew L. Fidler
+#' @author Matthew L Fidler
 stanCompile <- function(code = .stanPhase0Code(), cache = TRUE,
                         cacheDir = NULL, verbose = FALSE) {
   rxode2::rxReq("rstan")

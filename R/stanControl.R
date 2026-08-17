@@ -134,7 +134,7 @@
 #' @param ... only `genRxControl`
 #' @return a `stanControl` list
 #' @export
-#' @author Matthew L. Fidler
+#' @author Matthew L Fidler
 stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
                         algorithm = c("NUTS", "meanfield", "fullrank",
                                       "pathfinder"),
@@ -313,6 +313,7 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
   .ret
 }
 
+#' @author Matthew L Fidler
 #' @export
 rxUiDeparse.stanControl <- function(object, var) {
   .default <- stanControl()
@@ -326,6 +327,7 @@ rxUiDeparse.stanControl <- function(object, var) {
 #' @param control a length-1 list holding the control (the
 #'   `getValidNlmixrControl` convention)
 #' @return a valid `stanControl`
+#' @author Matthew L Fidler
 #' @export
 getValidNlmixrCtl.stan <- function(control) {
   .ctl <- control[[1]]
@@ -344,11 +346,13 @@ getValidNlmixrCtl.stan <- function(control) {
   .ctl
 }
 
+#' @author Matthew L Fidler
 #' @export
 nmObjHandleControlObject.stanControl <- function(control, env) {
   assign("stanControl", control, envir = env)
 }
 
+#' @author Matthew L Fidler
 #' @export
 nmObjGetControl.stan <- function(x, ...) {
   .env <- x[[1]]

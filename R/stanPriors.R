@@ -212,7 +212,7 @@
 #'   `prior`, `stanName`, `kind`}
 #' }
 #' @export
-#' @author Matthew L. Fidler
+#' @author Matthew L Fidler
 stanPriors <- function(ui) {
   .ui <- rxode2::assertRxUi(ui)
   .pri <- rxode2::rxUiPriors(.ui)

@@ -44,7 +44,7 @@
 #' @return a list with `ok`, `callShape`, `injectionPoint`, `stancVersion`,
 #'   `rstanVersion`; `ok=NA` when rstan is not installed
 #' @export
-#' @author Matthew L. Fidler
+#' @author Matthew L Fidler
 nlmixr2stanBuildInfo <- function(force = FALSE) {
   if (!force && !is.null(.stanBuildEnv$info)) return(.stanBuildEnv$info)
   if (!requireNamespace("rstan", quietly = TRUE)) {

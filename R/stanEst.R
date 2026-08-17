@@ -254,6 +254,7 @@
 #' @return an nlmixr2 fit (or an `nlmixr2stanCode` when
 #'   `stanControl(run=FALSE)`)
 #' @keywords internal
+#' @author Matthew L Fidler
 #' @export
 nlmixr2Est.stan <- function(env, ...) {
   .ui <- env$ui
@@ -929,6 +930,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   .fit
 }
 
+#' @author Matthew L Fidler
 #' @export
 print.nlmixr2stanCode <- function(x, ...) {
   cat(x$code, sep = "\n")

@@ -35,7 +35,7 @@
 #' @return invisibly, the link handle (the `foceiLikLoad` handle plus
 #'   `flags`, `setupHash`)
 #' @export
-#' @author Matthew L. Fidler
+#' @author Matthew L Fidler
 stanLinkSetup <- function(ui, data, likelihood = c("focei", "foce"),
                           rxControl = rxode2::rxControl(),
                           thetaSens = FALSE, literalFix = TRUE,
@@ -117,7 +117,7 @@ stanLinkSetup <- function(ui, data, likelihood = c("focei", "foce"),
 #'
 #' @return invisibly `TRUE` if a link was freed, `FALSE` if none was active
 #' @export
-#' @author Matthew L. Fidler
+#' @author Matthew L Fidler
 stanLinkFree <- function() {
   if (is.null(.stanLinkEnv$handle)) return(invisible(FALSE))
   if (isTRUE(.stanLinkEnv$handle$pop)) {
@@ -186,7 +186,7 @@ stanLinkFree <- function() {
 #'   is collected by [nlmixr2est::nlmGetParHist()]
 #' @return invisibly, a handle (ntheta, nobs, flags, initPar, setupHash)
 #' @export
-#' @author Matthew L. Fidler
+#' @author Matthew L Fidler
 stanPopLinkSetup <- function(ui, data, rxControl = rxode2::rxControl(),
                              cores = rxode2::getRxThreads(),
                              print = 0L) {

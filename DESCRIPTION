@@ -3,9 +3,10 @@ Type: Package
 Title: Stan Interface for 'nlmixr2'
 Version: 0.0.1
 Authors@R: c(
-    person("Matthew", "Fidler", role = c("aut", "cre"),
+    person("Matthew L.", "Fidler", role = c("aut", "cre"),
            email = "matthew.fidler@gmail.com",
-           comment = c(ORCID = "0000-0001-8538-6691")))
+           comment = c(ORCID = "0000-0001-8538-6691")),
+    person("Lukas A.", "Widmer", role="aut"))
 Description: Bayesian estimation for 'nlmixr2' models by linking Stan (via
     'rstan') directly to the compiled 'rxode2'/'nlmixr2est' likelihoods rather
     than re-expressing the model in the Stan language.  The ordinary
@@ -14,7 +15,7 @@ Description: Bayesian estimation for 'nlmixr2' models by linking Stan (via
     analytically-supplied gradients as an external function.  Prior
     distributions come from the model's 'ini({})' block, whose distribution
     catalogue is one-to-one with Stan's.
-License: GPL (>= 3)
+License: MIT
 URL: https://github.com/nlmixr2/nlmixr2stan
 BugReports: https://github.com/nlmixr2/nlmixr2stan/issues
 Depends: R (>= 4.2)

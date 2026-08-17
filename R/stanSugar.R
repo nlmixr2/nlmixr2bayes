@@ -4,21 +4,25 @@
 # with the matching stanControl(algorithm=) forced, and the fit records
 # the sugar name as its $est.
 
+#' @author Matthew L Fidler
 #' @export
 getValidNlmixrCtl.advi <- function(control) {
   getValidNlmixrCtl.stan(control)
 }
 
+#' @author Matthew L Fidler
 #' @export
 getValidNlmixrCtl.pathfinder <- function(control) {
   getValidNlmixrCtl.stan(control)
 }
 
+#' @author Matthew L Fidler
 #' @export
 nmObjGetControl.advi <- function(x, ...) {
   nmObjGetControl.stan(x, ...)
 }
 
+#' @author Matthew L Fidler
 #' @export
 nmObjGetControl.pathfinder <- function(x, ...) {
   nmObjGetControl.stan(x, ...)
@@ -35,6 +39,7 @@ nmObjGetControl.pathfinder <- function(x, ...) {
 #' @param ... passed through
 #' @return nlmixr2 fit
 #' @keywords internal
+#' @author Matthew L Fidler
 #' @export
 nlmixr2Est.advi <- function(env, ...) {
   .control <- env$control
@@ -68,6 +73,7 @@ attr(nlmixr2Est.advi, "iov") <- function(control) .stanHasIovSens()
 #' @inheritParams nlmixr2Est.advi
 #' @return nlmixr2 fit
 #' @keywords internal
+#' @author Matthew L Fidler
 #' @export
 nlmixr2Est.pathfinder <- function(env, ...) {
   .control <- env$control
