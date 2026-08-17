@@ -139,8 +139,18 @@
 #' would disagree with the linked problem's -- caught safely by
 #' `nimbleLinkedSample()`'s own consistency check either way, but refusing
 #' up front gives a clear reason instead of a generic mismatch error.
+#'
+#' A multivariate `ini({})` prior on population parameters, or any prior on
+#' an omega block, is refused here too: `.nimbleBuildCode()` only ever
+#' consults a NON-multivariate matching row of `priPop` for a theta's prior,
+#' so silently proceeding would mean the user's explicit prior is simply
+#' never applied -- exactly the kind of silent mis-handling this function
+#' exists to prevent. Omega is not sampled yet (phase 1/2 fixes it at its
+#' `ini()` value), so a prior on it can never be honored either.
+#' @param priPop `stanPriors(ui)$pop`, or `NULL` to skip the prior checks
+#' @param priOmega `stanPriors(ui)$omega`, or `NULL` to skip the check
 #' @noRd
-.nimbleAssertSupported <- function(map) {
+.nimbleAssertSupported <- function(map, priPop = NULL, priOmega = NULL) {
   if (map$nMix > 1L) {
     stop("nimble linked sampling does not yet support finite mixtures",
          call. = FALSE)
@@ -148,6 +158,20 @@
   if (nrow(map$muRefCov) > 0L) {
     stop("nimble linked sampling does not yet support mu-referenced ",
          "covariates", call. = FALSE)
+  }
+  if (!is.null(priPop) && nrow(priPop) > 0L) {
+    .mv <- unique(priPop$name[priPop$kind == "multivariate" &
+                               priPop$name %in% map$theta$name])
+    if (length(.mv) > 0L) {
+      stop("nimble linked sampling does not yet support multivariate ",
+           "priors on population parameter(s) '",
+           paste(.mv, collapse = ", "), "'", call. = FALSE)
+    }
+  }
+  if (!is.null(priOmega) && nrow(priOmega) > 0L) {
+    stop("nimble linked sampling does not yet support priors on omega ",
+         "blocks (omega is fixed at its ini() value, not sampled)",
+         call. = FALSE)
   }
   if (any(map$theta$fix)) {
     stop("nimble linked sampling does not yet support fix()ed population ",
@@ -185,21 +209,36 @@
 #' with no reliable override (`dimensions=` on a constant either conflicts
 #' with nimble's own inference or is silently insufficient). Literals sidestep
 #' the ambiguity entirely: there is no constant array to mis-infer the rank of.
-#' @param thetaSdVec free-theta prior SDs (natural scale), same order as
-#'   `map$theta`
+#' `priPop` (`stanPriors(ui)$pop`) supplies the `ini({})`-declared prior for a
+#' free theta when one matches (see `.nimbleThetaPriorText()`,
+#' R/nimblePriors.R); a theta without a matching row falls back to the
+#' original default (a weakly-informative normal at its own declared
+#' bounds). Bounds always apply via NIMBLE's `T()` truncation, whether from
+#' the matched prior's support-promoted bounds or the theta's own.
+#' @param thetaSdVec free-theta DEFAULT prior SDs (natural scale, used only
+#'   when no `priPop` row matches), same order as `map$theta`
 #' @param etaSdVec per-eta prior SD (natural scale), same order as `map$eta`
+#' @param priPop `stanPriors(ui)$pop`, or `NULL` for the default prior on
+#'   every free theta
 #' @noRd
-.nimbleBuildCode <- function(map, thetaSdVec, etaSdVec) {
+.nimbleBuildCode <- function(map, thetaSdVec, etaSdVec, priPop = NULL) {
   .lines <- character(0)
+  .thetaNames <- map$theta$name
   for (.i in seq_len(nrow(map$theta))) {
     .r <- map$theta[.i, ]
     if (.r$fix) {
       .lines <- c(.lines, sprintf("theta[%d] <- %s", .i, .stanNum(.r$est)))
-    } else {
-      .lines <- c(.lines, sprintf(
-        "theta[%d] ~ dnorm(%s, sd = %s)", .i, .stanNum(.r$est),
-        .stanNum(thetaSdVec[.i])))
+      next
     }
+    .priRow <- NULL
+    if (!is.null(priPop) && nrow(priPop) > 0L) {
+      .w <- which(priPop$name == .r$name & priPop$kind != "multivariate")
+      if (length(.w) == 1L) .priRow <- priPop[.w, ]
+    }
+    .distText <- .nimbleThetaPriorText(.r$name, .r$est, thetaSdVec[.i],
+                                       .priRow, .r$lower, .r$upper,
+                                       .thetaNames)
+    .lines <- c(.lines, sprintf("theta[%d] ~ %s", .i, .distText))
   }
   for (.b in map$blocks) {
     .lines <- c(.lines, sprintf(
@@ -259,7 +298,8 @@ nimbleLinkedSample <- function(ui, data, niter = 2000L, nburnin = 1000L,
   .nimbleCondLikSetup()
   .ui <- rxode2::rxode2(ui)
   .map <- .stanMap(.ui)
-  .nimbleAssertSupported(.map)
+  .pri <- stanPriors(.ui)
+  .nimbleAssertSupported(.map, .pri$pop, .pri$omega)
   .h <- stanLinkSetup(.ui, data, likelihood = likelihood, rxControl = rxControl,
                       thetaSens = FALSE, literalFix = literalFix, cores = cores)
   on.exit(stanLinkFree(), add = TRUE)
@@ -289,7 +329,7 @@ nimbleLinkedSample <- function(ui, data, niter = 2000L, nburnin = 1000L,
   .etaSd <- rep(NA_real_, .neta)
   for (.b in .map$blocks) .etaSd[.b$start] <- sqrt(.b$init[1, 1])
 
-  .code <- .nimbleBuildCode(.map, .thetaSdVec, .etaSd)
+  .code <- .nimbleBuildCode(.map, .thetaSdVec, .etaSd, .pri$pop)
   .constants <- list(ntheta = .ntheta, nid = .nid, neta = .neta)
   .inits <- list(theta = .map$theta$est, eta = matrix(0, .nid, .neta))
   .dataList <- list(zero = 0)

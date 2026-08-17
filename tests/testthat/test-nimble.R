@@ -135,3 +135,106 @@ test_that("nimbleLinkedSample() refuses a single-subject/single-eta model", {
     nimbleLinkedSample(.linkMod, .oneSubject, niter = 5L, nburnin = 1L, cores = 1L),
     "at least 2 total")
 })
+
+# ---- phase 2: ini({}) priors + bounds (R/nimblePriors.R) -------------------
+
+test_that(".nimbleThetaPriorText translates ini() priors with correct bounds/density", {
+  skip_if_not_installed("nimble")
+  skip_on_cran()
+  # tcl: bounded [0,5], no explicit prior() -> default normal, T(0,5)
+  # tv: unbounded (logistic's own support), explicit prior() -> no truncation
+  # add.sd: explicit gamma prior, positive support -> T(,0,) (a no-op given
+  #   gamma's own boundary, but still exercises the support-promotion path)
+  .priorMod <- function() {
+    ini({
+      tcl <- c(0, 1, 5)
+      tv <- 3
+      prior(tv) ~ dlogis(3, 1)
+      add.sd <- 0.5
+      prior(add.sd) ~ dgamma(2, 1)
+      eta.cl ~ 0.1
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  .ui <- rxode2::rxode2(.priorMod)
+  .map <- nlmixr2bayes:::.stanMap(.ui)
+  .pri <- stanPriors(.ui)
+  .thetaSdVec <- pmax(3 * abs(.map$theta$est), 1)
+
+  .priRow <- function(nm) {
+    .w <- which(.pri$pop$name == nm & .pri$pop$kind != "multivariate")
+    if (length(.w) == 1L) .pri$pop[.w, ] else NULL
+  }
+  .idx <- function(nm) match(nm, .map$theta$name)
+  .textFor <- function(nm) {
+    .i <- .idx(nm)
+    nlmixr2bayes:::.nimbleThetaPriorText(
+      nm, .map$theta$est[.i], .thetaSdVec[.i], .priRow(nm),
+      .map$theta$lower[.i], .map$theta$upper[.i], .map$theta$name)
+  }
+  .txtTcl <- .textFor("tcl")
+  .txtTv <- .textFor("tv")
+  .txtSd <- .textFor("add.sd")
+
+  expect_identical(.txtTcl, "T(dnorm(1, sd = 3), 0, 5)")
+  expect_identical(.txtTv, "dlogis(location = 3, scale = 1)")
+  expect_match(.txtSd, "^T\\(dgamma\\(shape = 2, rate = 1\\), 0(\\.0+)?, \\)$")
+
+  .code <- eval(parse(text = paste0(
+    "nimble::nimbleCode({\n",
+    "  theta1 ~ ", .txtTcl, "\n",
+    "  theta2 ~ ", .txtTv, "\n",
+    "  theta3 ~ ", .txtSd, "\n",
+    "})")))
+  # no nimbleExternalCall involved here, so calculate=TRUE at nimbleModel()
+  # build time works fine (unlike the dFoceiCondLik-containing models above,
+  # which need compileNimble() first) -- no C++ compile needed for this test.
+  .m <- nimble::nimbleModel(.code, inits = list(theta1 = 2, theta2 = 3, theta3 = 1),
+                            calculate = TRUE)
+  .refTcl <- stats::dnorm(2, 1, 3, log = TRUE) -
+    log(stats::pnorm(5, 1, 3) - stats::pnorm(0, 1, 3))
+  .refTv <- stats::dlogis(3, 3, 1, log = TRUE)
+  .refSd <- stats::dgamma(1, shape = 2, rate = 1, log = TRUE)
+  expect_equal(.m$logProb_theta1, .refTcl, tolerance = 1e-8)
+  expect_equal(.m$logProb_theta2, .refTv, tolerance = 1e-8)
+  expect_equal(.m$logProb_theta3, .refSd, tolerance = 1e-8)
+
+  # out-of-bounds tcl is rejected (truncation actually enforced, not just
+  # cosmetic in the generated text)
+  .m$theta1 <- -1
+  .m$calculate()
+  expect_true(is.infinite(.m$logProb_theta1) && .m$logProb_theta1 < 0)
+})
+
+test_that(".nimbleThetaPriorText refuses a prior distribution outside the catalog", {
+  .priRow <- data.frame(prior = "dweibull(1, 2)", lower = -Inf, upper = Inf,
+                        stringsAsFactors = FALSE)
+  expect_error(
+    nlmixr2bayes:::.nimbleThetaPriorText("x", 1, 1, .priRow, -Inf, Inf, "x"),
+    "not yet supported")
+})
+
+test_that(".nimbleAssertSupported refuses priors it cannot honor", {
+  .baseMap <- list(
+    nMix = 1L,
+    theta = data.frame(name = c("tcl", "tv"), fix = c(FALSE, FALSE),
+                       stringsAsFactors = FALSE),
+    muRefCov = data.frame(thetaIdx = integer(0)),
+    blocks = list(list(members = "eta.cl", k = 1L, fix = FALSE)))
+
+  .mvPrior <- data.frame(name = "tcl", kind = "multivariate",
+                         stringsAsFactors = FALSE)
+  expect_error(
+    nlmixr2bayes:::.nimbleAssertSupported(.baseMap, priPop = .mvPrior),
+    "multivariate")
+
+  .omegaPrior <- data.frame(name = "eta.cl", stringsAsFactors = FALSE)
+  expect_error(
+    nlmixr2bayes:::.nimbleAssertSupported(.baseMap, priOmega = .omegaPrior),
+    "omega")
+})
