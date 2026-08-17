@@ -304,7 +304,8 @@ nimbleLinkedSample <- function(ui, data, niter = 2000L, nburnin = 1000L,
                       thetaSens = FALSE, literalFix = literalFix, cores = cores)
   on.exit(stanLinkFree(), add = TRUE)
   on.exit(.Call(`_nlmixr2bayes_clearThetaBase`), add = TRUE)
-  if (!identical(.h$etaNames, .map$eta$name) || .h$ntheta != nrow(.map$theta)) {
+  if (!identical(.h$etaNames, .map$eta$name) ||
+        !identical(.h$thetaNames, .map$theta$name)) {
     stop("the linked problem's parameters do not match the model map",
          call. = FALSE) # nocov
   }
