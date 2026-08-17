@@ -37,6 +37,14 @@
   vapply(x, function(v) {
     if (is.infinite(v)) stop("cannot emit an infinite value into Stan source",
                              call. = FALSE) # nocov
+    # a bare NA in a prior() call is caught earlier (NA is logical-typed,
+    # so .stanArgIsLiteral()'s is.numeric() check already rejects it), but
+    # NA_real_/NaN are double-typed and pass it -- without this check they
+    # reach here unfiltered and format() renders them as the literal text
+    # "NA"/"NaN", producing generated Stan/nimble code that parses but is
+    # not a usable numeric constant (e.g. `normal(0, NA)`).
+    if (is.na(v)) stop("cannot emit a missing (NA/NaN) value into Stan source",
+                       call. = FALSE)
     format(v, digits = 15, trim = TRUE, scientific = FALSE)
   }, character(1))
 }

@@ -211,6 +211,51 @@ test_that(".nimbleThetaPriorText translates ini() priors with correct bounds/den
   expect_true(is.infinite(.m$logProb_theta1) && .m$logProb_theta1 < 0)
 })
 
+test_that("a prior argument that references another parameter translates to its theta[] slot", {
+  skip_if_not_installed("nimble")
+  skip_on_cran()
+  # .nimbleArgText()'s is.name(arg) branch (a bare parameter-name reference,
+  # as opposed to a numeric literal) had no test coverage: the mixed-prior
+  # test above only exercises literal arguments.
+  .hierMod <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3
+      prior(tv) ~ normal(tcl, 1)
+      add.sd <- 0.5
+      eta.cl ~ 0.1
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  .ui <- rxode2::rxode2(.hierMod)
+  .map <- nlmixr2bayes:::.stanMap(.ui)
+  .pri <- stanPriors(.ui)
+  .w <- which(.pri$pop$name == "tv" & .pri$pop$kind != "multivariate")
+  .tvIdx <- match("tv", .map$theta$name)
+  .tclIdx <- match("tcl", .map$theta$name)
+  .txt <- nlmixr2bayes:::.nimbleThetaPriorText(
+    "tv", .map$theta$est[.tvIdx], 3, .pri$pop[.w, ],
+    .map$theta$lower[.tvIdx], .map$theta$upper[.tvIdx], .map$theta$name)
+  expect_identical(.txt, sprintf("dnorm(theta[%d], sd = 1)", .tclIdx))
+
+  .code <- eval(parse(text = paste0(
+    "nimble::nimbleCode({\n",
+    "  theta[", .tclIdx, "] <- 2\n",
+    "  theta[", .tvIdx, "] ~ ", .txt, "\n",
+    "})")))
+  .m <- nimble::nimbleModel(.code, dimensions = list(theta = 2),
+                            inits = list(theta = c(0, 0)), calculate = FALSE)
+  .m$theta[.tvIdx] <- 1.5
+  .m$calculate()
+  expect_equal(.m$logProb_theta[.tvIdx], stats::dnorm(1.5, 2, 1, log = TRUE),
+              tolerance = 1e-8)
+})
+
 test_that(".nimbleThetaPriorText refuses a prior distribution outside the catalog", {
   .priRow <- data.frame(prior = "dweibull(1, 2)", lower = -Inf, upper = Inf,
                         stringsAsFactors = FALSE)
