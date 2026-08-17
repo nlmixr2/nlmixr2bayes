@@ -4,6 +4,7 @@
 
 SEXP iniNlmixr2estFocei(SEXP p);
 SEXP iniNlmixr2estNlm(SEXP p);
+SEXP iniRxodePtrs(SEXP p);
 SEXP _nlmixr2bayes_setCores(SEXP n);
 SEXP _nlmixr2bayes_apiVersion(void);
 SEXP _nlmixr2bayes_nMix(void);
@@ -30,6 +31,7 @@ int nlmixr2bayes_cond_batch_theta(const double *theta, int ntheta,
 int nlmixr2bayes_iter_tick(const double *par, int n, double objf);
 
 static const R_CallMethodDef CallEntries[] = {
+  {"_nlmixr2bayes_iniRxodePtrs", (DL_FUNC) &iniRxodePtrs, 1},
   {"_nlmixr2bayes_iniFoceiPtrs", (DL_FUNC) &iniNlmixr2estFocei, 1},
   {"_nlmixr2bayes_iniNlmPtrs", (DL_FUNC) &iniNlmixr2estNlm, 1},
   {"_nlmixr2bayes_nlmApiVersion", (DL_FUNC) &_nlmixr2bayes_nlmApiVersion, 0},

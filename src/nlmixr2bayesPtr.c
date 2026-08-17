@@ -12,6 +12,9 @@
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
+#include <time.h>
+#include <rxode2ptr.h>
+iniRxode2ptr
 #include <nlmixr2estFoceiPtr.h>
 #include <nlmixr2estNlmPtr.h>
 
