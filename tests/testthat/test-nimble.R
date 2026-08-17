@@ -7,6 +7,15 @@
 # small analytic .linkMod/.linkData fixture (helper-link.R) so nimble's
 # compile step (the slow part) stays fast.
 
+test_that("nimble build probes pass", {
+  skip_if_not_installed("nimble")
+  skip_on_cran()
+  .i <- nimbleBuildInfo(force = TRUE)
+  expect_true(isTRUE(.i$ok))
+  expect_true(all(.i$distArgsOk))
+  expect_true(isTRUE(.i$externalCallOk))
+})
+
 test_that(".nimbleAssertSupported refuses unsupported model shapes", {
   # mirrors .stanMap()'s actual column structure (R/stanMap.R) so a shape
   # .stanMap() never emits can't accidentally pass/fail this test for the

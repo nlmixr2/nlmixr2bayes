@@ -61,6 +61,7 @@
     return(invisible(TRUE))
   }
   rxode2::rxReq("nimble")
+  .nimbleAssertBuildOk()
   # nimble's model-building internals (e.g. init_isDataEnv() ->
   # getNimbleOption()) call unexported helpers by bare name, resolved via the
   # search path -- namespace-qualified nimble:: calls alone are not enough;

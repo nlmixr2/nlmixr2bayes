@@ -1,0 +1,160 @@
+---
+title: "Bayesian estimation with NIMBLE: nimbleLinkedSample()"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Bayesian estimation with NIMBLE: nimbleLinkedSample()}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+## An experimental second linked backend
+
+`nlmixr2bayes` links Stan to the compiled rxode2/nlmixr2est likelihood for
+`est = "stan"` (see `vignette("nlmixr2bayes", "nlmixr2bayes")`). The same
+idea -- sample against the *exact* compiled conditional likelihood every
+other nlmixr2 method uses, rather than re-deriving the model in the
+sampler's own language -- also works with
+[NIMBLE](https://r-nimble.org/), through `nimbleLinkedSample()`:
+
+```{r}
+library(nlmixr2bayes)
+fit <- nimbleLinkedSample(model, data)
+```
+
+**This is not (yet) a full `nlmixr2(..., est = "nimble")` method.**
+`nimbleLinkedSample()` is a standalone function: it returns
+`nimble::runMCMC()`'s raw samples matrix, not an `nlmixr2FitData` object --
+no `$parFixed`, no IPRED/CWRES tables, no WAIC/LOO, no diagnostics beyond
+what NIMBLE itself reports. Use it when you specifically want NIMBLE's
+sampler (its own adaptive Metropolis-Hastings by default) against the same
+linked likelihood the Stan backend uses; use `est = "stan"` for the
+full estimation workflow.
+
+### Current scope
+
+Like `est = "stan"`, the model's ODE solving, residual-error model and
+censoring stay in rxode2/nlmixr2est -- NIMBLE only ever sees a compiled
+external call returning the conditional log-likelihood and its analytic
+gradient (the gradient is computed but currently unused; see
+[Why no HMC](#why-no-hmc) below). Within that shared design,
+`nimbleLinkedSample()` covers a narrower model space than `est = "stan"`
+today:
+
+* **Diagonal omega only.** A correlated (non-diagonal) omega block is
+  refused. Omega itself is fixed at its `ini()` value, not sampled --
+  only the etas and thetas are.
+* **No finite mixtures, no mu-referenced covariates, and no prior on an
+  omega block.**
+* **No `fix()`ed population parameters.** `literalFix = TRUE` (nlmixr2est's
+  default and this function's) drops a fixed theta from the linked
+  problem's parameter count entirely, so `nimbleLinkedSample()` refuses
+  a model containing one up front, with a clear reason, rather than let a
+  downstream count mismatch surface as a confusing error.
+* **At least 2 free population parameters, and at least 2 total
+  (subject, eta) combinations.** This is a NIMBLE limitation, not a
+  choice: NIMBLE collapses a whole-array reference to a lower rank when
+  its length is exactly 1, which breaks the custom distribution this
+  function is built on. A model with exactly one free theta, or exactly
+  one subject and one eta, is refused rather than silently mishandled.
+
+Every one of these is enforced by `nimbleLinkedSample()` itself --
+refusing loudly with a specific reason, not producing a plausible-looking
+but wrong posterior.
+
+## Priors and bounds
+
+Free thetas' `ini({})` priors are honored using the *same*
+`ini({})`/`prior()` syntax as `est = "stan"`, translated into NIMBLE's
+distribution syntax and reused for its bounds:
+
+```{r}
+one.cmt <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- log(c(0, 2.7, 100))
+    tv <- 3.45
+    add.sd <- c(0, 0.7)
+    eta.ka ~ 0.6
+    eta.cl ~ 0.3
+    eta.v ~ 0.1
+    prior(tka) ~ dnorm(0.45, 1)
+    prior(tcl) ~ dnorm(1, 1)
+    prior(tv) ~ dnorm(3.45, 1)
+    prior(add.sd) ~ dgamma(2, 1)
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+
+samples <- nimbleLinkedSample(one.cmt, nlmixr2data::theo_sd,
+                              niter = 4000L, nburnin = 2000L)
+```
+
+A theta's `ini()` bounds (support-promoted by its prior, exactly as in
+`stanPriors()`) apply via NIMBLE's native truncation
+(`T(dist, lower, upper)`); a theta with no explicit `prior()` falls back to
+a weakly-informative normal at its own declared bounds, same as the
+untruncated case above but without a user-specified distribution.
+
+The supported prior catalogue is narrower than Stan's: `normal`,
+`std_normal`, `lognormal`, `gamma`, `beta`, `exponential`, `uniform`,
+`student_t`, and `logistic`. Each was individually checked against
+NIMBLE's actual BUGS-registered distributions (not assumed from R's own
+`dnorm`/`dgamma`/etc., which use different parameter conventions) --
+notably `cauchy` is **not** supported: `dcauchy` is not natively usable in
+NIMBLE model code at all (it would need a custom distribution registration
+of its own), so a `cauchy` prior is refused with a clear message rather
+than silently substituted or mishandled. An unsupported prior on a
+population parameter refuses cleanly, naming the distribution.
+
+## Why no HMC {#why-no-hmc}
+
+`est = "stan"` samples with NUTS, using the linked likelihood's analytic
+gradient. `nimbleLinkedSample()` uses NIMBLE's default samplers instead
+(adaptive random-walk Metropolis, one per parameter block) -- entirely
+derivative-free. The linked likelihood's gradient is still computed on
+every call (the C entry point always returns it), but it is discarded:
+NIMBLE's `nimbleExternalCall()` mechanism has no documented hook for
+supplying a custom function's derivative to NIMBLE's own automatic
+differentiation system, so plugging the analytic gradient into
+`nimbleHMC`'s NUTS sampler is not currently possible without further
+NIMBLE-side investigation. Expect worse mixing than the Stan backend on
+strongly correlated or high-dimensional posteriors, particularly for the
+etas.
+
+## Reading the result
+
+`nimbleLinkedSample()` returns exactly what `nimble::runMCMC()` returns: a
+matrix of post-burn-in draws, columns named `theta[i]` (in `ini({})`
+`ntheta` order) and `eta[subject, k]`.
+
+```{r}
+colnames(samples)
+posterior_theta <- samples[, grepl("^theta", colnames(samples))]
+colMeans(posterior_theta)
+```
+
+Everything in the `coda`/`posterior` ecosystem works directly on this
+matrix (wrap it with `coda::as.mcmc()` or `posterior::as_draws_matrix()`
+for trace plots, Rhat/ESS, etc.) -- `nimbleLinkedSample()` does not
+compute any diagnostics itself.
+
+## Verifying the link
+
+`nimbleLinkedSample()` links to the exact same compiled
+`nlmixr2bayes_cond_batch_theta` C entry point `est = "stan"` uses (through
+a small standalone shim resolved via `R_GetCCallable` at runtime, compiled
+on demand and cached) -- the same "one source of truth" conditional
+likelihood, not a re-derivation. `nimbleBuildInfo()` probes the installed
+NIMBLE's distribution registry and `nimbleExternalCall()` signature (no
+compilation, milliseconds) and is checked automatically before the first
+`nimbleLinkedSample()` call in a session, refusing clearly if a NIMBLE
+version has changed something this backend depends on.

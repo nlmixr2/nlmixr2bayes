@@ -14,7 +14,10 @@ Description: Bayesian estimation for 'nlmixr2' models by linking Stan (via
     one place ('rxode2'/'nlmixr2est'), and Stan consumes the likelihood and its
     analytically-supplied gradients as an external function.  Prior
     distributions come from the model's 'ini({})' block, whose distribution
-    catalogue is one-to-one with Stan's.
+    catalogue is one-to-one with Stan's.  An experimental 'NIMBLE'-linked
+    sampler, 'nimbleLinkedSample()', links the same compiled likelihood into a
+    'NIMBLE' model for models with diagonal covariance structure and no
+    finite mixtures, sampled with 'NIMBLE''s built-in derivative-free MCMC.
 License: MIT
 URL: https://github.com/nlmixr2/nlmixr2bayes
 BugReports: https://github.com/nlmixr2/nlmixr2bayes/issues
@@ -31,7 +34,7 @@ Imports:
     utils
 Suggests:
     rstan (>= 2.26),
-    nimble,
+    nimble (>= 1.0.0),
     loo,
     posterior,
     testthat (>= 3.0.0),
