@@ -8,8 +8,20 @@
 # compile step (the slow part) stays fast.
 
 test_that(".nimbleAssertSupported refuses unsupported model shapes", {
-  .baseMap <- list(nMix = 1L, muRefCov = data.frame(thetaIdx = integer(0)),
-                   blocks = list(list(members = "eta.cl", k = 1L, fix = FALSE)))
+  # mirrors .stanMap()'s actual column structure (R/stanMap.R) so a shape
+  # .stanMap() never emits can't accidentally pass/fail this test for the
+  # wrong reason -- theta needs >= 2 rows since a single theta is itself
+  # one of the refused shapes (the length-1 distribution-call-site collapse).
+  .baseMap <- list(
+    nMix = 1L,
+    theta = data.frame(name = c("tcl", "tv"), par = c("tcl", "tv"),
+                       est = c(1, 3), lower = c(-Inf, -Inf),
+                       upper = c(Inf, Inf), fix = c(FALSE, FALSE),
+                       ntheta = c(1L, 2L), stringsAsFactors = FALSE),
+    muRefCov = data.frame(thetaIdx = integer(0), etaIdx = integer(0),
+                          covariate = character(0), name = character(0),
+                          stringsAsFactors = FALSE),
+    blocks = list(list(members = "eta.cl", k = 1L, fix = FALSE)))
   expect_true(nlmixr2bayes:::.nimbleAssertSupported(.baseMap))
 
   .mix <- .baseMap
@@ -17,8 +29,18 @@ test_that(".nimbleAssertSupported refuses unsupported model shapes", {
   expect_error(nlmixr2bayes:::.nimbleAssertSupported(.mix), "mixtures")
 
   .cov <- .baseMap
-  .cov$muRefCov <- data.frame(thetaIdx = 1L)
+  .cov$muRefCov <- data.frame(thetaIdx = 1L, etaIdx = 1L, covariate = "wt",
+                              name = "tcl_wt", stringsAsFactors = FALSE)
   expect_error(nlmixr2bayes:::.nimbleAssertSupported(.cov), "covariates")
+
+  .thetaFix <- .baseMap
+  .thetaFix$theta$fix[1] <- TRUE
+  expect_error(nlmixr2bayes:::.nimbleAssertSupported(.thetaFix), "fix\\(\\)ed")
+
+  .oneTheta <- .baseMap
+  .oneTheta$theta <- .baseMap$theta[1, , drop = FALSE]
+  expect_error(nlmixr2bayes:::.nimbleAssertSupported(.oneTheta),
+              "at least 2 population parameters")
 
   .corr <- .baseMap
   .corr$blocks <- list(list(members = c("eta.cl", "eta.v"), k = 2L,
@@ -99,4 +121,17 @@ test_that("nimbleLinkedSample() runs end to end and returns finite samples", {
   expect_true(all(c("theta[1]", "theta[2]", "theta[3]",
                     "eta[1, 1]", "eta[4, 1]") %in% colnames(.samples)))
   expect_true(all(is.finite(.samples)))
+})
+
+test_that("nimbleLinkedSample() refuses a single-subject/single-eta model", {
+  skip_if_not_installed("nimble")
+  skip_on_cran()
+  # nid * neta == 1: the same length-1 distribution-call-site collapse as
+  # the theta check, this time for etaFlat[1:(nid*neta)]. Caught before any
+  # NIMBLE compilation (right after stanLinkSetup() reports h$nid), so this
+  # is cheap even though it links the real problem.
+  .oneSubject <- .linkData()[.linkData()$ID == 1, ]
+  expect_error(
+    nimbleLinkedSample(.linkMod, .oneSubject, niter = 5L, nburnin = 1L, cores = 1L),
+    "at least 2 total")
 })

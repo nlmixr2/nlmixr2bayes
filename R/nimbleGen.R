@@ -122,6 +122,23 @@
 }
 
 #' Refuse model shapes phase 1 does not support (rather than mis-state them)
+#'
+#' Two of these are NIMBLE limitations, not choices: a whole-array range
+#' slice (`theta[1:ntheta]`, `etaFlat[1:(nid*neta)]`) passed at a
+#' distribution-call-site collapses to a lower rank when its length is
+#' exactly 1, and no restructuring found sidesteps it -- confirmed with a
+#' `dimensions=` override, a bare (unsliced) reference, and rebuilding the
+#' array via a scalar-indexed for loop (the trick that fixes the analogous
+#' 2D eta collapse), all independently, all failing identically. A single
+#' free theta or a single-subject/single-eta model are not edge cases for a
+#' real nlmixr2 model, so refuse them explicitly here rather than let a
+#' cryptic NIMBLE compiler error be the first sign something is wrong.
+#' `fix()`ed thetas are refused too: `literalFix=TRUE` (the default) drops
+#' them from `foceiLikLoad`'s internal theta count, so the count this
+#' function's caller builds (`nrow(map$theta)`, which still includes them)
+#' would disagree with the linked problem's -- caught safely by
+#' `nimbleLinkedSample()`'s own consistency check either way, but refusing
+#' up front gives a clear reason instead of a generic mismatch error.
 #' @noRd
 .nimbleAssertSupported <- function(map) {
   if (map$nMix > 1L) {
@@ -131,6 +148,16 @@
   if (nrow(map$muRefCov) > 0L) {
     stop("nimble linked sampling does not yet support mu-referenced ",
          "covariates", call. = FALSE)
+  }
+  if (any(map$theta$fix)) {
+    stop("nimble linked sampling does not yet support fix()ed population ",
+         "parameter(s) '", paste(map$theta$name[map$theta$fix], collapse = ", "),
+         "'", call. = FALSE)
+  }
+  if (nrow(map$theta) < 2L) {
+    stop("nimble linked sampling needs at least 2 population parameters ",
+         "(nimble collapses a length-1 array at a distribution call site; ",
+         "this model has ", nrow(map$theta), ")", call. = FALSE)
   }
   for (.b in map$blocks) {
     if (.b$k != 1L) {
@@ -221,6 +248,13 @@ nimbleLinkedSample <- function(ui, data, niter = 2000L, nburnin = 1000L,
                                literalFix = TRUE, seed = NULL,
                                verbose = FALSE) {
   likelihood <- match.arg(likelihood)
+  if (!is.null(thetaSd)) {
+    # an NA/NaN/Inf here would get baked as a literal into the generated
+    # NIMBLE code text (.stanNum(NA) is the string "NA", parseable but not
+    # a usable prior) -- refuse it here rather than emit a broken model.
+    checkmate::assertNumeric(thetaSd, finite = TRUE, any.missing = FALSE,
+                             min.len = 1)
+  }
   rxode2::rxReq("nimble")
   .nimbleCondLikSetup()
   .ui <- rxode2::rxode2(ui)
@@ -240,6 +274,12 @@ nimbleLinkedSample <- function(ui, data, niter = 2000L, nburnin = 1000L,
   .ntheta <- nrow(.map$theta)
   .neta <- nrow(.map$eta)
   .nid <- .h$nid
+  if (.nid * .neta < 2L) {
+    stop("nimble linked sampling needs at least 2 total (subject, eta) ",
+         "combinations (the same length-1 distribution-call-site collapse ",
+         "as the theta check; this model has ", .nid, " subject(s) and ",
+         .neta, " eta(s))", call. = FALSE)
+  }
   .thetaMean <- .map$theta$est
   .thetaSdVec <- if (is.null(thetaSd)) {
     pmax(3 * abs(.thetaMean), 1)

@@ -29,6 +29,13 @@ int nlmixr2bayes_nimble_cond_batch_theta(const double *theta, int ntheta,
                                           int neta, double *value,
                                           double *gradEta,
                                           double *gradTheta) {
+  /* Cached for this DSO's lifetime, same tradeoff inst/include/
+   * nlmixr2bayes_lp.hpp already accepts for Stan: unloading and reloading
+   * nlmixr2bayes (e.g. repeated pkgload::load_all() in one R session) while
+   * a compiled model built against the OLD load is still alive would leave
+   * this pointing at unmapped memory. Not addressed here, matching the
+   * existing accepted precedent -- a fix would need to cover both entry
+   * points together. */
   static nlmixr2bayes_cond_batch_theta_t fn = NULL;
   if (fn == NULL) {
     fn = (nlmixr2bayes_cond_batch_theta_t)

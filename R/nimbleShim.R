@@ -57,7 +57,20 @@
          call. = FALSE)
   }
   if (cache) {
-    file.copy(.oGen, .o, overwrite = TRUE)
+    # write-then-rename, not file.copy(overwrite=TRUE): two processes
+    # racing to populate the same cache entry (e.g. parallel chains each
+    # calling nimbleLinkedSample()) must never have a reader see a
+    # partially-written .o. Renaming within the SAME directory as the final
+    # path keeps it on one filesystem, where POSIX rename() is atomic;
+    # file.copy() falls back only if rename() itself fails (e.g. Windows
+    # semantics), never as the primary path.
+    .stage <- file.path(.dir, paste0(".", basename(.o), "-",
+                                     basename(tempfile())))
+    file.copy(.oGen, .stage, overwrite = TRUE)
+    if (!file.rename(.stage, .o) && !file.exists(.o)) {
+      file.copy(.stage, .o, overwrite = TRUE)
+    }
+    unlink(.stage)
     return(.o)
   }
   .oGen
