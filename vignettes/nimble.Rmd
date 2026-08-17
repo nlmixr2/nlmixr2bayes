@@ -118,17 +118,23 @@ population parameter refuses cleanly, naming the distribution.
 ## Why no HMC {#why-no-hmc}
 
 `est = "stan"` samples with NUTS, using the linked likelihood's analytic
-gradient. `nimbleLinkedSample()` uses NIMBLE's default samplers instead
-(adaptive random-walk Metropolis, one per parameter block) -- entirely
+gradient (spliced into Stan's autodiff tape with `precomputed_gradients()`,
+a value-plus-known-derivative primitive Stan provides for exactly this).
+`nimbleLinkedSample()` uses NIMBLE's default samplers instead (adaptive
+random-walk Metropolis, one per parameter block) -- entirely
 derivative-free. The linked likelihood's gradient is still computed on
 every call (the C entry point always returns it), but it is discarded:
-NIMBLE's `nimbleExternalCall()` mechanism has no documented hook for
-supplying a custom function's derivative to NIMBLE's own automatic
-differentiation system, so plugging the analytic gradient into
-`nimbleHMC`'s NUTS sampler is not currently possible without further
-NIMBLE-side investigation. Expect worse mixing than the Stan backend on
-strongly correlated or high-dimensional posteriors, particularly for the
-etas.
+NIMBLE has no equivalent of `precomputed_gradients()`. Its own
+`ADbreak()` looks related but does the opposite -- it stops derivative
+tracking and treats a value as a constant from that point on, so using it
+here would hand HMC a silent (and wrong) zero gradient rather than the
+real one. The only route that would actually work is registering a custom
+CppAD `atomic_three<>` C++ class (the mechanism NIMBLE's own ~15 built-in
+differentiable operations use internally) and getting NIMBLE's C++ code
+generator to call it -- undocumented, unexported internals, not a
+supported extension point, so not attempted here. Expect worse mixing
+than the Stan backend on strongly correlated or high-dimensional
+posteriors, particularly for the etas.
 
 ## Reading the result
 
