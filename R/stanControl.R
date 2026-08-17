@@ -3,14 +3,16 @@
 #' The class name `stanControl` makes `nlmixr2(model, data, stanControl(...))`
 #' infer `est="stan"`.
 #'
-#' Parallelism has two axes.  By default (unix) the CHAINS run in forked
+#' Parallelism has two axes.  On unix, the CHAINS run in forked
 #' processes (`chainCores`, inheriting the [rxode2::getRxThreads()]
 #' budget capped at `chains`) with serial evaluation inside each chain.
-#' With `chainCores = 1` the chains run sequentially and each likelihood
-#' evaluation is subject-parallel instead (`cores`, defaulting to
-#' `getRxThreads()`).  `getRxThreads()` honors `OMP_THREAD_LIMIT`, which
-#' CRAN sets to 2, so checks stay within CRAN's core policy
-#' automatically.
+#' On Windows, `chainCores > 1` runs one chain per PSOCK worker (each
+#' worker builds its own linked likelihood) with `cores=1` inside each
+#' worker.  With `chainCores = 1` the chains run sequentially and each
+#' likelihood evaluation is subject-parallel instead (`cores`,
+#' defaulting to `getRxThreads()`).  `getRxThreads()` honors
+#' `OMP_THREAD_LIMIT`, which CRAN sets to 2, so checks stay within
+#' CRAN's core policy automatically.
 #'
 #' The ODE-retry machinery (`maxOdeRecalc`, `stickyRecalcN`) stays at
 #' nlmixr2est's defaults and is ENABLED: a hard point retries with relaxed
@@ -45,7 +47,7 @@
 #' @param vbTolRelObj ADVI relative-ELBO convergence tolerance
 #' @param vbOutputSamples posterior draws taken from the fitted
 #'   approximation (these flow into every posterior summary on the fit)
-#' @param chains number of MCMC chains (run sequentially)
+#' @param chains number of MCMC chains
 #' @param iter total iterations per chain (Stan convention, includes warmup)
 #' @param warmup warmup iterations per chain
 #' @param thin thinning interval
@@ -93,8 +95,9 @@
 #'   the iteration print is disabled (the ticks would happen in the
 #'   forks' memory).  Set `chainCores = 1` for sequential chains with
 #'   subject-parallel evaluation and the iteration table.  On Windows
-#'   the default is 1 and `chainCores > 1` is refused (rstan's parallel
-#'   chains there are PSOCK processes without the linked state)
+#'   `chainCores > 1` uses PSOCK workers (one linked likelihood per
+#'   worker process) and runs one chain per worker with `cores=1` inside
+#'   each worker
 #' @param cores subject-parallel thread count inside each likelihood
 #'   evaluation (default [rxode2::getRxThreads()]; on CRAN this is capped
 #'   at 2 through `OMP_THREAD_LIMIT`).  This is the per-run analogue of the
@@ -189,8 +192,8 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
   .coresExplicit <- !missing(cores)
   if (is.null(chainCores)) {
     # default: parallel chains inheriting the core budget (capped at the
-    # chain count).  Forked chains are unix-only -- on Windows rstan uses
-    # PSOCK workers, fresh processes WITHOUT the linked likelihood.
+    # chain count).  On unix these are forked chains; on Windows they use
+    # PSOCK workers with one linked likelihood per worker.
     chainCores <- if (identical(.Platform$OS.type, "unix")) {
       min(as.integer(chains), as.integer(rxode2::getRxThreads()))
     } else {
@@ -199,23 +202,35 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
   }
   checkmate::assertIntegerish(chainCores, lower = 1, len = 1,
                               any.missing = FALSE)
-  if (chainCores > 1L && !identical(.Platform$OS.type, "unix")) {
-    stop("chainCores > 1 needs fork-based parallelism (unix): on Windows ",
-         "rstan's parallel chains are PSOCK processes that do not carry ",
-         "the linked likelihood", call. = FALSE)
-  }
   if (chainCores > 1L) {
-    if (.coresExplicit && cores > 1L) {
-      warning("subject-parallel OpenMP (cores = ", cores, ") inside ",
-              "FORKED chains (chainCores = ", chainCores, ") risks the ",
-              "OpenMP-after-fork hazard; cores = 1 is the safe setting",
-              call. = FALSE)
-    } else if (!.coresExplicit) {
-      # the forks are the parallelism; OpenMP inside a forked child of an
-      # OpenMP-tainted parent can deadlock, so the default stays serial
-      # within each chain
+    if (identical(.Platform$OS.type, "unix")) {
+      if (.coresExplicit && cores > 1L) {
+        warning("subject-parallel OpenMP (cores = ", cores, ") inside ",
+                "FORKED chains (chainCores = ", chainCores, ") risks the ",
+                "OpenMP-after-fork hazard; cores = 1 is the safe setting",
+                call. = FALSE)
+      } else if (!.coresExplicit) {
+        # the forks are the parallelism; OpenMP inside a forked child of an
+        # OpenMP-tainted parent can deadlock, so the default stays serial
+        # within each chain
+        cores <- 1L
+      }
+    } else {
+      if (cores > 1L) {
+        warning("Windows PSOCK chain parallelism runs one chain per worker ",
+                "with subject threads forced to cores = 1 inside each worker; ",
+                "set chainCores and/or cores to avoid oversubscription",
+                call. = FALSE)
+      }
       cores <- 1L
     }
+  }
+  if (as.integer(chainCores) * as.integer(cores) >
+        as.integer(rxode2::getRxThreads())) {
+    warning("requested chainCores * cores (", as.integer(chainCores), " * ",
+            as.integer(cores), ") exceeds rxode2::getRxThreads() (",
+            as.integer(rxode2::getRxThreads()), "); this may oversubscribe CPUs",
+            call. = FALSE)
   }
   checkmate::assertCharacter(diagOmegaSdPrior, len = 1, pattern = "%s")
   checkmate::assertNumeric(lkjEta, lower = 0, len = 1)

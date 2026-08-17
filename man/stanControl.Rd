@@ -54,7 +54,7 @@ stanControl(
 )
 }
 \arguments{
-\item{chains}{number of MCMC chains (run sequentially)}
+\item{chains}{number of MCMC chains}
 
 \item{iter}{total iterations per chain (Stan convention, includes warmup)}
 
@@ -150,8 +150,9 @@ inside a forked child of an OpenMP-using parent can deadlock -- and
 the iteration print is disabled (the ticks would happen in the
 forks' memory).  Set `chainCores = 1` for sequential chains with
 subject-parallel evaluation and the iteration table.  On Windows
-the default is 1 and `chainCores > 1` is refused (rstan's parallel
-chains there are PSOCK processes without the linked state)}
+`chainCores > 1` uses PSOCK workers (one linked likelihood per
+worker process) and runs one chain per worker with `cores=1` inside
+each worker}
 
 \item{diagOmegaSdPrior}{character template for the default half-Cauchy
 scale on an omega SD without its own prior; `%s` is replaced by the
@@ -207,14 +208,16 @@ The class name `stanControl` makes `nlmixr2(model, data, stanControl(...))`
 infer `est="stan"`.
 }
 \details{
-Parallelism has two axes.  By default (unix) the CHAINS run in forked
+Parallelism has two axes.  On unix, the CHAINS run in forked
 processes (`chainCores`, inheriting the [rxode2::getRxThreads()]
 budget capped at `chains`) with serial evaluation inside each chain.
-With `chainCores = 1` the chains run sequentially and each likelihood
-evaluation is subject-parallel instead (`cores`, defaulting to
-`getRxThreads()`).  `getRxThreads()` honors `OMP_THREAD_LIMIT`, which
-CRAN sets to 2, so checks stay within CRAN's core policy
-automatically.
+On Windows, `chainCores > 1` runs one chain per PSOCK worker (each
+worker builds its own linked likelihood) with `cores=1` inside each
+worker.  With `chainCores = 1` the chains run sequentially and each
+likelihood evaluation is subject-parallel instead (`cores`,
+defaulting to `getRxThreads()`).  `getRxThreads()` honors
+`OMP_THREAD_LIMIT`, which CRAN sets to 2, so checks stay within
+CRAN's core policy automatically.
 
 The ODE-retry machinery (`maxOdeRecalc`, `stickyRecalcN`) stays at
 nlmixr2est's defaults and is ENABLED: a hard point retries with relaxed
