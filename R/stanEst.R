@@ -444,11 +444,10 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     control$chainCores <= 1L
   if (control$print > 0L && .stanHasIterPrint() &&
         control$chainCores > 1L) {
-    # forked chains evaluate in child processes; the print ticks would
-    # accumulate in the forks' copy-on-write memory and never reach this
-    # process's history
+    # parallel chains evaluate in child processes; the print ticks happen in
+    # worker-local memory and never reach this process's history
     message("iteration printing needs sequential chains; it is disabled ",
-            "with forked chains (set chainCores = 1 for the iteration ",
+            "with parallel chains (set chainCores = 1 for the iteration ",
             "table)")
   }
   if (control$print > 0L && !.stanHasIterPrint()) {
@@ -468,7 +467,19 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   # the init jitter draws come from R's RNG; rxWithSeed scopes the seed and
   # restores the user's RNG state (touching .Random.seed directly is
   # forbidden by CRAN)
-  .sf <- .stanRunInference(.sm, .gen, .map, .nid, control)
+  .usePsock <- identical(.Platform$OS.type, "windows") &&
+    identical(control$algorithm, "NUTS") &&
+    control$chainCores > 1L
+  if (.usePsock) {
+    # Windows PSOCK workers must build their OWN link state; free the
+    # parent's preflight link before the workers start.
+    .Call(`_nlmixr2stan_clearThetaBase`)
+    stanLinkFree()
+    .sf <- .stanRunInferencePsock(.sm, .gen, .map, .cov, .needSens, .nid,
+                                  control, ui, env$data)
+  } else {
+    .sf <- .stanRunInference(.sm, .gen, .map, .nid, control)
+  }
   if (.iterOn) {
     .ph <- tryCatch(nlmixr2est::foceiLikIterPrintEnd(),
                     error = function(e) NULL)
@@ -494,18 +505,128 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
 
 #' Run the selected Stan inference algorithm on the compiled model
 #'
-#' NUTS goes through [rstan::sampling()] (chains sequential, cores=1 -- the
-#' linked likelihood is process-global); the ADVI variants go through
+#' NUTS goes through [rstan::sampling()] (unix: chain parallelism by fork;
+#' Windows: one chain per PSOCK worker with one linked likelihood per
+#' worker); the ADVI variants go through
 #' [rstan::vb()] with importance resampling, whose draws then flow through
 #' the SAME posterior->fit machinery.  Both return a stanfit.
 #' @noRd
+.stanInitForControl <- function(control, map, blockSpecs, nid) {
+  if (identical(control$init, "ini")) {
+    .stanInit(map, blockSpecs, nid, control)
+  } else {
+    control$init
+  }
+}
+
+#' Per-chain init payload for one-chain rstan::sampling()
+#' @noRd
+.stanChainInit <- function(init, chainId, chains) {
+  if (!is.list(init) || length(init) < chains || chains <= 1L) return(init)
+  .idx <- seq_len(chains)
+  if (all(vapply(init[.idx], is.list, logical(1)))) return(init[[chainId]])
+  init
+}
+
+#' Build the linked-likelihood state for one process
+#' @noRd
+.stanLinkSetupForRun <- function(ui, data, map, cov, needSens, control) {
+  .h <- stanLinkSetup(ui, data, likelihood = control$likelihood,
+                      rxControl = control$rxControl,
+                      thetaSens = needSens, literalFix = control$literalFix,
+                      cores = control$cores,
+                      maxOdeRecalc = control$maxOdeRecalc,
+                      fallbackFD = control$fallbackFD)
+  if (!identical(.h$etaNames, map$eta$name) || .h$ntheta != nrow(map$theta)) {
+    stop("the linked problem's parameters do not match the model map",
+         call. = FALSE) # nocov
+  }
+  .stanAssertThetaGradCover(map, .h$thetaSensIdx)
+  .Call(`_nlmixr2stan_setThetaBase`, as.double(.h$initPar))
+  .Call(`_nlmixr2stan_setMuRef`, as.integer(map$muRefIdx))
+  .mrcFree <- !map$theta$fix[map$muRefCov$thetaIdx]
+  .mrcTvBad <- which(cov$timeVarying & .mrcFree &
+                       !(map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
+  if (length(.mrcTvBad) > 0L) {
+    stop("time-varying mu-referenced covariate coefficient(s) ",
+         paste0("'", map$muRefCov$name[.mrcTvBad], "'", collapse = ", "),
+         " have no forward sensitivity in the linked model, so their ",
+         "gradient would be silently zero", call. = FALSE)
+  }
+  .mrcS <- which(!cov$timeVarying & .mrcFree &
+                   !(map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
+  if (length(.mrcS) > 0L) {
+    .cv <- cov$val[, .mrcS, drop = FALSE]
+    if (map$nMix > 1L) .cv <- do.call(rbind, rep(list(.cv), map$nMix))
+    .Call(`_nlmixr2stan_setMuRefCov`,
+          as.integer(map$muRefCov$thetaIdx[.mrcS]),
+          as.integer(map$muRefCov$etaIdx[.mrcS] - 1L),
+          .cv)
+  }
+  if (map$nMix > 1L) {
+    .nm <- .Call(`_nlmixr2stan_nMix`)
+    if (!identical(.nm, map$nMix)) {
+      stop("the linked problem reports ", .nm, " mixture component(s) but ",
+           "the model map expects ", map$nMix, call. = FALSE) # nocov
+    }
+  }
+  .omInv <- tryCatch(solve(ui$omega), error = function(e) NULL)
+  if (!is.null(.omInv)) {
+    tryCatch(.linkSetOmegaInv(.omInv), error = function(e) NULL)
+  }
+  invisible(.h)
+}
+
+#' Combine one-chain stanfit objects into a multi-chain stanfit
+#' @noRd
+.stanCombineSflist <- function(sflist) {
+  .sfFun <- get0("sflist2stanfit", envir = asNamespace("rstan"),
+                 inherits = FALSE)
+  if (is.null(.sfFun)) {
+    stop("this rstan does not provide sflist2stanfit; update rstan",
+         call. = FALSE)
+  }
+  .sfFun(sflist)
+}
+
+#' Windows PSOCK chain parallelism for NUTS
+#' @noRd
+.stanRunInferencePsock <- function(sm, gen, map, cov, needSens, nid, control,
+                                   ui, data) {
+  .init <- .stanInitForControl(control, map, gen$blockSpecs, nid)
+  .chainIds <- as.list(seq_len(control$chains))
+  .cl <- parallel::makePSOCKcluster(control$chainCores)
+  on.exit(parallel::stopCluster(.cl), add = TRUE)
+  parallel::clusterEvalQ(.cl, {
+    requireNamespace("nlmixr2stan", quietly = TRUE)
+    requireNamespace("rstan", quietly = TRUE)
+    requireNamespace("rxode2", quietly = TRUE)
+    requireNamespace("nlmixr2est", quietly = TRUE)
+    NULL
+  })
+  .sfl <- parallel::parLapply(.cl, .chainIds, function(.cid) {
+    nlmixr2stan:::.stanLinkSetupForRun(ui, data, map, cov, needSens, control)
+    on.exit(nlmixr2stan:::stanLinkFree(), add = TRUE)
+    on.exit(.Call(`_nlmixr2stan_clearThetaBase`), add = TRUE)
+    .i1 <- nlmixr2stan:::.stanChainInit(.init, .cid, control$chains)
+    rstan::sampling(sm, data = gen$data, chains = 1L, chain_id = .cid,
+                    iter = control$iter, warmup = control$warmup,
+                    thin = control$thin, seed = control$seed,
+                    init = .i1, cores = 1L,
+                    refresh = if (control$verbose) {
+                      max(1L, control$iter %/% 10L)
+                    } else {
+                      0L
+                    },
+                    control = list(adapt_delta = control$adapt_delta,
+                                   max_treedepth = control$max_treedepth))
+  })
+  .stanCombineSflist(.sfl)
+}
+
 .stanRunInference <- function(sm, gen, map, nid, control) {
   rxode2::rxWithSeed(control$seed, {
-    .init <- if (identical(control$init, "ini")) {
-      .stanInit(map, gen$blockSpecs, nid, control)
-    } else {
-      control$init
-    }
+    .init <- .stanInitForControl(control, map, gen$blockSpecs, nid)
     if (identical(control$algorithm, "pathfinder")) {
       .stanRunPathfinder(sm, gen, map, nid, control, .init)
     } else if (identical(control$algorithm, "NUTS")) {
