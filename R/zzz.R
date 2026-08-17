@@ -32,6 +32,14 @@ NULL
   invisible(TRUE)
 }
 
+#' Does the loaded nlmixr2est support the combined eta+theta sensitivity
+#' build (nlmixr2/nlmixr2est#958)?  Probed structurally: the feature added
+#' the combSens argument to foceiLikLoad.
+#' @noRd
+.stanHasCombSens <- function() {
+  "combSens" %in% names(formals(nlmixr2est::foceiLikLoad))
+}
+
 #' Is the tier-0 (population-only) nlm C API available?
 #' @noRd
 .stanHasNlmApi <- function() {
