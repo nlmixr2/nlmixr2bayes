@@ -114,3 +114,20 @@ test_that("iteration print + parameter history over the sampler", {
   expect_true(is.null(.fit0$parHistData) ||
                 nrow(.fit0$parHistData) == 0L)
 })
+
+test_that("Windows PSOCK chain parallelization runs", {
+  skip_on_cran()
+  skip_if_not_installed("rstan")
+  skip_if_not(identical(.Platform$OS.type, "windows"))
+  .fit <- suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan",
+                        control = stanControl(chains = 2L, chainCores = 2L,
+                                              cores = 2L, iter = 100L,
+                                              warmup = 50L, seed = 42L,
+                                              print = 0L, calcTables = FALSE,
+                                              ofv = "none",
+                                              onDiagnostic = "none"))))
+  expect_s4_class(.fit$stanfit, "stanfit")
+  expect_equal(.fit$stanfit@sim$chains, 2L)
+  expect_equal(length(.fit$stanfit@sim$samples), 2L)
+})

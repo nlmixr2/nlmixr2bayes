@@ -522,9 +522,8 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
 #' Per-chain init payload for one-chain rstan::sampling()
 #' @noRd
 .stanChainInit <- function(init, chainId, chains) {
-  if (!is.list(init) || length(init) < chains || chains <= 1L) return(init)
-  .idx <- seq_len(chains)
-  if (all(vapply(init[.idx], is.list, logical(1)))) return(init[[chainId]])
+  if (!is.list(init) || chains <= 1L) return(init)
+  if (length(init) >= chainId && is.list(init[[chainId]])) return(init[[chainId]])
   init
 }
 
@@ -604,23 +603,36 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     requireNamespace("nlmixr2est", quietly = TRUE)
     NULL
   })
-  .sfl <- parallel::parLapply(.cl, .chainIds, function(.cid) {
-    nlmixr2bayes:::.stanLinkSetupForRun(ui, data, map, cov, needSens, control)
-    on.exit(nlmixr2bayes:::stanLinkFree(), add = TRUE)
-    on.exit(.Call(`_nlmixr2bayes_clearThetaBase`), add = TRUE)
-    .i1 <- nlmixr2bayes:::.stanChainInit(.init, .cid, control$chains)
-    rstan::sampling(sm, data = gen$data, chains = 1L, chain_id = .cid,
-                    iter = control$iter, warmup = control$warmup,
-                    thin = control$thin, seed = control$seed,
-                    init = .i1, cores = 1L,
-                    refresh = if (control$verbose) {
-                      max(1L, control$iter %/% 10L)
-                    } else {
-                      0L
-                    },
-                    control = list(adapt_delta = control$adapt_delta,
-                                   max_treedepth = control$max_treedepth))
+  .worker <- local({
+    .ui <- ui
+    .data <- data
+    .map <- map
+    .cov <- cov
+    .needSens <- needSens
+    .control <- control
+    .gen <- gen
+    .init <- .init
+    .sm <- sm
+    function(.cid) {
+      nlmixr2bayes:::.stanLinkSetupForRun(.ui, .data, .map, .cov,
+                                          .needSens, .control)
+      on.exit(nlmixr2bayes:::stanLinkFree(), add = TRUE)
+      on.exit(.Call(`_nlmixr2bayes_clearThetaBase`), add = TRUE)
+      .i1 <- nlmixr2bayes:::.stanChainInit(.init, .cid, .control$chains)
+      rstan::sampling(.sm, data = .gen$data, chains = 1L, chain_id = .cid,
+                      iter = .control$iter, warmup = .control$warmup,
+                      thin = .control$thin, seed = .control$seed,
+                      init = list(.i1), cores = 1L,
+                      refresh = if (.control$verbose) {
+                        max(1L, .control$iter %/% 10L)
+                      } else {
+                        0L
+                      },
+                      control = list(adapt_delta = .control$adapt_delta,
+                                     max_treedepth = .control$max_treedepth))
+    }
   })
+  .sfl <- parallel::parLapply(.cl, .chainIds, .worker)
   .stanCombineSflist(.sfl)
 }
 
