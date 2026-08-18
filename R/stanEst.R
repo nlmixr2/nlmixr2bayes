@@ -814,6 +814,51 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
        minEss = NA_real_, khat = .khat, messages = .msg)
 }
 
+#' Relabel a posterior-summary row-name vector from the Stan-mangled
+#' identifiers the generated program declares (dots/other punctuation in an
+#' nlmixr2 parameter name are not legal in a Stan identifier, so
+#' `.stanParName()` replaces them with `_`, e.g. `add.sd` -> `add_sd`) back
+#' to the original nlmixr2 model names, so `$posteriorSummary` reads like the
+#' model rather than like its Stan translation.
+#'
+#' Thetas (including error-model and covariate-coefficient parameters, which
+#' are ordinary theta rows) have an exact 1:1 Stan-name -> model-name
+#' mapping already carried on `map$theta` -- those are always translated.
+#' Omega is different: what a user recognizes as "the model's omega" is the
+#' natural variance/covariance entries of `omegaOut` (an neta x neta
+#' generated quantity assembled from whatever internal SD/correlation/
+#' covariance parameterization the block actually samples), so on the eta
+#' side this relabels `omegaOut[i,j]` cells -- using the SAME om./cov.
+#' convention as the iteration-print table -- rather than trying to name the
+#' internal per-block sampling parameters (a Cholesky factor entry has no
+#' single-parameter meaning to translate).
+#' @noRd
+.stanPosteriorRowLabels <- function(rn, map, blocks = NULL) {
+  .lbl <- stats::setNames(map$theta$name, map$theta$par)
+  if (!is.null(blocks) && length(blocks) > 0L) {
+    for (.blk in blocks) {
+      .mem <- .blk$members
+      .k <- length(.mem)
+      for (.di in seq_len(.k)) {
+        for (.dj in seq_len(.di)) {
+          .nm <- paste0("omegaOut[", .blk$start - 1L + .di, ",",
+                        .blk$start - 1L + .dj, "]")
+          .lbl[.nm] <- if (.di == .dj) {
+            paste0("om.", .mem[.di])
+          } else {
+            paste0("cov.", .mem[.di], ".", .mem[.dj])
+          }
+          # omegaOut is symmetric; the mirrored cell carries the same value
+          .lbl[paste0("omegaOut[", .blk$start - 1L + .dj, ",",
+                     .blk$start - 1L + .di, "]")] <- .lbl[.nm]
+        }
+      }
+    }
+  }
+  .m <- unname(.lbl[rn])
+  ifelse(is.na(.m), rn, .m)
+}
+
 #' Posterior -> nlmixr2 fit for tier 0 (population-only, no etas)
 #' @noRd
 .stanFinalizeEnvPop <- function(ret, ui, env, sf, map, gen, dx, control,
@@ -828,8 +873,11 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   .cov <- stats::cov(.thDraw[, .free, drop = FALSE])
   dimnames(.cov) <- list(map$theta$name[.free], map$theta$name[.free])
   .sum <- .stanSummaryDf(sf)
-  .keep <- !grepl("^lp__", rownames(.sum))
+  # theta[] duplicates the individually-named theta parameters above; drop it
+  .keep <- !grepl("^(lp__|theta\\[)", rownames(.sum))
   .posteriorSummary <- as.data.frame(.sum[.keep, , drop = FALSE])
+  rownames(.posteriorSummary) <- .stanPosteriorRowLabels(
+    rownames(.posteriorSummary), map)
   .ui <- rxode2::rxUiDecompress(ui)
   env2 <- ret
   env2$ui <- .ui
@@ -929,11 +977,23 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   .cov <- stats::cov(.thDraw[, .free, drop = FALSE])
   dimnames(.cov) <- list(map$theta$name[.free], map$theta$name[.free])
   # posterior summary on the monitored parameters (exact quantiles -- the
-  # printed $parFixed CI is a Gaussian approximation from $cov)
+  # printed $parFixed CI is a Gaussian approximation from $cov).  The raw
+  # per-block omega sampling parameterization (sd_bN/Lcorr_bN/omega_bN/L_bN)
+  # is dropped in favor of the derived, natural-scale omegaOut cells, which
+  # get relabeled to om./cov. names below -- that is what a user recognizes
+  # as "the model's omega", not whichever internal parameterization a given
+  # block happens to sample from.
   .sum <- .stanSummaryDf(sf)
-  .keep <- !grepl("^(z_|etaP_|eta\\[|omegaOut|logLikSubj|mixProbOut)",
+  .keep <- !grepl(paste0("^(z_|etaP_|eta\\[|logLikSubj|mixProbOut|theta\\[|",
+                        "sd_b[0-9]+|Lcorr_b[0-9]+|omega_b[0-9]+|L_b[0-9]+)"),
                   rownames(.sum))
   .posteriorSummary <- as.data.frame(.sum[.keep, , drop = FALSE])
+  rownames(.posteriorSummary) <- .stanPosteriorRowLabels(
+    rownames(.posteriorSummary), map, map$blocks)
+  # cross-block omegaOut cells are always exactly 0 (no modeled correlation
+  # across blocks) and have no om./cov. label -- drop rather than show noise
+  .posteriorSummary <- .posteriorSummary[
+    !grepl("^omegaOut\\[", rownames(.posteriorSummary)), , drop = FALSE]
 
   # ---- the nlmixr2CreateOutputFromUi env contract -------------------------
   .ui <- rxode2::rxUiDecompress(ui)

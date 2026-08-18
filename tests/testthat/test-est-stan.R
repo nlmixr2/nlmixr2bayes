@@ -38,6 +38,15 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
   expect_true(is.character(.fit$stanCode))
   expect_true(is.character(.env$stanCode))
   expect_true(is.data.frame(.env$posteriorSummary))
+  # rownames read like the model, not its Stan translation (#1): theta/error
+  # parameters use their original (dotted) names, not the Stan-mangled
+  # identifiers (add_sd) or the redundant theta[] array duplicate; the solo
+  # eta.cl omega block shows up as om.eta.cl (natural variance scale), not
+  # the internal sd_bN/Lcorr_bN/omega_bN sampling parameterization
+  .psRn <- rownames(.env$posteriorSummary)
+  expect_true(all(c("tcl", "tv", "add.sd", "om.eta.cl") %in% .psRn))
+  expect_false(any(grepl("^(theta\\[|add_sd$|sd_b|Lcorr_b|omega_b|L_b)",
+                        .psRn)))
   expect_true(is.list(.env$stanDiagnostics))
   # the FOCEi comparability row was made current (ofv="focei" default)
   expect_true("FOCEi" %in% rownames(.fit$objDf))
