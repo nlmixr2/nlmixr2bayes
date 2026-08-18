@@ -77,8 +77,8 @@ test_that("simulation-based calibration: ranks are uniform (G5)", {
         thin = 8L, seed = repSeed, refresh = 0, cores = 1,
         show_messages = FALSE,
         init = list(list(tcl = 1, add_sd = 0.4,
-                         omega_b1 = matrix(0.01, 1, 1),
-                         z_b1 = matrix(0, .nid, 1))),
+                         omega_eta_cl = matrix(0.01, 1, 1),
+                         z_eta_cl = matrix(0, .nid, 1))),
         control = list(adapt_delta = 0.95)))
     }, silent = TRUE)
     .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)

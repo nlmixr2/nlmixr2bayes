@@ -42,11 +42,17 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
   # parameters use their original (dotted) names, not the Stan-mangled
   # identifiers (add_sd) or the redundant theta[] array duplicate; the solo
   # eta.cl omega block shows up as om.eta.cl (natural variance scale), not
-  # the internal sd_bN/Lcorr_bN/omega_bN sampling parameterization
+  # the internal sd_eta_cl/Lcorr_eta_cl/omega_eta_cl sampling
+  # parameterization (also verifies fit$stanCode itself declares the block's
+  # Stan parameters under member-name-derived ids, not an opaque "_b1")
   .psRn <- rownames(.env$posteriorSummary)
   expect_true(all(c("tcl", "tv", "add.sd", "om.eta.cl") %in% .psRn))
-  expect_false(any(grepl("^(theta\\[|add_sd$|sd_b|Lcorr_b|omega_b|L_b)",
-                        .psRn)))
+  expect_false(any(grepl("^theta\\[", .psRn)))
+  expect_false(any(.psRn %in% c("add_sd", "sd_eta_cl", "Lcorr_eta_cl",
+                                "omega_eta_cl", "L_eta_cl", "z_eta_cl",
+                                "etaP_eta_cl")))
+  expect_true(grepl("sd_eta_cl", .fit$stanCode, fixed = TRUE))
+  expect_false(grepl("_b1", .fit$stanCode, fixed = TRUE))
   expect_true(is.list(.env$stanDiagnostics))
   # the FOCEi comparability row was made current (ofv="focei" default)
   expect_true("FOCEi" %in% rownames(.fit$objDf))

@@ -45,12 +45,15 @@ test_that("IOV expands to fixed unit-variance etas + an sd theta", {
   # the IOV magnitude is an ordinary theta ...
   expect_true(any(grepl("theta[4] = iov_cl;", .lines, fixed = TRUE)))
   # ... and the occasion etas are fixed unit-variance blocks: constant L,
-  # no omega parameter, z still sampled
-  expect_true(any(grepl("matrix[1,1] L_b2 = [[1]];", .lines, fixed = TRUE)))
-  expect_true(any(grepl("matrix[1,1] L_b3 = [[1]];", .lines, fixed = TRUE)))
-  expect_true(any(grepl("to_vector(z_b2) ~ std_normal();", .lines,
+  # no omega parameter, z still sampled (named from the occasion eta, not
+  # an opaque "_b2"/"_b3")
+  expect_true(any(grepl("matrix[1,1] L_rx_iov_cl_1 = [[1]];", .lines,
                         fixed = TRUE)))
-  expect_false(any(grepl("omega_b2|sd_b2", .lines)))
+  expect_true(any(grepl("matrix[1,1] L_rx_iov_cl_2 = [[1]];", .lines,
+                        fixed = TRUE)))
+  expect_true(any(grepl("to_vector(z_rx_iov_cl_1) ~ std_normal();", .lines,
+                        fixed = TRUE)))
+  expect_false(any(grepl("omega_rx_iov_cl_1|sd_rx_iov_cl_1", .lines)))
   if (requireNamespace("rstan", quietly = TRUE)) {
     expect_silent(rstan::stanc(model_code = .code$code,
                                allow_undefined = TRUE))
@@ -82,16 +85,16 @@ test_that("the assembled IOV target's gradient FD-agrees end to end", {
                          show_messages = FALSE,
                          init = list(list(tcl = 1, tv = 3, add_sd = 0.5,
                                           iov_cl = sqrt(0.02),
-                                          sd_b1 = sqrt(0.1),
-                                          z_b1 = matrix(0, 4, 1),
-                                          z_b2 = matrix(0, 4, 1),
-                                          z_b3 = matrix(0, 4, 1))))
+                                          sd_eta_cl = sqrt(0.1),
+                                          z_eta_cl = matrix(0, 4, 1),
+                                          z_rx_iov_cl_1 = matrix(0, 4, 1),
+                                          z_rx_iov_cl_2 = matrix(0, 4, 1))))
   set.seed(9)
   .pt <- list(tcl = 1.05, tv = 2.95, add_sd = 0.55, iov_cl = 0.2,
-              sd_b1 = 0.3,
-              z_b1 = matrix(stats::rnorm(4, 0, 0.4), 4, 1),
-              z_b2 = matrix(stats::rnorm(4, 0, 0.4), 4, 1),
-              z_b3 = matrix(stats::rnorm(4, 0, 0.4), 4, 1))
+              sd_eta_cl = 0.3,
+              z_eta_cl = matrix(stats::rnorm(4, 0, 0.4), 4, 1),
+              z_rx_iov_cl_1 = matrix(stats::rnorm(4, 0, 0.4), 4, 1),
+              z_rx_iov_cl_2 = matrix(stats::rnorm(4, 0, 0.4), 4, 1))
   .up <- rstan::unconstrain_pars(.sf, .pt)
   .gA <- rstan::grad_log_prob(.sf, .up)
   attributes(.gA) <- NULL
@@ -125,9 +128,9 @@ test_that("plain fixed-variance etas work; fixed correlated blocks refuse", {
     nlmixr2est::nlmixr2(.fixEta, .d, est = "stan",
                         control = stanControl(run = FALSE)))
   .lines <- strsplit(.code$code, "\n")[[1]]
-  expect_true(any(grepl("matrix[1,1] L_b1 = [[0.2]];", .lines,
+  expect_true(any(grepl("matrix[1,1] L_eta_cl = [[0.2]];", .lines,
                         fixed = TRUE)))
-  expect_false(any(grepl("sd_b1", .lines)))
+  expect_false(any(grepl("sd_eta_cl", .lines)))
   # the centred parameterization composes with a fixed block: eta sampled
   # directly against the CONSTANT L
   .codeC <- suppressMessages(
@@ -135,9 +138,9 @@ test_that("plain fixed-variance etas work; fixed correlated blocks refuse", {
                         control = stanControl(run = FALSE,
                                               etaParam = "centered")))
   .linesC <- strsplit(.codeC$code, "\n")[[1]]
-  expect_true(any(grepl("matrix[1,1] L_b1 = [[0.2]];", .linesC,
+  expect_true(any(grepl("matrix[1,1] L_eta_cl = [[0.2]];", .linesC,
                         fixed = TRUE)))
-  expect_true(any(grepl("etaP_b1[i] ~ multi_normal_cholesky", .linesC,
+  expect_true(any(grepl("etaP_eta_cl[i] ~ multi_normal_cholesky", .linesC,
                         fixed = TRUE)))
   if (requireNamespace("rstan", quietly = TRUE)) {
     expect_silent(rstan::stanc(model_code = .codeC$code,

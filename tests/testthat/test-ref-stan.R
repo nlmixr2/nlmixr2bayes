@@ -6,7 +6,7 @@
 # emission, eta-prior ownership, the external likelihood and its gradients.
 #
 # The two programs deliberately share parameter names (tcl, tv, add_sd,
-# sd_b1), so the comparison reads straight off rstan::summary.  The linked
+# sd_eta_cl), so the comparison reads straight off rstan::summary.  The linked
 # conditional omits the per-observation -0.5*log(2*pi) constant; constants
 # do not move a posterior, which is exactly what this test demonstrates.
 
@@ -23,22 +23,22 @@
         "  real tcl;",
         "  real tv;",
         "  real<lower=0> add_sd;",
-        "  real<lower=0> sd_b1;",
-        "  matrix[N, 1] z_b1;",
+        "  real<lower=0> sd_eta_cl;",
+        "  matrix[N, 1] z_eta_cl;",
         "}",
         "model {",
         "  tcl ~ normal(1, 2);",
         "  tv ~ normal(3, 2);",
         "  add_sd ~ cauchy(0, 2.5);",
         # the exact default the generator announces: cauchy(0, 2.5*sqrt(0.1))
-        paste0("  sd_b1 ~ cauchy(0, ",
+        paste0("  sd_eta_cl ~ cauchy(0, ",
                format(2.5 * sqrt(0.1), digits = 15, trim = TRUE,
                       scientific = FALSE), ");"),
-        "  to_vector(z_b1) ~ std_normal();",
+        "  to_vector(z_eta_cl) ~ std_normal();",
         "  {",
         "    real v = exp(tv);",
         "    for (o in 1:Nobs) {",
-        "      real cl = exp(tcl + sd_b1 * z_b1[id[o], 1]);",
+        "      real cl = exp(tcl + sd_eta_cl * z_eta_cl[id[o], 1]);",
         "      real cp = 100 / v * exp(-cl / v * time[o]);",
         "      dv[o] ~ normal(cp, add_sd);",
         "    }",
@@ -70,7 +70,7 @@ test_that("G4: the linked posterior matches a hand-written pure-Stan reference",
                           warmup = .warm, seed = 202, refresh = 0,
                           control = list(adapt_delta = 0.95))
   # ---- compare -------------------------------------------------------------
-  .pars <- c("tcl", "tv", "add_sd", "sd_b1")
+  .pars <- c("tcl", "tv", "add_sd", "sd_eta_cl")
   .sL <- rstan::summary(.sfL, pars = .pars)$summary
   .sR <- rstan::summary(.sfR, pars = .pars)$summary
   for (.p in .pars) {

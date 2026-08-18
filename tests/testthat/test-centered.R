@@ -49,8 +49,8 @@ test_that("centred == non-centred posterior (G13)", {
   .nc <- .fitWith("noncentered")
   .ce <- .fitWith("centered")
   # the centred program really is centred (samples eta directly)
-  expect_true(any(grepl("etaP_b1", .ce$env$stanCode, fixed = TRUE)))
-  expect_false(any(grepl("etaP_b1", .nc$env$stanCode, fixed = TRUE)))
+  expect_true(any(grepl("etaP_eta_cl", .ce$env$stanCode, fixed = TRUE)))
+  expect_false(any(grepl("etaP_eta_cl", .nc$env$stanCode, fixed = TRUE)))
   .sN <- rstan::summary(.nc$env$stanfit,
                         pars = c("tcl", "tv", "add_sd"))$summary
   .sC <- rstan::summary(.ce$env$stanfit,

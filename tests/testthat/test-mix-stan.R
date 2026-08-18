@@ -51,7 +51,7 @@ test_that("mixture codegen: component-major etas + log_sum_exp + membership", {
   # the mixing probability is constrained to (0,1) regardless of iniDf
   expect_true(any(grepl("real<lower=0,upper=1> p1;", .lines, fixed = TRUE)))
   # component-specific etas: 2*N rows through the same block
-  expect_true(any(grepl("matrix[2*N, 1] z_b1;", .lines, fixed = TRUE)))
+  expect_true(any(grepl("matrix[2*N, 1] z_eta_cl;", .lines, fixed = TRUE)))
   expect_true(any(grepl("matrix[2*N, 1] eta;", .lines, fixed = TRUE)))
   # the marginalization and the membership posteriors
   expect_true(any(grepl("log_sum_exp(log(p1) + llCond[i], log1p(-p1) + llCond[N + i])",
@@ -209,8 +209,8 @@ test_that("mixture end to end: assembled gradient + membership + fit contract", 
     .sf <- .fit$env$stanfit
     set.seed(3)
     .pt <- list(tcl1 = 1.05, tcl2 = 1.95, tv = 2.95, p1 = 0.35,
-                add_sd = 0.55, sd_b1 = 0.3,
-                z_b1 = matrix(stats::rnorm(8, 0, 0.4), 8, 1))
+                add_sd = 0.55, sd_eta_cl = 0.3,
+                z_eta_cl = matrix(stats::rnorm(8, 0, 0.4), 8, 1))
     .up <- rstan::unconstrain_pars(.sf, .pt)
     .gA <- rstan::grad_log_prob(.sf, .up)
     attributes(.gA) <- NULL

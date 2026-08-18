@@ -31,6 +31,16 @@
   ifelse(grepl("^[0-9_]", .x), paste0("p_", .x), .x)
 }
 
+#' Deterministic Stan-identifier suffix for one omega block, built from its
+#' member eta names (rather than a raw "_b<N>" block index), so the block's
+#' declared Stan parameters -- sd<id>, Lcorr<id>, omega<id>, L<id>,
+#' z<id>/etaP<id> -- read like the model in `fit$stanfit` instead of an
+#' opaque block number
+#' @noRd
+.stanBlockId <- function(members) {
+  paste0("_", paste(.stanParName(members), collapse = "_"))
+}
+
 #' Format a number for Stan source
 #' @noRd
 .stanNum <- function(x) {

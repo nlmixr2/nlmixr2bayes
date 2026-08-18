@@ -173,8 +173,8 @@ test_that("estimated lambda: the assembled target is the untransformed-scale den
                          warmup = 1, refresh = 0, cores = 1,
                          show_messages = FALSE,
                          init = list(list(tcl = 1, tv = 3, add_sd = 0.5,
-                                          lambda = 0.5, sd_b1 = sqrt(0.1),
-                                          z_b1 = matrix(0, 4, 1))))
+                                          lambda = 0.5, sd_eta_cl = sqrt(0.1),
+                                          z_eta_cl = matrix(0, 4, 1))))
   .bt <- function(theta, e) {
     .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta),
           as.matrix(e))
@@ -185,8 +185,8 @@ test_that("estimated lambda: the assembled target is the untransformed-scale den
   # difference must equal the conditional difference + the Jacobian
   # difference + the lambda-prior difference, exactly
   .pt <- function(lam) {
-    list(tcl = 1, tv = 3, add_sd = 0.5, lambda = lam, sd_b1 = sqrt(0.1),
-         z_b1 = .eta / sqrt(0.1))
+    list(tcl = 1, tv = 3, add_sd = 0.5, lambda = lam, sd_eta_cl = sqrt(0.1),
+         z_eta_cl = .eta / sqrt(0.1))
   }
   .l1 <- 0.4
   .l2 <- 0.7
@@ -269,8 +269,8 @@ test_that("estimated lambda on a logit base: statistic on the transformed DV; ta
                          warmup = 1, refresh = 0, cores = 1,
                          show_messages = FALSE,
                          init = list(list(tcl = 1, tv = 3, add_sd = 0.5,
-                                          lambda = 0.5, sd_b1 = sqrt(0.1),
-                                          z_b1 = matrix(0, 4, 1))))
+                                          lambda = 0.5, sd_eta_cl = sqrt(0.1),
+                                          z_eta_cl = matrix(0, 4, 1))))
   .bt <- function(theta, e) {
     .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta),
           as.matrix(e))
@@ -278,8 +278,8 @@ test_that("estimated lambda on a logit base: statistic on the transformed DV; ta
   .eta <- matrix(c(-0.1, 0.05, 0.2, -0.15), 4, 1)
   .sJ <- .code$data$sumLogJac_4
   .pt <- function(lam) {
-    list(tcl = 1, tv = 3, add_sd = 0.5, lambda = lam, sd_b1 = sqrt(0.1),
-         z_b1 = .eta / sqrt(0.1))
+    list(tcl = 1, tv = 3, add_sd = 0.5, lambda = lam, sd_eta_cl = sqrt(0.1),
+         z_eta_cl = .eta / sqrt(0.1))
   }
   .lp <- function(lam) {
     rstan::log_prob(.sf, rstan::unconstrain_pars(.sf, .pt(lam)),

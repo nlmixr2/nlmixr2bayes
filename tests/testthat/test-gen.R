@@ -21,10 +21,11 @@ test_that("run=FALSE returns the generated program without touching rstan", {
   # priors emitted from ini({})
   expect_match(.code, "tcl ~ normal\\(1, 2\\);")
   expect_match(.code, "add_sd ~ cauchy\\(0, 2.5\\);")
-  # non-centred eta with the default half-Cauchy SD (announced)
-  expect_match(.code, "real<lower=0> sd_b1;")
-  expect_match(.code, "to_vector\\(z_b1\\) ~ std_normal\\(\\);")
-  expect_match(.code, "eta\\[, 1:1\\] = z_b1 \\* L_b1';")
+  # non-centred eta with the default half-Cauchy SD (announced); the block's
+  # Stan parameters are named from its member eta(s), not an opaque "_b1"
+  expect_match(.code, "real<lower=0> sd_eta_cl;")
+  expect_match(.code, "to_vector\\(z_eta_cl\\) ~ std_normal\\(\\);")
+  expect_match(.code, "eta\\[, 1:1\\] = z_eta_cl \\* L_eta_cl';")
   # theta vector assembled in iniDf order
   expect_match(.code, "theta\\[1\\] = tcl;")
   expect_match(.code, "theta\\[3\\] = add_sd;")
@@ -56,9 +57,9 @@ test_that("an invWishart omega prior declares cov_matrix with that prior", {
   .out <- suppressMessages(
                            nlmixr2est::nlmixr2(.f, .linkData(), est = "stan",
                                                control = stanControl(run = FALSE)))
-  expect_match(.out$code, "cov_matrix\\[1\\] omega_b1;")
-  expect_match(.out$code, "omega_b1 ~ inv_wishart\\(4, \\[\\[0.1\\]\\]\\);")
-  expect_match(.out$code, "L_b1 = cholesky_decompose\\(omega_b1\\);")
+  expect_match(.out$code, "cov_matrix\\[1\\] omega_eta_cl;")
+  expect_match(.out$code, "omega_eta_cl ~ inv_wishart\\(4, \\[\\[0.1\\]\\]\\);")
+  expect_match(.out$code, "L_eta_cl = cholesky_decompose\\(omega_eta_cl\\);")
 })
 
 test_that("a model without priors errors with the exact lines to add (D10)", {

@@ -862,6 +862,24 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   ifelse(is.na(.m), rn, .m)
 }
 
+#' The internal per-block omega sampling parameters (sd<id>/Lcorr<id>/
+#' omega<id>/L<id>/z<id>/etaP<id> -- see stanGen.R's `.stanBlockId()`), as
+#' the base (unindexed) Stan names `.stanFinalizeEnv` declares them under.
+#' These have no clean single-parameter meaning to translate (a Cholesky
+#' factor entry, a per-subject random-effect draw) and are redundant with
+#' the derived, relabeled `omegaOut` cells, so posterior summaries drop them
+#' by exact name match here rather than a generic prefix regex (a
+#' `_b[0-9]+`-style pattern breaks once block ids are member-name-derived,
+#' and a plain prefix match risks swallowing a theta that happens to start
+#' the same way, e.g. an error parameter named "sd.something").
+#' @noRd
+.stanBlockInternalNames <- function(blocks) {
+  unlist(lapply(blocks, function(.blk) {
+    .id <- .stanBlockId(.blk$members)
+    paste0(c("sd", "Lcorr", "omega", "L", "z", "etaP"), .id)
+  }), use.names = FALSE)
+}
+
 #' Posterior -> nlmixr2 fit for tier 0 (population-only, no etas)
 #' @noRd
 .stanFinalizeEnvPop <- function(ret, ui, env, sf, map, gen, dx, control,
@@ -981,15 +999,17 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   dimnames(.cov) <- list(map$theta$name[.free], map$theta$name[.free])
   # posterior summary on the monitored parameters (exact quantiles -- the
   # printed $parFixed CI is a Gaussian approximation from $cov).  The raw
-  # per-block omega sampling parameterization (sd_bN/Lcorr_bN/omega_bN/L_bN)
-  # is dropped in favor of the derived, natural-scale omegaOut cells, which
-  # get relabeled to om./cov. names below -- that is what a user recognizes
-  # as "the model's omega", not whichever internal parameterization a given
+  # per-block omega sampling parameterization (sd<id>/Lcorr<id>/omega<id>/
+  # L<id>/z<id>/etaP<id>) is dropped by exact name (`.stanBlockInternalNames`)
+  # in favor of the derived, natural-scale omegaOut cells, which get
+  # relabeled to om./cov. names below -- that is what a user recognizes as
+  # "the model's omega", not whichever internal parameterization a given
   # block happens to sample from.
   .sum <- .stanSummaryDf(sf)
-  .keep <- !grepl(paste0("^(z_|etaP_|eta\\[|logLikSubj|mixProbOut|theta\\[|",
-                        "sd_b[0-9]+|Lcorr_b[0-9]+|omega_b[0-9]+|L_b[0-9]+)"),
-                  rownames(.sum))
+  .rn <- rownames(.sum)
+  .rnBase <- sub("\\[.*\\]$", "", .rn)
+  .keep <- !(.rnBase %in% .stanBlockInternalNames(map$blocks)) &
+    !grepl("^(eta\\[|logLikSubj|mixProbOut|theta\\[)", .rn)
   .posteriorSummary <- as.data.frame(.sum[.keep, , drop = FALSE])
   rownames(.posteriorSummary) <- .stanPosteriorRowLabels(
     rownames(.posteriorSummary), map, map$blocks)

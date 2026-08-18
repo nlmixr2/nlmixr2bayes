@@ -152,7 +152,7 @@
     .sp$block <- .blk
     .blockSpecs[[.b]] <- .sp
     .k <- .blk$k
-    .id <- paste0("_b", .b)
+    .id <- .stanBlockId(.blk$members)
     if (.sp$type == "fixed") {
       # fixed-variance eta: L is a constant, nothing is declared or given a
       # prior; z is still sampled, so the eta remains a random effect with
@@ -448,7 +448,7 @@
     }
     for (.b in seq_along(blockSpecs)) {
       .sp <- blockSpecs[[.b]]
-      .id <- paste0("_b", .b)
+      .id <- .stanBlockId(.sp$block$members)
       .k <- .sp$block$k
       if (.sp$type == "fixed") {
         # constant L: nothing to initialize beyond z below
