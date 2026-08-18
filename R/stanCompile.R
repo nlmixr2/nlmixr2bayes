@@ -1,6 +1,19 @@
 # Compile the generated Stan program against the linked likelihood via
 # rstan::stan_model(allow_undefined=TRUE, includes=), cached by content hash.
 
+# In-session memo of already-compiled stanmodel objects, keyed by the same
+# content hash as the on-disk cache.  A stanmodel round-tripped through
+# saveRDS()/readRDS() -- even within the SAME session -- carries a
+# `.CXXDSOMISC$module` that is a distinct, serialization-broken copy; when
+# the model's DLL happens to already be loaded in-process (true whenever
+# THIS session compiled it), rstan's own `is_dso_loaded()` guard reports
+# TRUE and skips reloading, so that stale copy's dead external pointer
+# reaches `Module(mustStart = TRUE)` and crashes with "NULL value passed
+# for DllInfo".  Returning the original live object -- never a
+# freshly-read copy -- for anything this session already compiled avoids
+# the bug outright, rather than merely detecting and recompiling around it.
+.stanCompileEnv <- new.env(parent = emptyenv())
+
 #' The phase-0 (eta-only) Stan program: theta and Omega fixed, Stan samples
 #' the etas with the full, normalized eta prior on the Stan side.  The
 #' observations never enter Stan's data block -- they live in nlmixr2est's
@@ -30,6 +43,25 @@
         "  target += sum(nlmixr2_cond_all(eta));",
         "}",
         sep = "\n")
+}
+
+#' Whether a cached `stanmodel` object's compiled module can actually be
+#' loaded.  A `stanmodel` read back via [readRDS()] carries a `dso` slot
+#' whose C++ module pointer is only meaningful in the session that compiled
+#' it (external pointers do not survive (de)serialization); rstan is
+#' normally supposed to transparently reload the module from the embedded
+#' DSO bytes on first use, but that reload can itself fail (e.g. a session
+#' near R's loaded-DLL limit), surfacing as `Error in Module(module,
+#' mustStart = TRUE): ... NULL value passed for DllInfo` deep inside
+#' [rstan::sampling()].  Probing with the same call rstan uses internally
+#' catches a stale/corrupt cache entry before it reaches the user.
+#' @noRd
+.stanModelUsable <- function(m) {
+  isTRUE(methods::is(m, "stanmodel")) &&
+    isTRUE(tryCatch({
+      rstan:::mk_cppmodule(m)
+      TRUE
+    }, error = function(e) FALSE))
 }
 
 #' Path to the injected external-function header
@@ -66,11 +98,23 @@ stanCompile <- function(code = .stanPhase0Code(), cache = TRUE,
                               as.character(utils::packageVersion("rstan")),
                               as.character(utils::packageVersion("nlmixr2bayes")),
                               R.version.string))
+  if (cache && exists(.key, envir = .stanCompileEnv, inherits = FALSE)) {
+    return(get(.key, envir = .stanCompileEnv, inherits = FALSE))
+  }
   .dir <- if (is.null(cacheDir)) tools::R_user_dir("nlmixr2bayes", "cache") else cacheDir
   .rds <- file.path(.dir, paste0("stanmodel-", .key, ".rds"))
   if (cache && file.exists(.rds)) {
     .m <- tryCatch(readRDS(.rds), error = function(e) NULL)
-    if (!is.null(.m)) return(.m)
+    if (!is.null(.m) && .stanModelUsable(.m)) {
+      assign(.key, .m, envir = .stanCompileEnv)
+      return(.m)
+    }
+    if (!is.null(.m)) {
+      # a stale/corrupt cache entry: fall through and recompile rather than
+      # handing back a stanmodel that will crash sampling() with the
+      # DllInfo error above
+      unlink(.rds)
+    }
   }
   # rstan::stan_model LEAKS compiler environment variables into the session
   # (PKG_CPPFLAGS with a forced `-include .../Eigen.hpp`, PKG_LIBS with the
@@ -99,8 +143,14 @@ stanCompile <- function(code = .stanPhase0Code(), cache = TRUE,
                           auto_write = FALSE, verbose = verbose)
   cli::cli_inform("done")
   if (cache) {
+    assign(.key, .m, envir = .stanCompileEnv)
     dir.create(.dir, recursive = TRUE, showWarnings = FALSE)
-    saveRDS(.m, .rds)
+    # write-then-rename: a second session compiling the same model shape
+    # concurrently must never observe a partially-written .rds at .rds's
+    # final path
+    .tmp <- paste0(.rds, ".tmp", Sys.getpid())
+    saveRDS(.m, .tmp)
+    file.rename(.tmp, .rds)
   }
   .m
 }
