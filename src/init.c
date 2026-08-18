@@ -47,6 +47,7 @@ SEXP _nlmixr2bayes_setMuRef(SEXP idxS);
 SEXP _nlmixr2bayes_setMuRefCov(SEXP thetaIdxS, SEXP etaIdxS, SEXP covValS);
 SEXP _nlmixr2bayes_clearThetaBase(void);
 SEXP _nlmixr2bayes_condBatchTheta(SEXP thetaS, SEXP etaS);
+SEXP _nlmixr2bayes_resetEvalCount(void);
 int nlmixr2bayes_cond_batch(const double *eta, int nid, int neta,
                            double *value, double *grad);
 int nlmixr2bayes_pop_eval(const double *theta, int ntheta,
@@ -92,6 +93,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2bayes_setMuRefCov", (DL_FUNC) &_nlmixr2bayes_setMuRefCov, 3},
   {"_nlmixr2bayes_clearThetaBase", (DL_FUNC) &_nlmixr2bayes_clearThetaBase, 0},
   {"_nlmixr2bayes_condBatchTheta", (DL_FUNC) &_nlmixr2bayes_condBatchTheta, 2},
+  {"_nlmixr2bayes_resetEvalCount", (DL_FUNC) &_nlmixr2bayes_resetEvalCount, 0},
   {NULL, NULL, 0}
 };
 

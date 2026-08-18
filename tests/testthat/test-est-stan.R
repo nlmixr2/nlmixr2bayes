@@ -109,8 +109,16 @@ test_that("iteration print + parameter history over the sampler", {
   expect_true(is.data.frame(.ph))
   expect_true(nrow(.ph) > 0L)
   expect_true(all(c("iter", "type", "objf", "tcl", "tv", "add.sd",
-                    "om.eta.cl") %in% names(.ph)))
+                    "om.eta.cl", "nEval") %in% names(.ph)))
   expect_true(all(is.finite(.ph$objf[.ph$type == "Scaled"])))
+  # #1: nlmixr2est's own "iter"/"#" column counts PRINTED rows, not raw
+  # evaluations, so it always steps by 1 regardless of the print cadence --
+  # nEval is the true per-evaluation count (the C tick shim overwrites it on
+  # every raw call, ungated), and should step by roughly the requested
+  # cadence (100) between consecutive printed rows, not by 1
+  .nEval <- .ph$nEval[.ph$type == "Scaled"]
+  expect_true(length(.nEval) > 1L)
+  expect_true(median(diff(.nEval)) > 10)
   # print = 0 turns the machinery off entirely
   .fit0 <- suppressWarnings(suppressMessages(
     nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan",

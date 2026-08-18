@@ -13,6 +13,8 @@
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
 #include <time.h>
+#include <string.h>
+#include <stdlib.h>
 #include <rxode2ptr.h>
 iniRxode2ptr
 #include <nlmixr2estFoceiPtr.h>
@@ -36,14 +38,46 @@ SEXP _nlmixr2bayes_setCores(SEXP n) {
   return Rf_ScalarInteger(nlmixr2bayesCores);
 }
 
+/* Raw per-evaluation counter (#1): nlmixr2est's own printed "#" column is
+ * scale->cn, which counts calls INTO its print function -- since the print
+ * cadence is gated here, before that call, cn ends up counting PRINTED
+ * rows, not raw evaluations, so it climbs by 1 every row regardless of the
+ * requested cadence and looks like cadence is being ignored.  This tick is
+ * UNGATED (the generated Stan code calls it on every raw log-density
+ * evaluation; nlmixr2est decides internally whether to actually print), so
+ * it is the only place that sees every raw call -- overwrite the display
+ * vector's last slot (stanGen.R's "nEval" display column) with this count
+ * before forwarding, so the printed table shows the true evaluation count
+ * (jumping by ~cadence between rows) alongside nlmixr2est's row counter. */
+static double nlmixr2bayesEvalCount = 0.0;
+static double *nlmixr2bayesTickBuf = NULL;
+static int nlmixr2bayesTickBufN = 0;
+
+SEXP _nlmixr2bayes_resetEvalCount(void) {
+  nlmixr2bayesEvalCount = 0.0;
+  return R_NilValue;
+}
+
 /* Iteration tick from inside the compiled Stan model's model block: the
- * natural-scale display vector (thetas + actual omega entries) and the
- * current -2*sum(conditional log-lik).  Forwards to nlmixr2est's scale.h
- * iteration print (entry 8 of the FOCEi table); no-op (-1) when that
- * entry is absent (older nlmixr2est) or printing is not armed. */
+ * natural-scale display vector (thetas + actual omega entries + a raw
+ * evaluation-count placeholder in the last slot) and the current
+ * -2*sum(conditional log-lik).  Forwards to nlmixr2est's scale.h iteration
+ * print (entry 8 of the FOCEi table); no-op (-1) when that entry is absent
+ * (older nlmixr2est) or printing is not armed. */
 int nlmixr2bayes_iter_tick(const double *par, int n, double objf) {
+  nlmixr2bayesEvalCount += 1.0;
   if (nlmixr2FoceiIterPrintRowP == NULL) return -1;
-  return nlmixr2FoceiIterPrintRowP(par, n, objf);
+  if (n <= 0) return nlmixr2FoceiIterPrintRowP(par, n, objf);
+  if (nlmixr2bayesTickBufN < n) {
+    double *grown = (double *) realloc(nlmixr2bayesTickBuf,
+                                       (size_t) n * sizeof(double));
+    if (grown == NULL) return nlmixr2FoceiIterPrintRowP(par, n, objf);
+    nlmixr2bayesTickBuf = grown;
+    nlmixr2bayesTickBufN = n;
+  }
+  memcpy(nlmixr2bayesTickBuf, par, (size_t) n * sizeof(double));
+  nlmixr2bayesTickBuf[n - 1] = nlmixr2bayesEvalCount;
+  return nlmixr2FoceiIterPrintRowP(nlmixr2bayesTickBuf, n, objf);
 }
 
 SEXP _nlmixr2bayes_apiVersion(void) {

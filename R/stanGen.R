@@ -235,6 +235,16 @@
       }
     }
   }
+  # trailing raw-evaluation-count slot: nlmixr2est's own printed "#" column
+  # counts PRINTED rows (the cadence gate runs before it ever sees a call),
+  # so it climbs by 1 every row regardless of `print`'s cadence and reads as
+  # if cadence were being ignored.  The tick below is UNGATED -- it fires on
+  # every raw evaluation -- so the C shim (nlmixr2bayes_iter_tick) overwrites
+  # this slot with a true running evaluation count before forwarding; the
+  # placeholder here is never actually seen downstream.
+  .dispIdx <- .dispIdx + 1L
+  .dispNames <- c(.dispNames, "nEval")
+  .dispOm <- c(.dispOm, paste0("    parDisp[", .dispIdx, "] = 0;"))
   .dispTick <- c(paste0("    vector[", .dispIdx, "] parDisp;"),
                  .dispOm,
                  paste0("    parDisp[1:", nrow(map$theta), "] = theta;"),

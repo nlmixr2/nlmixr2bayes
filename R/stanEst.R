@@ -143,7 +143,9 @@
 
 #' Initial display vector for the iteration print: natural-scale theta
 #' estimates + the initial omega variances/covariances of every estimated
-#' block, in gen$dispNames order
+#' block + a trailing 0 placeholder for the raw-evaluation-count slot (the
+#' C tick shim overwrites it every call; see stanGen.R's "nEval" slot), in
+#' gen$dispNames order
 #' @noRd
 .stanDispInit <- function(map, gen) {
   .v <- map$theta$est
@@ -156,7 +158,7 @@
       }
     }
   }
-  .v
+  c(.v, 0)
 }
 
 #' Capability assertions + prior triage for est="stan"
@@ -457,6 +459,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   }
   .ph <- NULL
   if (.iterOn) {
+    .Call(`_nlmixr2bayes_resetEvalCount`)
     nlmixr2est::foceiLikIterPrintStart(control$print,
                                        .stanDispInit(.map, .gen),
                                        .gen$dispNames)
