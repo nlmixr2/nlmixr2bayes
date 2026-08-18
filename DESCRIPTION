@@ -20,17 +20,17 @@ URL: https://github.com/nlmixr2/nlmixr2bayes
 BugReports: https://github.com/nlmixr2/nlmixr2bayes/issues
 Depends: R (>= 4.2)
 Imports:
-    nlmixr2est (> 7.0.2),
-    rxode2 (>= 5.1.7),
-    lotri (>= 1.0.5),
+    nlmixr2est (>= 7.0.3),
+    rxode2 (>= 5.1.3),
+    lotri (>= 1.0.4),
     checkmate,
     cli,
     digest,
     methods,
+    rstan (>= 2.26),
     stats,
     utils
 Suggests:
-    rstan (>= 2.26),
     loo,
     posterior,
     testthat (>= 3.0.0),
@@ -42,7 +42,8 @@ Suggests:
     rmarkdown
 LinkingTo:
     rxode2,
-    nlmixr2est
+    nlmixr2est,
+    Rcpp
 Encoding: UTF-8
 VignetteBuilder: knitr
 Config/testthat/edition: 3

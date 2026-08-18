@@ -446,3 +446,22 @@ SEXP _nlmixr2bayes_condBatch(SEXP etaS) {
   UNPROTECT(5);
   return ret;
 }
+
+/* Reports whether rxode2's function-pointer table was fully installed. */
+SEXP rxstanProbeRxode2(void) {
+  SEXP out = PROTECT(Rf_allocVector(LGLSXP, 4));
+  SEXP nms = PROTECT(Rf_allocVector(STRSXP, 4));
+
+  LOGICAL(out)[0] = (getRxSolve_ != NULL);
+  SET_STRING_ELT(nms, 0, Rf_mkChar("getRxSolve_"));
+  LOGICAL(out)[1] = (par_solve != NULL);
+  SET_STRING_ELT(nms, 1, Rf_mkChar("par_solve"));
+  LOGICAL(out)[2] = (setIndParPtr != NULL);
+  SET_STRING_ELT(nms, 2, Rf_mkChar("setIndParPtr"));
+  LOGICAL(out)[3] = (rxode2AdjointTrajSweep != NULL);
+  SET_STRING_ELT(nms, 3, Rf_mkChar("rxode2AdjointTrajSweep"));
+
+  Rf_setAttrib(out, R_NamesSymbol, nms);
+  UNPROTECT(2);
+  return out;
+}

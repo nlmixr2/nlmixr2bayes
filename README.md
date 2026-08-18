@@ -1,4 +1,4 @@
-# nlmixr2bayes
+  # nlmixr2bayes <img src="man/figures/logo.jpg" align="right" height="120" alt="" />
 
 A Stan interface for nlmixr2 combining two complementary approaches:
 

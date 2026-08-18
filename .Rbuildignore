@@ -4,3 +4,6 @@
 ^\.Rproj\.user$
 ^\.lintr$
 ^vignettes/.*\.html$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
