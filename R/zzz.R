@@ -19,6 +19,8 @@ NULL
   .iniNlmPtrs()
   # Install the rxode2 function-pointer table for the rxstan bridge.
   .Call(`_nlmixr2bayes_iniRxodePtrs`, rxode2::.rxode2ptrs())
+  rxode2::.s3register("nlmixr2est::nmObjGet", "stanfit")
+  rxode2::.s3register("nlmixr2est::nmObjGet", "posteriorSummary")
   invisible()
 }
 
