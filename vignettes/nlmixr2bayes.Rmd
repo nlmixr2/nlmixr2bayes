@@ -1,8 +1,8 @@
 ---
-title: "Bayesian estimation with est=\"stan\""
+title: "Bayesian estimation with est=\"nuts\""
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Bayesian estimation with est="stan"}
+  %\VignetteIndexEntry{Bayesian estimation with est="nuts"}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -13,7 +13,7 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 
 ## Automatic model generation: likelihood-level linking
 
-`nlmixr2bayes` adds a Bayesian HMC estimation method to nlmixr2 that **automatically 
+`nlmixr2bayes` adds a Bayesian HMC estimation method to nlmixr2 that **automatically
 generates and compiles a Stan program**:
 
 ```{r}
@@ -38,8 +38,8 @@ linking, and sampling. **No Stan code to write** -- this vignette is for you.
 
 ### When to use hand-coded Stan instead
 
-If you want **full control over your Stan program** -- custom priors, derived quantities, 
-multiple endpoints with mixed structures, or you're fitting **delay differential equations** -- 
+If you want **full control over your Stan program** -- custom priors, derived quantities,
+multiple endpoints with mixed structures, or you're fitting **delay differential equations** --
 see `vignette("rxstan-handcoded", "nlmixr2bayes")` for the rxstan approach.
 
 ---
