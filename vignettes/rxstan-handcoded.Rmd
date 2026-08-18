@@ -22,17 +22,17 @@ as a solver backend via `rxsRegister()`, then write ordinary Stan that declares 
 
 ### When to use this approach
 
-- ✅ You want **full control over your Stan program**
-- ✅ You need **delay differential equations** (Stan has no DDE solver -- see
+- You want **full control over your Stan program**
+- You need **delay differential equations** (Stan has no DDE solver -- see
   `vignette("rxstan-dde", "nlmixr2bayes")`)
-- ✅ You want to write **custom priors or derived quantities** in Stan
-- ✅ Your model has **complex structure** beyond what automatic generation supports
-- ✅ You're fitting **hand-coded rxode2 models** outside the nlmixr2 framework
+- You want to write **custom priors or derived quantities** in Stan
+- Your model has **complex structure** beyond what automatic generation supports
+- You're fitting **hand-coded rxode2 models** outside the nlmixr2 framework
 
 ### When to use automatic generation instead
 
 If you have a complete **nlmixr2-style model** with priors in the `ini({})` block,
-prefer `nlmixr2(model, data, est = "stan")` — it's simpler, keeps one source of truth
+prefer `nlmixr2(model, data, est = "stan")` -- it's simpler, keeps one source of truth
 for the likelihood, and is validated against every other nlmixr2 method.
 See `vignette("nlmixr2bayes", "nlmixr2bayes")`.
 
@@ -123,7 +123,7 @@ cat(gen$code)
 
 `gen$code` is an ordinary Stan program, `gen$handle` is the live solver, and `gen$standata` 
 is what you pass to `sampling()`. Note that `cp = center / v` is formed **in Stan**, not in 
-rxode2 — see "What crosses the boundary" below.
+rxode2 -- see "What crosses the boundary" below.
 
 ## Writing your own Stan program
 
@@ -150,8 +150,8 @@ parameters {
 }
 model {
   vector[3] p = [lka, lcl, lv]';
-  vector[nObs] centre = rx_solve(handle, p);
-  vector[nObs] cp = centre / exp(lv);
+  vector[nObs] center = rx_solve(handle, p);
+  vector[nObs] cp = center / exp(lv);
 
   // Your priors here
   lka ~ normal(0, 1);
@@ -240,12 +240,12 @@ a problem with the bridge or the solver tolerances.
 
 ## Limits
 
-- **rstan only** — rxode2 must be in-process.
-- **Single-threaded** — do not use the bridge inside `map_rect()` or `reduce_sum()`. 
+- **rstan only** -- rxode2 must be in-process.
+- **Single-threaded** -- do not use the bridge inside `map_rect()` or `reduce_sum()`. 
   rxode2's solve structure is a process singleton, so concurrent entry is detected and throws 
   rather than corrupting silently. Run chains as separate processes; leave subject-level 
   parallelism to rxode2.
-- **First-order only** — `precomputed_gradients()` is `var`-only, so `laplace_marginal`
+- **First-order only** -- `precomputed_gradients()` is `var`-only, so `laplace_marginal`
   and RHMC are out.
 
 ## See also

@@ -21,7 +21,7 @@ test_that("run=FALSE returns the generated program without touching rstan", {
   # priors emitted from ini({})
   expect_match(.code, "tcl ~ normal\\(1, 2\\);")
   expect_match(.code, "add_sd ~ cauchy\\(0, 2.5\\);")
-  # non-centred eta with the default half-Cauchy SD (announced); the block's
+  # non-centered eta with the default half-Cauchy SD (announced); the block's
   # Stan parameters are named from its member eta(s), not an opaque "_b1"
   expect_match(.code, "real<lower=0> sd_eta_cl;")
   expect_match(.code, "to_vector\\(z_eta_cl\\) ~ std_normal\\(\\);")

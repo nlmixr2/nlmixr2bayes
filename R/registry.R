@@ -30,7 +30,7 @@
 #' @param method rxode2 integration method.
 #' @param eventSens `"jump"` for analytic dosing-event sensitivities (modeled
 #'   lag time, bioavailability, duration, rate), `"fd"` for the legacy
-#'   finite-difference behaviour, or `NULL` to leave rxode2's default alone.
+#'   finite-difference behavior, or `NULL` to leave rxode2's default alone.
 #' @param perSubject give every subject its own block of `sens` parameters,
 #'   as a population model needs.  Stan then supplies `nsub * length(sens)`
 #'   values, block-major (subject 1's parameters first).  Because subjects are
@@ -49,7 +49,7 @@
 #'   that and falls back to the slow path for one solve, which re-arms it.
 #'   It is switched off automatically when rxode2 reports a non-zero
 #'   `needSort` for the sensitivity-augmented model *and* the event table
-#'   contains dose rows -- a modelled `alag()`, `f()`, `dur()` or `rate()`,
+#'   contains dose rows -- a modeled `alag()`, `f()`, `dur()` or `rate()`,
 #'   whose event ordering Path A cannot refresh.  Both conditions are required
 #'   because all four quantities act on doses, so an observation-only event
 #'   table cannot be re-ordered; rxode2 sets the flag for a delay differential
@@ -143,7 +143,7 @@ rxsRegister <- function(model, events, sens, output,
     h$fast <- FALSE
   }
 
-  ## A modelled alag/f/dur/rate changes where a dose lands in the event order.
+  ## A modeled alag/f/dur/rate changes where a dose lands in the event order.
   ## rxSolve re-sorts events during setup; Path A only re-drives par_solve, so
   ## its cached ordering goes stale as soon as the parameter moves and the
   ## results are silently wrong near the shifted dose.  needSort is a bitmask:
@@ -160,7 +160,7 @@ rxsRegister <- function(model, events, sens, output,
   if (isTRUE(h$fast) && !is.na(needSort) && needSort != 0L &&
       .rxsHasDoses(events)) {
     h$fast <- FALSE
-    fastOff <- paste0("model has modelled dosing quantities (needSort = ",
+    fastOff <- paste0("model has modeled dosing quantities (needSort = ",
                       needSort, "), whose event ordering Path A cannot refresh")
   }
 

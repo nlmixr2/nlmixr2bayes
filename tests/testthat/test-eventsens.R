@@ -1,7 +1,7 @@
-## eventSens = "jump": analytic sensitivities for MODELLED dosing quantities --
+## eventSens = "jump": analytic sensitivities for MODELED dosing quantities --
 ## lag time, bioavailability, duration, rate.  Nothing in Stan's own ODE
 ## interface can express these at all, so there is no external oracle; the
-## checks are finite differences plus the exact pre-lag behaviour.
+## checks are finite differences plus the exact pre-lag behavior.
 library(testthat)
 
 lagModel <- "
@@ -23,7 +23,7 @@ mkHandle <- function(...) {
               eventSens = "jump", atol = 1e-10, rtol = 1e-10, ...)
 }
 
-test_that("a modelled lag time carries analytic sensitivities", {
+test_that("a modeled lag time carries analytic sensitivities", {
   h <- mkHandle()
   on.exit(rxsRelease(h))
 
@@ -62,7 +62,7 @@ test_that("nothing has happened before the dose is released", {
 })
 
 test_that("Path A is refused for models whose events need re-sorting", {
-  ## A modelled lag moves the dose within the event order.  rxSolve re-sorts
+  ## A modeled lag moves the dose within the event order.  rxSolve re-sorts
   ## during setup; Path A only re-drives par_solve, so its cached ordering goes
   ## stale and results near the shifted dose are silently wrong.  Correctness
   ## wins over the speedup here.

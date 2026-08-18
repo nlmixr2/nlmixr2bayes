@@ -23,19 +23,19 @@ fit <- nlmixr2est::nlmixr2(model, data, est = "stan")
 
 You write your model once (in nlmixr2 syntax), declare priors in the `ini({})` block, 
 and let `est = "stan"` handle everything else: Stan program generation, compilation, 
-linking, and sampling. **No Stan code to write** — this vignette is for you.
+linking, and sampling. **No Stan code to write** -- this vignette is for you.
 
 ### When to use this approach
 
-- ✅ You want Bayesian estimation of a complete nlmixr2 model
-- ✅ You prefer automatic program generation over hand-coding Stan
-- ✅ Your model fits the supported scope (ODE, `linCmt()`, normal/censored errors, finite mixtures)
-- ✅ You want the same likelihood evaluated by every nlmixr2 method (FOCE, Stan, etc.)
+- You want Bayesian estimation of a complete nlmixr2 model
+- You prefer automatic program generation over hand-coding Stan
+- Your model fits the supported scope (ODE, `linCmt()`, normal/censored errors, finite mixtures)
+- You want the same likelihood evaluated by every nlmixr2 method (FOCE, Stan, etc.)
 
 ### When to use hand-coded Stan instead
 
-If you want **full control over your Stan program** — custom priors, derived quantities, 
-multiple endpoints with mixed structures, or you're fitting **delay differential equations** — 
+If you want **full control over your Stan program** -- custom priors, derived quantities, 
+multiple endpoints with mixed structures, or you're fitting **delay differential equations** -- 
 see `vignette("rxstan-handcoded", "nlmixr2bayes")` for the rxstan approach.
 
 ---
@@ -47,7 +47,7 @@ nlmixr2est evaluates the same conditional likelihood every other nlmixr2
 method uses -- one source of truth, with analytic gradients handed to Stan
 through `precomputed_gradients()`.  Stan samples theta, the omega
 parameters, and the individual etas jointly; the eta prior is fully owned
-by Stan (non-centred by default), so its autodiff composes the supplied
+by Stan (non-centered by default), so its autodiff composes the supplied
 gradients through the Omega parameterization.  A model with **no** etas
 (a population-only or single-subject fit) runs as "tier 0" through
 nlmixr2est's nlm path instead -- one external scalar carrying the whole
@@ -64,7 +64,7 @@ emitted Stan-side.
 ## Priors come from `ini({})`
 
 Priors are declared next to the parameters they describe, with the
-lotri/rxode2 prior syntax -- the distribution catalogue is one-to-one with
+lotri/rxode2 prior syntax -- the distribution catalog is one-to-one with
 Stan's (`lotri::lotriPriorDists()`):
 
 ```{r}

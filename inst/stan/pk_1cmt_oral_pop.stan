@@ -19,7 +19,7 @@ data {
 parameters {
   vector[3] theta;                 // population log ka, log cl, log v
   vector<lower=0>[3] omega;        // between-subject SD
-  matrix[3, nSub] z;               // non-centred random effects
+  matrix[3, nSub] z;               // non-centered random effects
   real<lower=0> sigma;
 }
 transformed parameters {
@@ -34,10 +34,10 @@ model {
     p[((s - 1) * 3 + 1) : (s * 3)] = phi[ : , s];
   }
 
-  vector[nObs] centre = rx_solve(handle, p);
+  vector[nObs] center = rx_solve(handle, p);
   vector[nObs] cp;
   for (i in 1 : nObs) {
-    cp[i] = centre[i] / exp(phi[3, subj[i]]);
+    cp[i] = center[i] / exp(phi[3, subj[i]]);
   }
 
   theta[1] ~ normal(0, 1);

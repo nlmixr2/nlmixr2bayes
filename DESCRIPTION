@@ -14,7 +14,7 @@ Description: Bayesian estimation for 'nlmixr2' models by linking Stan (via
     one place ('rxode2'/'nlmixr2est'), and Stan consumes the likelihood and its
     analytically-supplied gradients as an external function.  Prior
     distributions come from the model's 'ini({})' block, whose distribution
-    catalogue is one-to-one with Stan's.
+    catalog is one-to-one with Stan's.
 License: MIT
 URL: https://github.com/nlmixr2/nlmixr2bayes
 BugReports: https://github.com/nlmixr2/nlmixr2bayes/issues

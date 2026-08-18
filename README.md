@@ -20,12 +20,12 @@ A Stan interface for nlmixr2 combining two complementary approaches:
 Both approaches share the same fundamental advantage: **things Stan's ODE interface cannot express**
 
 - **dosing events** (bolus, infusion, `addl`, steady state, multiple compartments) with exact event timing
-- **derivatives with respect to modelled dose handling** — an estimated lag time, bioavailability, duration or rate
+- **derivatives with respect to modeled dose handling** -- an estimated lag time, bioavailability, duration or rate
 - **delay differential equations**, via rxode2's `delay()` / `past()` (hand-coded approach only -- automatic generation does not support DDEs)
 - **analytic parameter sensitivities** via forward sensitivity equations (no autodiff through the solver)
 - **the residual-error and censoring machinery** (M2/M3/M4) already validated in nlmixr2est (likelihood-level only)
 
-The model is compiled and linked **without engaging Stan's threading** —
+The model is compiled and linked **without engaging Stan's threading** --
 a second threading runtime layered on top of rxode2/nlmixr2est's would
 contend with it.  Parallelism has two axes instead: by default (unix)
 the **chains run in forked processes** (`stanControl(chainCores=)`,
@@ -48,14 +48,14 @@ via `precomputed_gradients` (nothing is re-derived by autodiff):
    covariate coefficients as `d/dtheta_p = cov_i * d/deta_k` when the
    sensitivity model does not already carry them), so Stan samples theta +
    Omega + etas jointly.  Stan owns the full, normalized eta prior
-   (non-centred, `eta = z L'`), so its autodiff composes the supplied
+   (non-centered, `eta = z L'`), so its autodiff composes the supplied
    gradients through the Omega parameterization for free.
 
 The bridge is **first-order only**: `precomputed_gradients()` builds a
 reverse-mode `var`, and Stan Math has no forward-mode (`fvar`) counterpart
 for externally supplied partials, so anything needing higher-order autodiff
-of the target through the external term — Riemannian HMC's metric, the
-embedded-Laplace (`laplace_marginal`) machinery — is out of scope.  That
+of the target through the external term -- Riemannian HMC's metric, the
+embedded-Laplace (`laplace_marginal`) machinery -- is out of scope.  That
 costs nothing in practice: NUTS, ADVI, optimization and Pathfinder are all
 first-order, and a Laplace-*marginalized* target is exactly what
 nlmixr2est's own (NONMEM-validated) FOCEi/Laplace machinery computes
@@ -66,13 +66,13 @@ approximations (`"meanfield"`, `"fullrank"`) and multi-path Pathfinder
 (implemented in-package against the model's exact log density and
 analytic gradient, since rstan does not expose the Pathfinder service)
 on the same generated program and linked likelihood, returning the same
-complete nlmixr2 fit 3-10x faster; the Pareto-k̂ diagnostic replaces
+complete nlmixr2 fit 3-10x faster; the Pareto-khat diagnostic replaces
 Rhat/ESS and warns when the approximation is not trustworthy (use NUTS
 for the final answer).  `est="advi"` and `est="pathfinder"` are sugar
 for these, the way `"foce"`/`"focei"` are members of the focei family.
 
 Prior distributions come from the `ini({})` block (lotri/rxode2), whose
-distribution catalogue is deliberately one-to-one with Stan's — see
+distribution catalog is deliberately one-to-one with Stan's -- see
 `lotri::lotriPriorDists()` and `rxode2::rxUiPriors()`.  A model without
 priors is refused, printing the exact `prior()` lines to add.
 
@@ -81,7 +81,7 @@ priors is refused, printing the exact `prior()` lines to add.
 ### 1. Likelihood-level: Automatic Stan generation via nlmixr2 dispatch
 
 Use `nlmixr2(model, data, est = "stan")` to automatically generate and fit a Stan program.
-No Stan code to write — Stan calls rxode2's solver backend directly and receives analytic gradients.
+No Stan code to write -- Stan calls rxode2's solver backend directly and receives analytic gradients.
 
 ```r
 library(nlmixr2)
@@ -164,8 +164,8 @@ parameters {
 }
 model {
   vector[3] p = [lka, lcl, lv]';
-  vector[nObs] centre = rx_solve(handle, p);
-  vector[nObs] cp = centre / exp(lv);
+  vector[nObs] center = rx_solve(handle, p);
+  vector[nObs] cp = center / exp(lv);
 
   lka ~ normal(0, 1);
   lcl ~ normal(1.4, 1);
@@ -186,12 +186,12 @@ fuller design sketch of hand-coded Stan programs.
 
 |  | native Stan | nlmixr2bayes (linked) |
 |---|---|---|
-| wall, chains sequential, two-solve path | — | 408.8 s |
+| wall, chains sequential, two-solve path | -- | 408.8 s |
 | wall, forked chains, two-solve path | 142.7 s | 302.6 s |
 | wall, forked + fused single-solve entry | 142.7 s | 203.8 s |
 | wall, forked + fused + C-side omega rebuild | 142.7 s | **80.8 s** |
 | worst bulk ESS | 236 | **286-378** |
-| worst ESS / s | 1.66 | 0.70 → 1.25 → 1.60 → **4.04** |
+| worst ESS / s | 1.66 | 0.70 -> 1.25 -> 1.60 -> **4.04** |
 | gradient evaluation | 1.98 ms | 2.80 ms via `grad_log_prob` (1.36 ms at the C level) |
 | posterior means | agree to < 0.01 on every parameter | |
 
@@ -226,20 +226,20 @@ diagnostic guarding both).  Reproduce with
 
 Because the bridge operates at the **likelihood level** (it exposes
 `log p(y_i|eta_i)` and its gradients, not raw ODE solutions), the oracles are
-likelihood-level.  Independent oracles first — checks against something the
+likelihood-level.  Independent oracles first -- checks against something the
 bridge does not share code with:
 
 | check | agreement |
 |---|---|
 | Stan's assembled gradient (`grad_log_prob`) vs. Richardson finite differences of its own log density | ~3e-8 |
 | `d/d(eta)` and `d/d(theta)` vs. central differences of the linked conditional value | ~3e-8 |
-| quadrature marginal over the linked conditional vs. nlmixr2's own `est="agq"` (nAGQ=101) at matched theta | 3e-7 (independent *marginalizations* — trapezoid vs adaptive Gauss–Hermite; the integrand engine is shared, and is anchored absolutely by the hand-density row below) |
+| quadrature marginal over the linked conditional vs. nlmixr2's own `est="agq"` (nAGQ=101) at matched theta | 3e-7 (independent *marginalizations* -- trapezoid vs adaptive Gauss-Hermite; the integrand engine is shared, and is anchored absolutely by the hand-density row below) |
 | censored (M2/M3/M4) and `ll()` conditionals vs. hand-computed textbook densities | exact up to a pinned, parameter-free constant; all gradients FD-verified, including the residual-SD dependence of the censored CDF terms |
 | prior-only sampling (likelihood stripped) vs. every declared prior | one-sample KS per parameter, including the default LKJ + half-Cauchy omega path |
-| full posterior vs. a hand-written **native-Stan** implementation of the same model and priors (no external function) | within 3× combined MCSE on every parameter |
+| full posterior vs. a hand-written **native-Stan** implementation of the same model and priors (no external function) | within 3x combined MCSE on every parameter |
 | the linked likelihood engine itself | NONMEM-validated upstream in nlmixr2est (Wang 2007 objective, per-subject ETA/CWRES) |
 
-And internal-consistency checks — exact identities the implementation must
+And internal-consistency checks -- exact identities the implementation must
 satisfy:
 
 | check | agreement |
@@ -248,7 +248,7 @@ satisfy:
 | mu-referenced theta-gradient column vs. the eta gradient | exact |
 | assembled gradient under Omega^-1 swaps spanning 4 orders of magnitude | exact (the conditional is Omega-free by construction) |
 | `log_prob` decomposes into conditional + normalized eta prior | ~1e-6 (difference form, constants cancel) |
-| bitwise determinism: 500+ interleaved evaluations of both batch entries at alternating points | exact (bitwise identical — the target is a pure function of state, which NUTS's reversibility assumes) |
+| bitwise determinism: 500+ interleaved evaluations of both batch entries at alternating points | exact (bitwise identical -- the target is a pure function of state, which NUTS's reversibility assumes) |
 
 Plus simulate-and-recover fits, including a correlated omega block whose
 generative correlation lands inside the 90% credible interval, and
@@ -256,8 +256,8 @@ FOCEi-agreement runs on `nlmixr2data::theo_sd` under weak priors.
 
 Wrong-by-construction variants are asserted to **fail**: a
 sign-flipped gradient assembly (off by `2 Omega^-1 eta`) fails the FD test,
-and `likelihood="focep"` — whose value and gradient are gradients of
-different functions — is refused by capability flags, with the underlying FD
+and `likelihood="focep"` -- whose value and gradient are gradients of
+different functions -- is refused by capability flags, with the underlying FD
 mismatch itself locked in as a test upstream.
 
 ## Current scope
@@ -272,7 +272,7 @@ censored data (M2/M3/M4 via CENS/LIMIT) and user-written `ll()` endpoints
 (both verified: values tie to textbook densities up to a parameter-free
 constant, gradients FD-verified), mu-referenced and non-mu etas,
 mu-referenced covariates (subject-constant and time-varying), all 39
-real-valued prior distributions in the lotri catalogue (univariate,
+real-valued prior distributions in the lotri catalog (univariate,
 multivariate normal families, LKJ/Wishart on omega blocks).
 
 Mu-referenced covariates work for both subject-constant covariates (the
@@ -285,7 +285,7 @@ Estimated transform-both-sides lambda (Box-Cox / Yeo-Johnson) is
 supported: the linked conditional supplies the transformed-scale density
 with an exact d/dlambda column (FD-verified at ~1e-10), and the generator
 adds the DV-transform Jacobian Stan-side as
-`target += (lambda - 1) * sumLogJac` — a pure data statistic, so lambda's
+`target += (lambda - 1) * sumLogJac` -- a pure data statistic, so lambda's
 full gradient is exact end to end (the assembled target is verified
 against the untransformed-scale density in difference form).
 

@@ -11,7 +11,7 @@
 #' the residual error are left at their `ini()` values because they are
 #' positively constrained and a jitter large enough to be useful is also large
 #' enough to push them past zero; the `z` matrix starts at 0, which is the
-#' prior mean of the non-centred parameterisation.
+#' prior mean of the non-centered parameterization.
 #'
 #' @param gen the list returned by [rxsStanFromUi()]
 #' @param jitter SD of the normal noise added to each fixed effect per chain.

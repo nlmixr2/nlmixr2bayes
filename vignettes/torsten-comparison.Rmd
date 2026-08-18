@@ -45,13 +45,13 @@ have from a FOCEi/SAEM run, and the posterior is sampled against the
 | 1/2-cmt analytic models | `pmx_solve_onecpt/twocpt` | `linCmt()` (1/2/3-cmt + absorption) |
 | general linear ODE | matrix exponential (`pmx_solve_linode`) | rxode2 solvers |
 | general (stiff) ODE | `pmx_solve_rk45/bdf/adams` | rxode2 (lsoda/liblsoda/dop853, ...) |
-| delay differential equations | — | rxode2 `delay()` / `past()` (rxstan hand-coded bridge; the automatic `est="stan"` path does not support DDEs) |
+| delay differential equations | -- | rxode2 `delay()` / `past()` (rxstan hand-coded bridge; the automatic `est="stan"` path does not support DDEs) |
 | NONMEM-convention events (AMT/EVID/ADDL/SS/RATE) | yes | yes (rxode2 event table) |
 | estimated `alag`/`f`/`dur`/`rate` | parameters of the solve (Torsten notes an open adjoint issue at `tlag = 0`) | yes; jump-condition sensitivities, FD-verified |
-| residual models | hand-written (anything Stan can express) | nlmixr2 catalogue (add/prop/combined, lnorm, ...), censoring M2/M3/M4, user `ll()` |
-| eta structure | hand-written (any structure, incl. IOV by hand) | lotri blocks; non-centred or centred; fixed-variance etas (constant Cholesky factor); first-class IOV (`iov.x ~ v \| OCC` through nlmixr2est's iov hook: per-occasion fixed unit-variance etas scaled by an estimated magnitude theta, FD-verified) |
+| residual models | hand-written (anything Stan can express) | nlmixr2 catalog (add/prop/combined, lnorm, ...), censoring M2/M3/M4, user `ll()` |
+| eta structure | hand-written (any structure, incl. IOV by hand) | lotri blocks; non-centered or centered; fixed-variance etas (constant Cholesky factor); first-class IOV (`iov.x ~ v \| OCC` through nlmixr2est's iov hook: per-occasion fixed unit-variance etas scaled by an estimated magnitude theta, FD-verified) |
 | finite mixtures | hand-written | `mix()` (2 components): log-sum-exp marginalization, membership posteriors in `fit$env$mixProb` |
-| priors | any Stan distribution, hand-written | the 39-distribution lotri catalogue via `prior()` in `ini({})`, LKJ/inv-Wishart on omega |
+| priors | any Stan distribution, hand-written | the 39-distribution lotri catalog via `prior()` in `ini({})`, LKJ/inv-Wishart on omega |
 | single-subject (no etas) | yes | yes ("tier 0": the nlm path's likelihood + analytic theta gradients, one external scalar `nlmixr2_pop_ll(theta)`) |
 | gradients | Stan autodiff through the solvers | analytic forward sensitivities via `precomputed_gradients` |
 | within-chain parallelism | MPI (`map_rect`-style population solvers) | subject-parallel OpenMP inside each likelihood evaluation (`cores`) |
@@ -150,10 +150,10 @@ d$DV[e$iObs] <- e$cObs
 
 A note on the eta parameterization: nlmixr2bayes's generated program uses
 **the same Matt's trick** Torsten's examples hand-code -- by default the
-etas are non-centred, with `z ~ std_normal()` sampled and
+etas are non-centered, with `z ~ std_normal()` sampled and
 `eta = z * L'` assembled from the omega Cholesky factor in
 `transformed parameters` -- it is just emitted for you rather than written
-by hand.  `stanControl(etaParam = "centered")` switches to the centred
+by hand.  `stanControl(etaParam = "centered")` switches to the centered
 form (`eta[i] ~ multi_normal_cholesky(0, L)`); the two are verified to
 target the identical posterior.
 
@@ -326,7 +326,7 @@ likelihood change was needed to support it.
 
 - Conversely, rxode2 capabilities with no Torsten equivalent flow through
   `est="stan"` unchanged: the censoring machinery (M2/M3/M4), the
-  residual-error catalogue, transit-compartment helpers, and
+  residual-error catalog, transit-compartment helpers, and
   mu-referenced covariate handling.  Delay differential equations are the
   one rxode2 capability Torsten also lacks but that nlmixr2bayes does not
   yet expose automatically -- reach them through the rxstan hand-coded

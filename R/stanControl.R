@@ -100,7 +100,7 @@
 #'   subject-parallel setting per worker
 #' @param cores subject-parallel thread count inside each likelihood
 #'   evaluation (default [rxode2::getRxThreads()]; on CRAN this is capped
-#'   at 2 through `OMP_THREAD_LIMIT`).  This is the per-run analogue of the
+#'   at 2 through `OMP_THREAD_LIMIT`).  This is the per-run analog of the
 #'   `cores` argument every other nlmixr2est control carries; Stan's own
 #'   chains still run sequentially
 #' @param diagOmegaSdPrior character template for the default half-Cauchy

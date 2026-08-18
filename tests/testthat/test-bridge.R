@@ -6,7 +6,7 @@ test_that("rxode2's C function-pointer table is installed", {
 })
 
 ## A 1-compartment oral PK model on the log scale, which is how Stan will
-## parameterise it.  cp = center / v is deliberately NOT the bridge output:
+## parameterize it.  cp = center / v is deliberately NOT the bridge output:
 ## rxode2 emits sensitivities for states only, so cp is formed in Stan.
 pkModel <- "
 ka  <- exp(lka)

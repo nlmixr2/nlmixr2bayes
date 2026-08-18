@@ -19,7 +19,7 @@
 #    distributions are refused with an R error naming the parameter, rather
 #    than a stanc type error later.
 
-# Stan distributions in the lotri catalogue without a _lcdf/_lccdf (cannot be
+# Stan distributions in the lotri catalog without a _lcdf/_lccdf (cannot be
 # truncated with parameter-dependent bounds/arguments)
 .stanNoLcdf <- c("wiener")
 
@@ -86,11 +86,11 @@
        call. = FALSE)
 }
 
-#' Look a prior call up in the lotri distribution catalogue
+#' Look a prior call up in the lotri distribution catalog
 #'
 #' @param priorStr the canonical deparsed prior string from `iniDf$prior`
 #' @return list(name=, stanName=, kind=, support=, args=list of language,
-#'   dist=the catalogue row)
+#'   dist=the catalog row)
 #' @noRd
 .stanPriorLookup <- function(priorStr) {
   .lang <- str2lang(priorStr)

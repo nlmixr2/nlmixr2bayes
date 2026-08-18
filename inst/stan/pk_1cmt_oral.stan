@@ -23,8 +23,8 @@ parameters {
 }
 model {
   vector[3] p = [lka, lcl, lv]';
-  vector[nObs] centre = rx_solve(handle, p);
-  vector[nObs] cp = centre / exp(lv);
+  vector[nObs] center = rx_solve(handle, p);
+  vector[nObs] cp = center / exp(lv);
 
   lka ~ normal(0, 1);
   lcl ~ normal(1.4, 1);

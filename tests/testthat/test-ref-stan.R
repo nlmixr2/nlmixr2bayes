@@ -1,6 +1,6 @@
 # G4: the strongest single correctness test.  The same model hand-written
 # NATIVELY in Stan -- analytic solution, no external function -- with the
-# same priors and the same non-centred parameterization.  The linked fit's
+# same priors and the same non-centered parameterization.  The linked fit's
 # posterior must match the reference within Monte Carlo error on every
 # shared parameter.  This validates the whole chain at once: codegen, prior
 # emission, eta-prior ownership, the external likelihood and its gradients.

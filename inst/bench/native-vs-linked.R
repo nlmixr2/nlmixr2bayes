@@ -2,7 +2,7 @@
 # (A) natively in Stan with Stan's own ODE solver (ode_rk45_tol, tolerances
 # matched to rxode2's 1e-8), and (B) as an nlmixr2 model through
 # est="stan" (the linked rxode2/nlmixr2est likelihood with analytic
-# forward-sensitivity gradients).  Identical priors, identical non-centred
+# forward-sensitivity gradients).  Identical priors, identical non-centered
 # eta structure (3 diagonal blocks, half-Cauchy SDs), identical sampler
 # settings.  Reports wall time (sampling only, warm compiles), worst bulk
 # ESS, ESS/s, and a per-gradient-evaluation microbenchmark.

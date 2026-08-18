@@ -3,7 +3,7 @@
 # Program shape: `parameters` declares the free thetas with their (support-
 # promoted) bounds and the per-block Omega parameterization; `transformed
 # parameters` assembles the full theta vector (fixed values inlined as
-# literals) and the non-centred etas (eta = z L'); `model` carries the prior
+# literals) and the non-centered etas (eta = z L'); `model` carries the prior
 # statements from stanPriors(), z ~ std_normal(), and the external
 # conditional likelihood.  The observations never enter Stan's data block --
 # they live in the linked nlmixr2est problem.
@@ -197,7 +197,7 @@
                              " = diag_pre_multiply(sd", .id, ", Lcorr", .id, ");"))
     }
     if (identical(ctl$etaParam, "centered")) {
-      # centred: eta sampled directly; multi_normal_cholesky supplies the
+      # centered: eta sampled directly; multi_normal_cholesky supplies the
       # (Omega-dependent) density, so no Jacobian bookkeeping is needed --
       # the declared parameter is the one the prior is written on
       .decl <- c(.decl, paste0("  matrix[", .rowsN, ", ", .k, "] etaP", .id, ";"))

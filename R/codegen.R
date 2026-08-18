@@ -165,7 +165,7 @@
 
 ## One observation's log density.  Emitted into BOTH the model block and
 ## generated quantities so log_lik cannot drift away from what was fitted.
-## Uses target += rather than ~ because loo needs the normalising constant.
+## Uses target += rather than ~ because loo needs the normalizing constant.
 .rxsLogLik <- function(errSpec, cens = FALSE) {
   if (cens) {
     sprintf("rxs_obs_ll_%s(dv[i], %s, %s, cens[i], hasLimit[i], limit[i])",
@@ -267,7 +267,7 @@
 ##
 ## So the closed form is replaced with the equivalent ODE system, which the
 ## bridge already handles and differentiates correctly.  The expansion is then
-## checked against linCmt() itself, so getting the parameterisation wrong is a
+## checked against linCmt() itself, so getting the parameterization wrong is a
 ## loud failure rather than quietly wrong numbers.
 
 .rxsLinCmtNames <- list(
@@ -303,14 +303,14 @@
   info
 }
 
-## The ODE system equivalent to linCmt(), in the clearance parameterisation.
+## The ODE system equivalent to linCmt(), in the clearance parameterization.
 .rxsLinCmtOdes <- function(info) {
   need <- c("cl", "v", if (info$ncmt >= 2L) c("q", "vp"),
             if (info$ncmt >= 3L) c("q2", "vp2"), if (info$hasKa) "ka")
   missing <- need[is.na(unlist(info[need]))]
   if (length(missing)) {
     stop("rxstan codegen: linCmt() expansion needs the clearance ",
-         "parameterisation; could not find ", paste(missing, collapse = ", "),
+         "parameterization; could not find ", paste(missing, collapse = ", "),
          " among the model's assignments", call. = FALSE)
   }
 
@@ -349,7 +349,7 @@
 
 ## The expansion is only trustworthy if it reproduces linCmt() itself, so solve
 ## both at the ini() values and insist they agree.  This is what turns a wrong
-## parameterisation into an error instead of plausible-looking wrong numbers.
+## parameterization into an error instead of plausible-looking wrong numbers.
 .rxsCheckLinCmt <- function(ui, modelText, info, tol = 1e-6) {
   ini <- ui$iniDf
   pars <- stats::setNames(ini$est[!is.na(ini$ntheta) & is.na(ini$err)],
@@ -376,7 +376,7 @@
   if (!is.finite(d) || d > tol) {
     stop("rxstan codegen: the linCmt() ODE expansion disagrees with linCmt() ",
          "itself (relative difference ", signif(d, 3), "). The model is ",
-         "probably using a parameterisation the expansion does not cover; ",
+         "probably using a parameterization the expansion does not cover; ",
          "write it with explicit ODEs.", call. = FALSE)
   }
   invisible(d)
@@ -414,10 +414,10 @@
 #'
 #' `linCmt()` is rewritten as the equivalent ODE system, because rxode2 emits
 #' no usable sensitivities for the closed-form solution.  The expansion is
-#' checked against `linCmt()` itself on every call, so a parameterisation it
+#' checked against `linCmt()` itself on every call, so a parameterization it
 #' does not cover is an error rather than quietly wrong numbers.  One to three
 #' compartments, with or without first-order absorption, in the clearance
-#' parameterisation.
+#' parameterization.
 #'
 #' `ini()` bounds become Stan constraints, and `fix()` removes the parameter
 #' from the `parameters` block entirely -- it becomes a constant in
@@ -425,7 +425,7 @@
 #' fixed theta is also dropped from the sensitivity system, so rxode2 has one
 #' fewer equation to solve.
 #'
-#' Default priors are weak and centred on the `ini()` estimates, which are
+#' Default priors are weak and centered on the `ini()` estimates, which are
 #' starting values rather than genuine prior beliefs; override them through
 #' `priors` for anything real.
 #'
@@ -482,12 +482,12 @@
 #'   An eta's entry is the prior on its between-subject SD.
 #' @param priorSd standard deviation of the default theta priors.
 #' @param lkjEta shape of the `lkj_corr_cholesky` prior on each correlated
-#'   `omega` block.  The default of 2 mildly favours weaker correlations; 1 is
+#'   `omega` block.  The default of 2 mildly favors weaker correlations; 1 is
 #'   uniform over correlation matrices.
 #' @param ... passed to [rxsRegister()]
 #' @return a list with the generated Stan `code`, the bridge `handle`, the
 #'   `standata` to pass to [rstan::sampling()], and the parameter names.  Names
-#'   are the model's own; `stanNames` gives the sanitised versions actually used
+#'   are the model's own; `stanNames` gives the sanitized versions actually used
 #'   in the generated program, since Stan identifiers cannot contain dots.
 #' @author Lukas A. Widmer
 #' @export
@@ -770,7 +770,7 @@ rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
     }
   }
 
-  ## Defaults are weak and centred on the ini() estimates; `priors` overrides
+  ## Defaults are weak and centered on the ini() estimates; `priors` overrides
   ## them by the model's own parameter names.
   thetaPrior <- sprintf("  %s ~ %s;", sName,
                         mapply(.rxsPrior, thetaNames,

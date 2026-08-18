@@ -1,5 +1,5 @@
 ## Path A is refused when rxode2 reports a non-zero needSort, because a
-## modelled lag/bioavailability/duration/rate moves a dose within the event
+## modeled lag/bioavailability/duration/rate moves a dose within the event
 ## order and Path A cannot re-sort.  All four act on DOSES, so a dose-free
 ## event table makes the flag a false alarm -- which is not hypothetical:
 ## rxode2 reports needSort = 3 for a DDE once it carries sensitivities.
@@ -63,7 +63,7 @@ test_that("the DDE fast path agrees with the slow one exactly", {
   expect_true(rxsFastAvailable(h))
 })
 
-test_that("a modelled alag with real doses still refuses the fast path", {
+test_that("a modeled alag with real doses still refuses the fast path", {
   ev <- rxode2::et(amt = 100, cmt = "depot")
   ev <- rxode2::et(ev, c(1, 2, 4, 8, 12))
   h <- rxsRegister(lagModel, events = ev,

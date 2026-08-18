@@ -15,7 +15,7 @@ extern "C" {
 // is caught and reported through the return code, so a C++ caller (Stan's
 // log_prob, mid-reverse-sweep) is never longjmp'd past its destructors.
 //
-// Parameters are organised in BLOCKS.  A population model gives each subject
+// Parameters are organized in BLOCKS.  A population model gives each subject
 // its own block of `nBlock` parameters, and because subjects are independent
 // the Jacobian is block diagonal: output i depends only on block
 // `outBlock[i]`.  `dydp` therefore carries just that block, ny x nBlock, not

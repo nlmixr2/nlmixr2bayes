@@ -131,7 +131,7 @@ test_that("plain fixed-variance etas work; fixed correlated blocks refuse", {
   expect_true(any(grepl("matrix[1,1] L_eta_cl = [[0.2]];", .lines,
                         fixed = TRUE)))
   expect_false(any(grepl("sd_eta_cl", .lines)))
-  # the centred parameterization composes with a fixed block: eta sampled
+  # the centered parameterization composes with a fixed block: eta sampled
   # directly against the CONSTANT L
   .codeC <- suppressMessages(
     nlmixr2est::nlmixr2(.fixEta, .d, est = "stan",

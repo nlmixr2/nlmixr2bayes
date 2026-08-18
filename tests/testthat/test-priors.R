@@ -98,7 +98,7 @@ test_that("omega-block priors are classified for the generator, not emitted", {
   expect_equal(.p$omega$neta1, 1)
 })
 
-test_that("every non-discrete univariate distribution in the catalogue parses", {
+test_that("every non-discrete univariate distribution in the catalog parses", {
   .tbl <- lotri::lotriPriorDists()
   .uni <- .tbl[.tbl$kind == "univariate", ]
   for (.i in seq_len(nrow(.uni))) {

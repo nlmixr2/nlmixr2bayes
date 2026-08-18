@@ -134,9 +134,9 @@ test_that("an IV linCmt model works too", {
   expect_equal(gen$states, "central")
 })
 
-test_that("a parameterisation the expansion cannot cover is refused", {
+test_that("a parameterization the expansion cannot cover is refused", {
   skip_if_not_installed("nlmixr2")
-  ## Rate-constant parameterisation: no cl/v for the expansion to use.
+  ## Rate-constant parameterization: no cl/v for the expansion to use.
   micro <- function() {
     ini({
       tkel <- -2
@@ -153,7 +153,7 @@ test_that("a parameterisation the expansion cannot cover is refused", {
     })
   }
   expect_error(rxsStanFromUi(micro, oralData(2L)),
-               "clearance parameterisation|disagrees with linCmt")
+               "clearance parameterization|disagrees with linCmt")
 })
 
 test_that("a linCmt model has correct gradients end to end", {

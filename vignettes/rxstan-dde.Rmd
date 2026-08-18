@@ -13,7 +13,7 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 
 ## Delay differential equations: a Stan limitation
 
-**Stan has no DDE solver.** Not a slow one — none. There is no `ode_*` function that accepts 
+**Stan has no DDE solver.** Not a slow one -- none. There is no `ode_*` function that accepts 
 a lagged state, and you cannot write one in the Stan language, because the solution has to be 
 interpolated at $t - \tau$ while it is still being computed.
 

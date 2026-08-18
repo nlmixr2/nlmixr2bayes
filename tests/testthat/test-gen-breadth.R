@@ -1,4 +1,4 @@
-# G10 breadth: every non-discrete univariate distribution in the catalogue,
+# G10 breadth: every non-discrete univariate distribution in the catalog,
 # carried end-to-end -- ini({}) prior -> generator -> a COMPLETE program that
 # stanc accepts.  test-priors.R already checks the lookup/statement layer;
 # what that cannot catch is an argument-count or type mismatch against

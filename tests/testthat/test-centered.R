@@ -1,7 +1,7 @@
-# G13: centred and non-centred eta parameterizations target the same
+# G13: centered and non-centered eta parameterizations target the same
 # posterior by construction; sampling the same model both ways must agree.
-# A failure here almost always means a missing Jacobian in the centred path
-# or a wrong Cholesky factor in the non-centred one.
+# A failure here almost always means a missing Jacobian in the centered path
+# or a wrong Cholesky factor in the non-centered one.
 #
 # The data are simulated FROM the model so omega is identified: with
 # model-mismatched data (the .linkData fixture) the omega posterior is
@@ -9,7 +9,7 @@
 # by Monte Carlo alone (observed: posterior sd 96 vs 3 at agreeing bulk).
 # Omega is therefore compared on quantiles, thetas on mean/sd.
 
-test_that("centred == non-centred posterior (G13)", {
+test_that("centered == non-centered posterior (G13)", {
   skip_if_not_installed("rstan")
   skip_on_cran()
   .mod <- function() {
@@ -48,7 +48,7 @@ test_that("centred == non-centred posterior (G13)", {
   }
   .nc <- .fitWith("noncentered")
   .ce <- .fitWith("centered")
-  # the centred program really is centred (samples eta directly)
+  # the centered program really is centered (samples eta directly)
   expect_true(any(grepl("etaP_eta_cl", .ce$env$stanCode, fixed = TRUE)))
   expect_false(any(grepl("etaP_eta_cl", .nc$env$stanCode, fixed = TRUE)))
   .sN <- rstan::summary(.nc$env$stanfit,
