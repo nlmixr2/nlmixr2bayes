@@ -28,6 +28,10 @@ models, from opposite directions:
   rxode2/nlmixr2est likelihood (with analytic gradients) rather than the
   model being re-expressed in Stan's language.  The fit comes back as a
   standard `nlmixr2FitData` with GOF tables, plus the full `stanfit`.
+  For programs you write yourself, the same package also ships the
+  **rxstan** bridge (`vignette("rxstan-handcoded", "nlmixr2bayes")`):
+  Torsten-style hand-written Stan, but with rxode2 as the solver instead
+  of Stan's own `ode_*` functions or Torsten's `pmx_solve_*`.
 
 The practical consequence: a Torsten model is ~100-200 lines of Stan; the
 same model in nlmixr2bayes is the ~20-line nlmixr2 function you may already
@@ -41,14 +45,14 @@ have from a FOCEi/SAEM run, and the posterior is sampled against the
 | 1/2-cmt analytic models | `pmx_solve_onecpt/twocpt` | `linCmt()` (1/2/3-cmt + absorption) |
 | general linear ODE | matrix exponential (`pmx_solve_linode`) | rxode2 solvers |
 | general (stiff) ODE | `pmx_solve_rk45/bdf/adams` | rxode2 (lsoda/liblsoda/dop853, ...) |
-| delay differential equations | — | rxode2 `delay()` / `past()` |
+| delay differential equations | — | rxode2 `delay()` / `past()` (rxstan hand-coded bridge; the automatic `est="stan"` path does not support DDEs) |
 | NONMEM-convention events (AMT/EVID/ADDL/SS/RATE) | yes | yes (rxode2 event table) |
 | estimated `alag`/`f`/`dur`/`rate` | parameters of the solve (Torsten notes an open adjoint issue at `tlag = 0`) | yes; jump-condition sensitivities, FD-verified |
 | residual models | hand-written (anything Stan can express) | nlmixr2 catalogue (add/prop/combined, lnorm, ...), censoring M2/M3/M4, user `ll()` |
-| eta structure | hand-written (any structure, incl. IOV by hand) | lotri blocks; non-centred or centred; fixed-variance etas (constant Cholesky factor); first-class IOV (`iov.x ~ v | OCC` through nlmixr2est's iov hook: per-occasion fixed unit-variance etas scaled by an estimated magnitude theta with an exact, FD-gated sensitivity -- nlmixr2est#952/#960) |
+| eta structure | hand-written (any structure, incl. IOV by hand) | lotri blocks; non-centred or centred; fixed-variance etas (constant Cholesky factor); first-class IOV (`iov.x ~ v \| OCC` through nlmixr2est's iov hook: per-occasion fixed unit-variance etas scaled by an estimated magnitude theta, FD-verified) |
 | finite mixtures | hand-written | `mix()` (2 components): log-sum-exp marginalization, membership posteriors in `fit$env$mixProb` |
 | priors | any Stan distribution, hand-written | the 39-distribution lotri catalogue via `prior()` in `ini({})`, LKJ/inv-Wishart on omega |
-| single-subject (no etas) | yes | yes ("tier 0": the nlm path's likelihood + analytic theta gradients, one external scalar `nlmixr2_pop_ll(theta)`; needs nlmixr2est with nlmixr2est#953) |
+| single-subject (no etas) | yes | yes ("tier 0": the nlm path's likelihood + analytic theta gradients, one external scalar `nlmixr2_pop_ll(theta)`) |
 | gradients | Stan autodiff through the solvers | analytic forward sensitivities via `precomputed_gradients` |
 | within-chain parallelism | MPI (`map_rect`-style population solvers) | subject-parallel OpenMP inside each likelihood evaluation (`cores`) |
 | interface | cmdstan / cmdstanr | rstan, `nlmixr2(..., est = "stan")` |
@@ -61,15 +65,15 @@ workflows.  Where nlmixr2bayes is the right tool: standard
 population PK/PD where the model already exists in nlmixr2 form, and the
 Bayesian run should be comparable line-for-line with the frequentist ones.
 
-The middle ground is planned: an **rxode2 sensitivity linkage** for
-hand-written Stan programs -- write your own Stan code (any hierarchy,
-any prior structure) while the ODE system, dosing events, and their
-analytic sensitivities come from a compiled rxode2 model (including
-event-time "jump" sensitivities and delay differential equations, which
-no Stan-native solver provides).  This exists today as a standalone
-rxode2--Stan bridge and will be merged into this package family; it
-shares the same no-Stan-code-in-the-linked-`.so` architecture, at the
-ODE level instead of the likelihood level.
+There is also a middle ground: an **rxode2 sensitivity linkage** for
+hand-written Stan programs (the rxstan bridge covered in
+`vignette("rxstan-handcoded", "nlmixr2bayes")`) -- write your own Stan
+code (any hierarchy, any prior structure) while the ODE system, dosing
+events, and their analytic sensitivities come from a compiled rxode2
+model (including event-time "jump" sensitivities and delay differential
+equations, which no Stan-native solver provides).  It shares the same
+no-Stan-code-in-the-linked-`.so` architecture as the automatic path,
+just at the ODE level instead of the likelihood level.
 
 ## Port: `poppk2cpt` (two-compartment population model)
 
@@ -150,8 +154,8 @@ etas are non-centred, with `z ~ std_normal()` sampled and
 `eta = z * L'` assembled from the omega Cholesky factor in
 `transformed parameters` -- it is just emitted for you rather than written
 by hand.  `stanControl(etaParam = "centered")` switches to the centred
-form (`eta[i] ~ multi_normal_cholesky(0, L)`); the two are
-gate-verified to target the identical posterior.
+form (`eta[i] ~ multi_normal_cholesky(0, L)`); the two are verified to
+target the identical posterior.
 
 ## Port: Friberg-Karlsson neutropenia (population PK/PD, two endpoints)
 
@@ -270,11 +274,10 @@ terms, and the analytic gradients flow through the same linkage.
 ## IOV
 
 Torsten "supports" IOV the way it supports everything: you write it --
-occasion-level etas declared as extra parameters and added into the
-occasion's parameters by hand.  The **same hand-written pattern works in
-nlmixr2bayes today**, because as far as the linked likelihood is concerned
-an occasion eta is just another subject-level eta gated by an occasion
-indicator covariate:
+occasion-level etas declared as extra parameters, constrained by hand to
+share one variance, and added into the occasion's parameters.
+nlmixr2bayes has first-class syntax for the same structure -- `iov.x ~ v
+| occ` declares one shared IOV magnitude across occasions:
 
 ```{r}
 iov <- function() {
@@ -284,14 +287,11 @@ iov <- function() {
     prior(lcl) ~ dnorm(log(10), 0.5)
     lnorm.sd <- c(0, 0.2)
     prior(lnorm.sd) ~ dcauchy(0, 1)
-    eta.cl ~ 0.06        # IIV
-    eta.occ1 ~ 0.02      # IOV, occasion 1
-    eta.occ2 ~ 0.02      # IOV, occasion 2
+    eta.cl ~ 0.06       # IIV
+    iov.cl ~ 0.02 | OCC # IOV: one shared magnitude across occasions
   })
   model({
-    # OCC is a data column; kappa = the occasion's IOV eta
-    kappa <- eta.occ1 * (OCC == 1) + eta.occ2 * (OCC == 2)
-    cl <- exp(lcl + eta.cl + kappa)
+    cl <- exp(lcl + eta.cl + iov.cl)
     v <- exp(lv)
     cp <- linCmt()
     cp ~ lnorm(lnorm.sd)
@@ -299,50 +299,25 @@ iov <- function() {
 }
 ```
 
-What this pattern does **not** yet give you is the usual IOV constraint
-that every occasion shares ONE variance: `eta.occ1` and `eta.occ2` above
-get independent (identically-specified) priors rather than a single shared
-`omega_IOV` parameter.
-
-The path to first-class `~ ... | occ` support is settled and mirrors what
-nlmixr2est's own IOV machinery does: the iov hook expands the model to
-`sd * (iov.cl.1*(OCC==1) + iov.cl.2*(OCC==2))` where the per-occasion
-effects are independent with variance **fixed to one** and a single
-estimated `sd` theta carries the IOV magnitude.  Stan expresses the
-unit-variance constraint directly -- either a plain `std_normal()` prior,
-or the exact standardization
-
-```stan
-parameters {
-  vector[S] alpha_raw;
-}
-transformed parameters {
-  // center to mean zero, scale the REALIZED variance to exactly 1
-  vector[S] alpha = (alpha_raw - mean(alpha_raw)) * sqrt(S / (S - 1.0));
-}
-model {
-  alpha_raw ~ normal(0, 1);
-}
-```
-
--- and the shared `sd` is then an ordinary theta.  Because the iov hook
-runs at the preprocessing level, the linked likelihood sees ordinary
-subject-level etas and **no upstream likelihood change is needed**; the
-remaining work is generator support for unit-variance eta groups scaled by
-a shared sd theta.  The indicator pattern above is available now and is
-what a Torsten user would have written by hand anyway.
+Under the hood, nlmixr2est's preprocessing hook expands `iov.cl` into
+per-occasion etas with variance **fixed to one**, and a single estimated
+`sd` theta carries the IOV magnitude -- the same construction a Torsten
+user would otherwise hand-write (a unit-variance parameter scaled by a
+shared SD), except emitted for you and FD-verified end to end.  The
+linked likelihood never sees anything but ordinary subject-level etas: the
+expansion happens before the Stan program is generated, so no upstream
+likelihood change was needed to support it.
 
 ## What does not carry over
 
 - Torsten's **single-patient** examples (`pk2cpt` and friends) carry over
   directly: a no-eta model generates a theta-only program with
   `target += nlmixr2_pop_ll(theta)` (nlmixr2est's nlm path -- the
-  likelihood and analytic theta gradients on the natural scale; requires
-  nlmixr2est with nlmixr2est#953).  The pk2cpt port is the population
-  port above minus the etas, with Torsten's lognormal priors verbatim --
-  it is codegen-verified in `test-torsten-port.R`, and the tier-0 target
-  is gate-verified against a hand-written density with FD-checked
-  gradients.
+  likelihood and analytic theta gradients on the natural scale).  The
+  pk2cpt port is the population port above minus the etas, with Torsten's
+  lognormal priors verbatim -- it is codegen-verified in
+  `test-torsten-port.R`, and the tier-0 target is verified against a
+  hand-written density with FD-checked gradients.
 
 - Torsten's `pmx_solve_group_*` **MPI parallelism** distributes subjects
   across processes; nlmixr2bayes parallelizes subjects with OpenMP threads
@@ -350,6 +325,9 @@ what a Torsten user would have written by hand anyway.
   mechanics, no user-visible model difference.
 
 - Conversely, rxode2 capabilities with no Torsten equivalent flow through
-  `est="stan"` unchanged: delay differential equations, the censoring
-  machinery (M2/M3/M4), the residual-error catalogue, transit-compartment
-  helpers, and mu-referenced covariate handling.
+  `est="stan"` unchanged: the censoring machinery (M2/M3/M4), the
+  residual-error catalogue, transit-compartment helpers, and
+  mu-referenced covariate handling.  Delay differential equations are the
+  one rxode2 capability Torsten also lacks but that nlmixr2bayes does not
+  yet expose automatically -- reach them through the rxstan hand-coded
+  bridge (`vignette("rxstan-dde", "nlmixr2bayes")`) instead.

@@ -9,10 +9,11 @@ A Stan interface for nlmixr2 combining two complementary approaches:
    of truth for the likelihood and avoids reimplementing solving, censoring and the 
    residual-error models.
 
-2. **ODE-level hand-coded Stan models** (via rxstan): 
-   Write your own Stan programs that declare rxode2 as the solver backend via `rxsRegister()`.
-   Keep dosing events, DDEs, and analytic parameter sensitivities in rxode2 while writing
-   priors, transformations, mixtures, and derived quantities directly in Stan.
+2. **ODE-level hand-coded Stan models** (the "rxstan" bridge, part of this
+   package): write your own Stan programs that declare rxode2 as the
+   solver backend via `rxsRegister()`. Keep dosing events, DDEs, and
+   analytic parameter sensitivities in rxode2 while writing priors,
+   transformations, mixtures, and derived quantities directly in Stan.
 
 ## What linking buys
 
@@ -20,7 +21,7 @@ Both approaches share the same fundamental advantage: **things Stan's ODE interf
 
 - **dosing events** (bolus, infusion, `addl`, steady state, multiple compartments) with exact event timing
 - **derivatives with respect to modelled dose handling** — an estimated lag time, bioavailability, duration or rate
-- **delay differential equations**, via rxode2's `delay()` / `past()`
+- **delay differential equations**, via rxode2's `delay()` / `past()` (hand-coded approach only -- automatic generation does not support DDEs)
 - **analytic parameter sensitivities** via forward sensitivity equations (no autodiff through the solver)
 - **the residual-error and censoring machinery** (M2/M3/M4) already validated in nlmixr2est (likelihood-level only)
 
@@ -104,15 +105,16 @@ model <- function() {
 fit <- nlmixr2(model, data, est = "stan", stanControl(chains = 4, iter = 2000))
 ```
 
-### 2. ODE-level: Hand-written Stan models with rxstan backend
+### 2. ODE-level: Hand-written Stan models with the rxstan backend
 
-Write your own Stan program and link it to rxode2's solver via `rxsRegister()`.
-This approach gives you full control over your Stan program while keeping 
-dosing, DDEs, and solver sensitivities in rxode2.
+Write your own Stan program and link it to rxode2's solver via
+`rxsRegister()`, part of this package (`nlmixr2bayes`).  This approach
+gives you full control over your Stan program while keeping dosing, DDEs,
+and solver sensitivities in rxode2.
 
 ```r
 library(nlmixr2)
-library(rxstan)  # rxstan is now integrated
+library(nlmixr2bayes)
 
 oneCmt <- function() {
   ini({
@@ -175,7 +177,8 @@ model {
 }
 ```
 
-See `vignette("rxstan")` for detailed examples of hand-coded Stan programs.
+See `vignette("rxstan-handcoded")` and `vignette("rxstan-dde")` for the
+fuller design sketch of hand-coded Stan programs.
 
 ## Is it fast?
 
@@ -185,7 +188,7 @@ See `vignette("rxstan")` for detailed examples of hand-coded Stan programs.
 |---|---|---|
 | wall, chains sequential, two-solve path | — | 408.8 s |
 | wall, forked chains, two-solve path | 142.7 s | 302.6 s |
-| wall, forked + fused single-solve entry (nlmixr2est#958) | 142.7 s | 203.8 s |
+| wall, forked + fused single-solve entry | 142.7 s | 203.8 s |
 | wall, forked + fused + C-side omega rebuild | 142.7 s | **80.8 s** |
 | worst bulk ESS | 236 | **286-378** |
 | worst ESS / s | 1.66 | 0.70 → 1.25 → 1.60 → **4.04** |
@@ -199,7 +202,7 @@ native's wall-clock edge, and disabling the failure cascade
 cascade never fires on a healthy trajectory (the forked retry-on run
 reproduced the sequential retry-off draws bit-for-bit).  The former
 two-integrations-per-gradient gap is closed: with nlmixr2est's combined
-eta+theta sensitivity build (nlmixr2est#958) the whole tier-2 gradient
+eta+theta sensitivity build the whole tier-2 gradient
 comes from ONE solve per subject through a fused batch entry --
 0.62 ms per full-population gradient at the C level (vs 1.26 ms
 two-model, and native's 1.98 ms coupled solve), negotiated automatically
@@ -251,7 +254,7 @@ Plus simulate-and-recover fits, including a correlated omega block whose
 generative correlation lands inside the 90% credible interval, and
 FOCEi-agreement runs on `nlmixr2data::theo_sd` under weak priors.
 
-Wrong-by-construction variants are asserted to **fail**: the historical
+Wrong-by-construction variants are asserted to **fail**: a
 sign-flipped gradient assembly (off by `2 Omega^-1 eta`) fails the FD test,
 and `likelihood="focep"` — whose value and gradient are gradients of
 different functions — is refused by capability flags, with the underlying FD
@@ -263,11 +266,10 @@ Supported: mixed AND population-only models (a no-eta model -- e.g. a
 single-subject Bayesian fit -- runs as "tier 0" through nlmixr2est's nlm
 path: one external scalar `nlmixr2_pop_ll(theta)` carrying the complete
 data log-likelihood and its analytic gradient, value tied to a
-hand-written density and FD-gate-verified; needs nlmixr2est with
-nlmixr2est#953), ODE and `linCmt()` models, normal residual models
-(add/prop/combined and transforms with fixed lambda), censored data
-(M2/M3/M4 via CENS/LIMIT) and user-written `ll()` endpoints (both
-gate-verified: values tie to textbook densities up to a parameter-free
+hand-written density and FD-verified), ODE and `linCmt()` models, normal
+residual models (add/prop/combined and transforms with fixed lambda),
+censored data (M2/M3/M4 via CENS/LIMIT) and user-written `ll()` endpoints
+(both verified: values tie to textbook densities up to a parameter-free
 constant, gradients FD-verified), mu-referenced and non-mu etas,
 mu-referenced covariates (subject-constant and time-varying), all 39
 real-valued prior distributions in the lotri catalogue (univariate,
@@ -281,27 +283,30 @@ regressor); both routes are FD-verified.
 
 Estimated transform-both-sides lambda (Box-Cox / Yeo-Johnson) is
 supported: the linked conditional supplies the transformed-scale density
-with an exact d/dlambda column (nlmixr2est#949; FD-verified at ~1e-10),
-and the generator adds the DV-transform Jacobian Stan-side as
+with an exact d/dlambda column (FD-verified at ~1e-10), and the generator
+adds the DV-transform Jacobian Stan-side as
 `target += (lambda - 1) * sumLogJac` — a pure data statistic, so lambda's
-full gradient is exact end to end (the assembled target is gate-verified
+full gradient is exact end to end (the assembled target is verified
 against the untransformed-scale density in difference form).
 
 Finite mixtures (`mix()`, 2 components) are supported: the linked batch
-evaluates the component-conditional likelihoods in nlmixr2est's blessed
-component-major layout (nlmixr2est#955), the generator marginalizes with
-the Stan Users Guide `log_sum_exp` pattern (component-specific etas whose
-priors factor out; the mixing probability's gradient is pure Stan
-autodiff -- the conditional is provably p-free, FD-verified), and the
-per-subject membership posteriors land in `fit$env$mixProb`.  The whole
-assembled mixture target is FD-verified through `grad_log_prob`.
+evaluates the component-conditional likelihoods in nlmixr2est's
+component-major layout, the generator marginalizes with the Stan Users
+Guide `log_sum_exp` pattern (component-specific etas whose priors factor
+out; the mixing probability's gradient is pure Stan autodiff -- the
+conditional is provably p-free, FD-verified), and the per-subject
+membership posteriors land in `fit$env$mixProb`.  The whole assembled
+mixture target is FD-verified through `grad_log_prob`.
+
+IOV is supported: `iov.x ~ v | OCC` expands (via nlmixr2est's
+preprocessing hook) into per-occasion fixed unit-variance etas scaled by
+an estimated magnitude theta.
 
 Refused with an explanatory error (not silently wrong): mixtures with
-more than 2 components (for now), IOV (until nlmixr2est#952), and the 8
-discrete distributions (every `ini({})` parameter is real-valued).
+more than 2 components (for now), and the 8 discrete distributions (every
+`ini({})` parameter is real-valued).
 
-This package requires nlmixr2est with the FOCEi conditional-likelihood C API
-(nlmixr2est#937, #939, #941).  See the issue tracker for the roadmap
-(WAIC/LOO, covariate gradients, SBC).
-
-Supersedes the prior-specification blocker in nlmixr2/nlmixr2est#799.
+WAIC/LOO (subject-level, from the per-subject conditional log-likelihood
+draws) are implemented -- see the "objective-function rows" section of
+the `nlmixr2bayes` vignette.  See the issue tracker for what's still
+open.

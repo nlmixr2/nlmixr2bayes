@@ -42,7 +42,7 @@ see `vignette("rxstan-handcoded", "nlmixr2bayes")` for the rxstan approach.
 
 Stan is **linked** to the compiled rxode2/nlmixr2est likelihood rather than
 the model being translated into Stan's language: rxode2 solves the ODEs
-(dosing events, `addl`, infusions, steady state, delay equations), and
+(dosing events, `addl`, infusions, steady state), and
 nlmixr2est evaluates the same conditional likelihood every other nlmixr2
 method uses -- one source of truth, with analytic gradients handed to Stan
 through `precomputed_gradients()`.  Stan samples theta, the omega
@@ -119,7 +119,7 @@ stanControl(
   chains = 4, iter = 2000, warmup = 1000, seed = 42,
   adapt_delta = 0.8, max_treedepth = 10, # Stan's own sampler defaults
   init = "ini",          # chains start at the ini() estimates (jittered)
-  etaParam = "noncentered",  # or "centered"; identical posterior (gate G13)
+  etaParam = "noncentered",  # or "centered"; both target the identical posterior
   cores = 4,          # subject-parallel threads INSIDE each evaluation
   print = 100         # nlmixr2est-style iteration table cadence (0 = off)
 )
@@ -257,31 +257,31 @@ model.
 
 ## What is refused (and why)
 
-Rather than produce a silently wrong posterior, `est="stan"` refuses:
+Rather than produce a silently wrong posterior, `est="stan"` refuses
+mixtures with more than 2 components and discrete priors (every
+`ini({})` parameter is real-valued).  2-component `mix()` models are
+supported, with per-subject membership posteriors in `fit$env$mixProb`.
 
-- mixtures with more than 2 components (2-component `mix()` models are
-  supported, with per-subject membership posteriors in
-  `fit$env$mixProb`), IOV (until an upstream sensitivity fix,
-  nlmixr2est#952), and discrete priors (every `ini({})` parameter is
-  real-valued).
+IOV is supported: `iov.x ~ v | OCC` expands into per-occasion
+fixed-variance etas scaled by an estimated magnitude theta, the same way
+nlmixr2est's own methods treat occasion-level variability.
 
 Estimated transform-both-sides lambda (Box-Cox/Yeo-Johnson) is supported:
 the linked conditional supplies the transformed-scale density with an
-exact `d/dlambda` sensitivity (nlmixr2est#949), and the generator emits
-the DV-transform Jacobian on the Stan side --
-`target += (lambda - 1) * sumLogJac`, a pure data statistic per endpoint
--- so the assembled target is the correct untransformed-scale density
-with an exact lambda gradient (both gate-verified).
+exact `d/dlambda` sensitivity, and the generator emits the DV-transform
+Jacobian on the Stan side -- `target += (lambda - 1) * sumLogJac`, a pure
+data statistic per endpoint -- so the assembled target is the correct
+untransformed-scale density with an exact lambda gradient (both
+FD-verified).
 
 Mu-referenced covariates are supported whether subject-constant (an
 analytic chain-rule identity) or time-varying (the coefficient is treated
 as an estimated regressor through the forward-sensitivity model, as in the
 other nlmixr2est methods).
 
-Estimated dose-handling parameters (`alag`/`f`/`dur`/`rate`) are supported
-with nlmixr2est >= the nlmixr2/nlmixr2est#946 fix (their derivatives carry
-the jump condition at the dose event); with an older nlmixr2est they are
-refused with an explanation.
+Estimated dose-handling parameters (`alag`/`f`/`dur`/`rate`) are
+supported (their derivatives carry the jump condition at the dose
+event).
 
 ## How it is validated
 

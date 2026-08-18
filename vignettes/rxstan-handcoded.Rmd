@@ -23,35 +23,32 @@ as a solver backend via `rxsRegister()`, then write ordinary Stan that declares 
 ### When to use this approach
 
 - ✅ You want **full control over your Stan program**
-- ✅ You need **delay differential equations** (Stan has no DDE solver)
+- ✅ You need **delay differential equations** (Stan has no DDE solver -- see
+  `vignette("rxstan-dde", "nlmixr2bayes")`)
 - ✅ You want to write **custom priors or derived quantities** in Stan
 - ✅ Your model has **complex structure** beyond what automatic generation supports
 - ✅ You're fitting **hand-coded rxode2 models** outside the nlmixr2 framework
 
 ### When to use automatic generation instead
 
-If you have a complete **nlmixr2-style model** with priors in the `ini({})` block, 
-prefer `nlmixr2(model, data, est = "stan")` — it's simpler, keeps one source of truth 
-for the likelihood, and is validated against every other nlmixr2 method. 
+If you have a complete **nlmixr2-style model** with priors in the `ini({})` block,
+prefer `nlmixr2(model, data, est = "stan")` — it's simpler, keeps one source of truth
+for the likelihood, and is validated against every other nlmixr2 method.
 See `vignette("nlmixr2bayes", "nlmixr2bayes")`.
 
 ---
 
-## What this does
+## Why link instead of translate
 
-While `nlmixr2(model, data, est = "stan")` automatically generates and compiles a Stan program,
-you may want to write your own Stan code to have full control over priors, derived quantities,
-and model structure. The `rxstan` component of `nlmixr2bayes` lets you do exactly that.
-
-Stan can already solve ODEs, but it does so by autodiffing *through* the integrator, which is 
+Stan can already solve ODEs, but it does so by autodiffing *through* the integrator, which is
 expensive, and its interface has no concept of a dose, a lag time, or a delay differential equation.
 
-rxode2 has all of that, and it computes analytic first-order sensitivities $\partial y / \partial \theta$ 
-by augmenting the system with the forward sensitivity equations. Those are exactly the numbers Stan's 
+rxode2 has all of that, and it computes analytic first-order sensitivities $\partial y / \partial \theta$
+by augmenting the system with the forward sensitivity equations. Those are exactly the numbers Stan's
 reverse-mode tape wants.
 
-So rxstan hands the solve to rxode2 and pushes rxode2's derivatives onto Stan's tape directly, 
-through `precomputed_gradients()`. Stan never differentiates the solver; it treats `rx_solve()` 
+So rxstan hands the solve to rxode2 and pushes rxode2's derivatives onto Stan's tape directly,
+through `precomputed_gradients()`. Stan never differentiates the solver; it treats `rx_solve()`
 as a function whose partials are simply known.
 
 ```
@@ -130,8 +127,9 @@ rxode2 — see "What crosses the boundary" below.
 
 ## Writing your own Stan program
 
-`rxsStanFromUi()` is convenient for quick fits, but to write your own program, use `rxsRegister()` 
-to set up the solver handle and build the Stan code yourself.
+`rxsStanFromUi()` is convenient for quick fits, but to write your own program, use `rxsRegister()`
+to set up the solver handle and build the Stan code yourself. Here is that hand-written program
+-- `handle` and `p` are what `rxsRegister()` and `rxsInit()` supply below:
 
 ```stan
 functions {
@@ -167,7 +165,7 @@ model {
 }
 ```
 
-From R:
+Save that program to a `.stan` file, register the model, and fit from R:
 
 ```{r handcoded, eval=FALSE}
 library(nlmixr2)
@@ -192,14 +190,12 @@ oneCmt <- function() {
 }
 
 # Register the model and set up the solver
-h <- rxsRegister(oneCmt, events = dat, 
-                 sens = c("lka", "lcl", "lv"), 
+h <- rxsRegister(oneCmt, events = dat,
+                 sens = c("lka", "lcl", "lv"),
                  output = "center")
 
-# Compile the Stan program
-f <- tempfile(fileext = ".stan")
-writeLines(stan_code, f)
-sm <- rxsStanModel(f, modelName = "one_cmt")
+# Compile the Stan program (the file where you saved the program above)
+sm <- rxsStanModel("one_cmt.stan", modelName = "one_cmt")
 
 # Prepare data for Stan
 standata <- list(
@@ -249,5 +245,15 @@ a problem with the bridge or the solver tolerances.
   rxode2's solve structure is a process singleton, so concurrent entry is detected and throws 
   rather than corrupting silently. Run chains as separate processes; leave subject-level 
   parallelism to rxode2.
-- **First-order only** — `precomputed_gradients()` is `var`-only, so `laplace_marginal` 
+- **First-order only** — `precomputed_gradients()` is `var`-only, so `laplace_marginal`
   and RHMC are out.
+
+## See also
+
+- `vignette("nlmixr2bayes", "nlmixr2bayes")` -- the automatic, likelihood-level
+  approach; simpler when a complete nlmixr2 model with `ini({})` priors is
+  all you need.
+- `vignette("rxstan-dde", "nlmixr2bayes")` -- a full delay differential
+  equation walkthrough using this same bridge.
+- `vignette("torsten-comparison", "nlmixr2bayes")` -- how this bridge
+  compares to hand-writing the same model against Torsten's Stan functions.

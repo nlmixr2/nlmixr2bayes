@@ -31,8 +31,6 @@ This vignette walks through a realistic example: delayed indirect response with 
 
 ---
 
-## Why this is the interesting case
-
 ## A delayed indirect response
 
 Turnover with delayed feedback: the loss term depends on the response one delay ago 
@@ -151,5 +149,12 @@ autodiff. No DDE solver in Stan; no finite differencing; exact sensitivities.
 - **Pre-history must be constant**: The initial condition `R(0) <- 1` defines both 
   the condition at $t=0$ and the pre-history for $t < 0$. It must be a constant 
   (not a function of time or parameters).
-- **The fast path is automatic**: rxstan detects DDEs and enables the fast path 
+- **The fast path is automatic**: rxstan detects DDEs and enables the fast path
   when safe; use `rxsFastAvailable(handle)` to check.
+
+## See also
+
+- `vignette("rxstan-handcoded", "nlmixr2bayes")` -- the general hand-coded
+  Stan pattern this vignette specializes for DDEs.
+- `vignette("nlmixr2bayes", "nlmixr2bayes")` -- the automatic,
+  likelihood-level approach (does not support DDEs).
