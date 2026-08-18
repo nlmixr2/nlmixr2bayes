@@ -121,7 +121,7 @@ poppk2cpt <- function() {
     cp ~ lnorm(lnorm.sd)
   })
 }
-fit <- nlmixr2est::nlmixr2(poppk2cpt, d, est = "stan",
+fit <- nlmixr2est::nlmixr2(poppk2cpt, d, est = "nuts",
                            control = stanControl(seed = 42))
 ```
 

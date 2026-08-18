@@ -80,7 +80,9 @@ priors is refused, printing the exact `prior()` lines to add.
 
 ### 1. Likelihood-level: Automatic Stan generation via nlmixr2 dispatch
 
-Use `nlmixr2(model, data, est = "stan")` to automatically generate and fit a Stan program.
+Use `nlmixr2(model, data, est = "nuts")` to automatically generate and fit a Stan program
+(`"nuts"` selects the algorithm -- Stan's No-U-Turn HMC sampler -- rather than the
+software tool; it is sugar for `est = "stan"` with NUTS, its default).
 No Stan code to write -- Stan calls rxode2's solver backend directly and receives analytic gradients.
 
 ```r
@@ -102,7 +104,7 @@ model <- function() {
   })
 }
 
-fit <- nlmixr2(model, data, est = "stan", stanControl(chains = 4, iter = 2000))
+fit <- nlmixr2(model, data, est = "nuts", stanControl(chains = 4, iter = 2000))
 ```
 
 ### 2. ODE-level: Hand-written Stan models with the rxstan backend

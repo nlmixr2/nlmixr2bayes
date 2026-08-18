@@ -46,6 +46,22 @@ test_that("est='advi' and est='pathfinder' sugar dispatch + naming", {
   expect_error(nlmixr2Est.pathfinder(.env2), "pathfinder")
 })
 
+test_that("est='nuts' sugar dispatch + naming", {
+  skip_on_cran()
+  skip_if_not_installed("rstan")
+  # a variational algorithm request errors instead of silently overriding
+  .env <- new.env()
+  .env$control <- stanControl(algorithm = "meanfield")
+  expect_error(nlmixr2Est.nuts(.env), "nuts")
+  .env2 <- new.env()
+  .env2$control <- stanControl(algorithm = "pathfinder")
+  expect_error(nlmixr2Est.nuts(.env2), "nuts")
+  # "NUTS" is stanControl()'s default, so plain stanControl() is accepted
+  .env3 <- new.env()
+  .env3$control <- stanControl()
+  expect_identical(.env3$control$algorithm, "NUTS")
+})
+
 test_that("est='pathfinder': a complete nlmixr2 fit", {
   skip_on_cran()
   skip_if_not_installed("rstan")
@@ -82,4 +98,21 @@ test_that("est='advi': sugar records its own est name", {
                                               onDiagnostic = "none"))))
   expect_equal(.fit$env$est, "advi")
   expect_equal(.fit$env$method, "Stan (ADVI meanfield)")
+})
+
+test_that("est='nuts': sugar records its own est name, same fit as est='stan'", {
+  skip_on_cran()
+  skip_if_not_installed("rstan")
+  .fit <- suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(.estMod, .linkData(), est = "nuts",
+                        control = stanControl(chains = 1L, iter = 200L,
+                                              warmup = 100L, seed = 42L,
+                                              cores = 1L, print = 0L,
+                                              calcTables = FALSE,
+                                              ofv = "none",
+                                              onDiagnostic = "none"))))
+  expect_true(inherits(.fit, "nlmixr2FitCore"))
+  expect_equal(.fit$env$est, "nuts")
+  expect_equal(.fit$env$method, "Stan (HMC)")
+  expect_equal(names(.fit$ui$theta), c("tcl", "tv", "add.sd"))
 })

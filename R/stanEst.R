@@ -884,7 +884,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
 #' @noRd
 .stanFinalizeEnvPop <- function(ret, ui, env, sf, map, gen, dx, control,
                                 popObj = NA_real_) {
-  # est="advi"/"pathfinder" sugar records its own name on the fit
+  # est="nuts"/"advi"/"pathfinder" sugar records its own name on the fit
   .estName <- if (is.null(env$stanEstName)) "stan" else env$stanEstName
   .pointFun <- if (identical(control$point, "median")) stats::median else mean
   .thDraw <- .stanExtract(sf, pars = "theta")$theta
@@ -956,7 +956,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
 #' Posterior -> nlmixr2 fit (the .nonmemFinalizeEnv template)
 #' @noRd
 .stanFinalizeEnv <- function(ret, ui, env, sf, map, gen, dx, control) {
-  # est="advi"/"pathfinder" sugar records its own name on the fit
+  # est="nuts"/"advi"/"pathfinder" sugar records its own name on the fit
   .estName <- if (is.null(env$stanEstName)) "stan" else env$stanEstName
   .ex <- .stanExtract(sf, pars = c("theta", "eta", "omegaOut", "logLikSubj"))
   .pointFun <- if (identical(control$point, "median")) stats::median else mean

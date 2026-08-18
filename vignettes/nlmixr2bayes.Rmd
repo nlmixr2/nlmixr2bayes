@@ -18,11 +18,15 @@ generates and compiles a Stan program**:
 
 ```{r}
 library(nlmixr2bayes)
-fit <- nlmixr2est::nlmixr2(model, data, est = "stan")
+fit <- nlmixr2est::nlmixr2(model, data, est = "nuts")
 ```
 
-You write your model once (in nlmixr2 syntax), declare priors in the `ini({})` block, 
-and let `est = "stan"` handle everything else: Stan program generation, compilation, 
+`est = "nuts"` names the ALGORITHM (Stan's No-U-Turn HMC sampler) rather than the
+software tool -- it is sugar for `est = "stan"` with NUTS, which is `stanControl()`'s
+default anyway, so the two are equivalent here.
+
+You write your model once (in nlmixr2 syntax), declare priors in the `ini({})` block,
+and let `est = "nuts"` handle everything else: Stan program generation, compilation,
 linking, and sampling. **No Stan code to write** -- this vignette is for you.
 
 ### When to use this approach
@@ -90,7 +94,7 @@ one.cmt <- function() {
   })
 }
 
-fit <- nlmixr2est::nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "stan",
+fit <- nlmixr2est::nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "nuts",
                            control = stanControl(seed = 42))
 ```
 
@@ -162,7 +166,9 @@ same generated program and the same linked likelihood:
 ```{r, eval=FALSE}
 fit <- nlmixr2(one.cmt, theo_sd, est = "stan",
                control = stanControl(algorithm = "meanfield"))
-# or the sugar methods, like "foce"/"focei" in nlmixr2est:
+# or the sugar methods, like "foce"/"focei" in nlmixr2est -- these select
+# the ALGORITHM instead of the software tool:
+fit <- nlmixr2(one.cmt, theo_sd, est = "nuts")        # NUTS (full Bayes; the default)
 fit <- nlmixr2(one.cmt, theo_sd, est = "advi")        # meanfield ADVI
 fit <- nlmixr2(one.cmt, theo_sd, est = "pathfinder")  # Pathfinder
 ```
@@ -184,7 +190,7 @@ and NUTS should be used.  Hierarchical PK posteriors routinely exceed it
 rstan -- useful for inspection and for codegen tests:
 
 ```{r}
-code <- nlmixr2est::nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "stan",
+code <- nlmixr2est::nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "nuts",
                             control = stanControl(run = FALSE))
 cat(code$code)
 ```

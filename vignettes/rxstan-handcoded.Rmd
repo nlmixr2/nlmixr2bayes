@@ -13,7 +13,7 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 
 ## Hand-coded Stan: ODE-level linking
 
-While `nlmixr2(model, data, est = "stan")` automatically generates a Stan program
+While `nlmixr2(model, data, est = "nuts")` automatically generates a Stan program
 (see `vignette("nlmixr2bayes", "nlmixr2bayes")`), you may want to **write your own Stan code**
 to have full control over priors, derived quantities, and model structure.
 
@@ -32,7 +32,7 @@ as a solver backend via `rxsRegister()`, then write ordinary Stan that declares 
 ### When to use automatic generation instead
 
 If you have a complete **nlmixr2-style model** with priors in the `ini({})` block,
-prefer `nlmixr2(model, data, est = "stan")` -- it's simpler, keeps one source of truth
+prefer `nlmixr2(model, data, est = "nuts")` -- it's simpler, keeps one source of truth
 for the likelihood, and is validated against every other nlmixr2 method.
 See `vignette("nlmixr2bayes", "nlmixr2bayes")`.
 
