@@ -35,7 +35,7 @@
 
 test_that("IOV expands to fixed unit-variance etas + an sd theta", {
   skip_on_cran()
-  skip_if_not(nlmixr2bayes:::.stanHasIovSens(),
+  skip_if_not(.stanHasIovSens(),
               "IOV gated off: upstream sens column wrong (nlmixr2est#952)")
   .code <- suppressMessages(
     nlmixr2est::nlmixr2(.iovMod, .iovData(), est = "stan",
@@ -59,7 +59,7 @@ test_that("IOV expands to fixed unit-variance etas + an sd theta", {
 
 test_that("the assembled IOV target's gradient FD-agrees end to end", {
   skip_on_cran()
-  skip_if_not(nlmixr2bayes:::.stanHasIovSens(),
+  skip_if_not(.stanHasIovSens(),
               "IOV gated off: upstream sens column wrong (nlmixr2est#952)")
   skip_if_not_installed("rstan")
   skip_if_not_installed("numDeriv")
@@ -71,11 +71,11 @@ test_that("the assembled IOV target's gradient FD-agrees end to end", {
   # link the REWRITTEN ui (the hook's expansion) exactly as est="stan" does
   h <- stanLinkSetup(.code$ui, .d, thetaSens = TRUE, cores = 1L)
   on.exit({
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+    .Call(`_nlmixr2bayes_clearThetaBase`)
     stanLinkFree()
   }, add = TRUE)
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`,
+  .Call(`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+  .Call(`_nlmixr2bayes_setMuRef`,
         as.integer(.code$map$muRefIdx))
   .sf <- rstan::sampling(.sm, data = .code$data, chains = 1, iter = 2,
                          warmup = 1, refresh = 0, cores = 1,
@@ -170,7 +170,7 @@ test_that("plain fixed-variance etas work; fixed correlated blocks refuse", {
 
 test_that("IOV models are refused while the upstream sens column is wrong (#952)", {
   skip_on_cran()
-  skip_if(nlmixr2bayes:::.stanHasIovSens())
+  skip_if(.stanHasIovSens())
   # with the iov attribute gated off, the | occ etas survive to the
   # id-only assertion and are refused rather than sampled with a
   # ~14% wrong gradient on the IOV magnitude theta
