@@ -136,7 +136,7 @@ stanCompile <- function(code = .stanPhase0Code(), cache = TRUE,
   }, add = TRUE)
   # a fresh program shape takes 1-2 minutes to compile; say so, or the
   # user reasonably concludes the session froze
-  cli::cli_inform("compiling Stan model (first time for this model shape; typically 1-2 minutes)...")
+  cli::cli_inform("compiling Stan model (typically 1-2 minutes)...")
   .m <- rstan::stan_model(model_code = code, model_name = "nlmixr2bayes",
                           allow_undefined = TRUE,
                           includes = paste0("\n#include \"", .hpp, "\"\n"),
