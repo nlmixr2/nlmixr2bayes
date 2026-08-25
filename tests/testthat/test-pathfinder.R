@@ -116,3 +116,39 @@ test_that("est='nuts': sugar records its own est name, same fit as est='stan'", 
   expect_equal(.fit$env$method, "Stan (HMC)")
   expect_equal(names(.fit$ui$theta), c("tcl", "tv", "add.sd"))
 })
+
+test_that("nlmixr2(model, data, nutsControl()) infers est= and keeps the control", {
+  skip_on_cran()
+  skip_if_not_installed("rstan")
+  # no est= argument: .nlmixr2inferEst reads it off class(control)[1]
+  .fit <- suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(.estMod, .linkData(),
+                        nutsControl(chains = 1L, iter = 200L, warmup = 100L,
+                                    seed = 42L, cores = 1L, print = 0L,
+                                    calcTables = FALSE, ofv = "none",
+                                    onDiagnostic = "none"))))
+  expect_true(inherits(.fit, "nlmixr2FitCore"))
+  expect_equal(.fit$env$est, "nuts")
+  expect_equal(.fit$env$method, "Stan (HMC)")
+  # the fit reports back the control the user wrote (nutsControl), the way
+  # an est="foce" fit reports a foceControl rather than its foceiControl,
+  # while the engine's stanControl stays available
+  expect_s3_class(.fit$control, "nutsControl")
+  expect_equal(.fit$control$algorithm, "NUTS")
+  expect_s3_class(.fit$env$stanControl, "stanControl")
+  expect_equal(names(.fit$ui$theta), c("tcl", "tv", "add.sd"))
+})
+
+test_that("nlmixr2(model, data, adviControl()) infers est= and keeps the control", {
+  skip_on_cran()
+  skip_if_not_installed("rstan")
+  .fit <- suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(.estMod, .linkData(),
+                        adviControl(seed = 42L, cores = 1L, print = 0L,
+                                    calcTables = FALSE, ofv = "none",
+                                    onDiagnostic = "none"))))
+  expect_equal(.fit$env$est, "advi")
+  expect_equal(.fit$env$method, "Stan (ADVI meanfield)")
+  expect_s3_class(.fit$control, "adviControl")
+  expect_equal(.fit$control$algorithm, "meanfield")
+})

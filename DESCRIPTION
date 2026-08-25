@@ -31,11 +31,14 @@ Imports:
     stats,
     utils
 Suggests:
+    bayesplot,
     loo,
     posterior,
     testthat (>= 3.0.0),
     withr,
+    nlmixr2,
     nlmixr2data,
+    nlmixr2save,
     numDeriv,
     mvtnorm,
     knitr,
@@ -44,6 +47,11 @@ LinkingTo:
     rxode2,
     nlmixr2est,
     Rcpp
+Remotes:
+   nlmixr2/nlmixr2est,
+   nlmixr2/rxode2,
+   nlmixr2/lotri,
+   nlmixr2/nlmixr2save
 Encoding: UTF-8
 VignetteBuilder: knitr
 Config/testthat/edition: 3

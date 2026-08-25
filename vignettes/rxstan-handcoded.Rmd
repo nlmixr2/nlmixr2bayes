@@ -7,8 +7,11 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r, include = FALSE}
-knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      message = FALSE, warning = FALSE)
+## This vignette compiles one real Stan program (about a minute) and samples
+## it; the fit itself takes seconds, so nothing here is cached.
 ```
 
 ## Hand-coded Stan: ODE-level linking
@@ -72,12 +75,16 @@ so the model must be compiled and run in-process.
 
 ## The quick path: generate the Stan program
 
-If you already have an nlmixr2-style model, `rxsStanFromUi()` writes the Stan program, 
-registers the solver, and assembles the `standata`.
+If you already have an nlmixr2-style model, `rxsStanFromUi()` writes the Stan program,
+registers the solver, and assembles the `standata` -- no Stan to write, but the program is
+yours to edit afterwards.
 
-```{r model, eval=FALSE}
+```{r libs}
 library(nlmixr2)
+library(nlmixr2bayes)
+```
 
+```{r model}
 oneCmt <- function() {
   ini({
     tka <- 0.5
@@ -98,38 +105,84 @@ oneCmt <- function() {
 }
 ```
 
-Some data. Any data frame with `id`, `time`, `dv` and the usual event columns will do.
+Some data. Any data frame with `id`, `time`, `dv` and the usual event columns will do;
+here it is simulated from the model itself so the numbers below have something real to
+recover.  The sampling times deliberately cover the absorption phase -- without early
+points `ka` is not identified.
 
-```{r data, eval=FALSE}
-## sampling has to cover the absorption phase, or ka is not identified
+```{r data}
+set.seed(42)
 times <- c(0.25, 0.5, 1, 1.5, 2, 3, 4, 6, 8, 12, 24)
-dat <- do.call(rbind, lapply(1:8, function(i) {
-  e <- rxode2::et(amt = 100, cmt = "depot")
-  e <- rxode2::et(e, times)
-  d <- as.data.frame(e)
-  d$id <- i
-  d$dv <- 0
-  d
-}))
+ev <- rxode2::et(amt = 100, cmt = "depot")
+ev <- rxode2::et(ev, times)
+ev <- rxode2::et(ev, id = 1:8)
+
+sim <- rxode2::rxSolve(oneCmt, ev, returnType = "data.frame")
+dat <- as.data.frame(ev)
+names(dat) <- tolower(names(dat))
+dat$dv <- sim$sim
+head(dat, 3)
 ```
 
 Generate the Stan program and solver handle:
 
-```{r gen, eval=FALSE}
+```{r gen}
 gen <- rxsStanFromUi(oneCmt, dat)
 names(gen)
+```
+
+`gen$code` is an ordinary Stan program, `gen$handle` is the live solver, and `gen$standata`
+is what you pass to `sampling()`:
+
+```{r genCode}
 cat(gen$code)
 ```
 
-`gen$code` is an ordinary Stan program, `gen$handle` is the live solver, and `gen$standata` 
-is what you pass to `sampling()`. Note that `cp = center / v` is formed **in Stan**, not in 
-rxode2 -- see "What crosses the boundary" below.
+Note that `cp = center / v` is formed **in Stan**, in `transformed parameters`, not in
+rxode2 -- see "What crosses the boundary" below.  The `p` vector packs each subject's
+thetas and etas into one block-major parameter vector, which is what `perSubject = TRUE`
+on the handle expects.
+
+`gen$standata` is the data list, and `rxsInit()` turns the model's `ini()` values into a
+Stan `init` function -- one starting point per chain, with the fixed effects jittered so
+`Rhat` stays honest:
+
+```{r genData}
+str(gen$standata)
+str(rxsInit(gen)(1))
+```
+
+Compiling and sampling it is then the ordinary rstan pair, exactly as in the hand-written
+case below:
+
+```{r genFit, eval = FALSE}
+sm <- rxsStanModel(tempfile(fileext = ".stan"))  # after writing gen$code to it
+fit <- rstan::sampling(sm, data = gen$standata, init = rxsInit(gen),
+                       chains = 4, iter = 2000)
+```
 
 ## Writing your own Stan program
 
-`rxsStanFromUi()` is convenient for quick fits, but to write your own program, use `rxsRegister()`
-to set up the solver handle and build the Stan code yourself. Here is that hand-written program
--- `handle` and `p` are what `rxsRegister()` and `rxsInit()` supply below:
+`rxsStanFromUi()` is convenient for quick fits, but to write your own program, use
+`rxsRegister()` to set up the solver handle and build the Stan code yourself.
+
+Start from a plain rxode2 model, written on the log scale because that is how Stan will
+parameterize it.  `cp = center / v` is deliberately *not* part of it -- only ODE states
+cross the bridge:
+
+```{r pkModel}
+pkModel <- "
+ka  <- exp(lka)
+cl  <- exp(lcl)
+v   <- exp(lv)
+d/dt(depot)  <- -ka * depot
+d/dt(center) <-  ka * depot - (cl / v) * center
+"
+```
+
+Here is the Stan program that drives it.  It is the one shipped with the package as
+`system.file("stan", "pk_1cmt_oral.stan", package = "nlmixr2bayes")`, so the code compiled
+below is literally this text:
 
 ```stan
 functions {
@@ -165,49 +218,87 @@ model {
 }
 ```
 
-Save that program to a `.stan` file, register the model, and fit from R:
+Three things make it work: `rx_solve()` is *declared* and never defined (the bridge
+supplies it), `handle` arrives as ordinary integer data, and the returned `center` is a
+state -- `cp` is formed from it in Stan.
 
-```{r handcoded, eval=FALSE}
-library(nlmixr2)
+### Register the solver
 
-oneCmt <- function() {
-  ini({
-    tka <- 0.5
-    tcl <- 1.0
-    tv <- 3.4
-    eta.cl ~ 0.09
-    add.sd <- 0.2
-  })
-  model({
-    ka <- exp(tka)
-    cl <- exp(tcl + eta.cl)
-    v <- exp(tv)
-    d/dt(depot) <- -ka * depot
-    d/dt(center) <- ka * depot - cl / v * center
-    cp <- center / v
-    cp ~ add(add.sd)
-  })
-}
+`rxsRegister()` compiles the model with forward sensitivities with respect to `sens`, in
+the exact order the Stan program packs them into `p`, and returns the integer handle:
 
-# Register the model and set up the solver
-h <- rxsRegister(oneCmt, events = dat,
+```{r register}
+truth <- c(lka = log(1.1), lcl = log(4), lv = log(30))
+
+ev1 <- rxode2::et(amt = 100, cmt = "depot")
+ev1 <- rxode2::et(ev1, c(0.25, 0.5, 1, 1.5, 2, 3, 4, 6, 8, 12, 16, 24))
+
+h <- rxsRegister(pkModel, events = ev1,
                  sens = c("lka", "lcl", "lv"),
-                 output = "center")
+                 output = "center",
+                 atol = 1e-10, rtol = 1e-10)
+h
+```
 
-# Compile the Stan program (the file where you saved the program above)
-sm <- rxsStanModel("one_cmt.stan", modelName = "one_cmt")
+The tolerances are deliberately tighter than an ordinary point-estimate run would need:
+HMC's leapfrog integrator assumes the target is a smooth, reversible function of the
+parameters, so solver error has to sit well below the gradient signal.
 
-# Prepare data for Stan
-standata <- list(
-  nObs = nrow(dat[is.na(dat$evid) | dat$evid == 0, ]),
-  handle = h,
-  cpObs = dat$dv[is.na(dat$evid) | dat$evid == 0]
-)
+`rxsSolve()` calls the same C entry point Stan does, which makes it the quickest way to
+see what actually crosses the boundary -- column 1 is the state, the rest is its Jacobian:
 
-# Sample
-fit <- rstan::sampling(sm, data = standata, 
-                       init = rxsInit(h), 
-                       chains = 4, iter = 2000)
+```{r solve}
+sol <- rxsSolve(h, unname(truth))
+head(sol, 3)
+```
+
+Simulated observations, with a 15% lognormal residual to match the program's
+`log(cpObs) ~ normal(log(cp), sigma)`:
+
+```{r simData}
+set.seed(42)
+cp <- sol[, 1] / exp(truth[["lv"]])
+cpObs <- cp * exp(stats::rnorm(length(cp), 0, 0.15))
+standata <- list(nObs = length(cpObs), handle = h, cpObs = cpObs)
+```
+
+### Compile and fit
+
+```{r compile}
+sm <- rxsStanModel(system.file("stan", "pk_1cmt_oral.stan",
+                               package = "nlmixr2bayes"),
+                   modelName = "pk_1cmt_oral")
+```
+
+`rxsStanModel()` is a thin wrapper over `rstan::stanc()` + `rstan::stan_model()` that
+splices the bridge header in at global scope and keeps the model name unobfuscated, so
+`rx_solve()` resolves.  It is the slow step of this vignette -- about a minute -- and the
+only one.
+
+```{r sample}
+fit <- rstan::sampling(sm, data = standata, chains = 2, iter = 1000,
+                       seed = 42, refresh = 0,
+                       init = function(chain_id = 1) {
+                         list(lka = 0.1, lcl = 1.4, lv = 3.4, sigma = 0.2)
+                       })
+print(fit, pars = c("lka", "lcl", "lv", "sigma"))
+```
+
+Sampling itself takes a couple of seconds: the whole posterior is 1000 draws over four
+parameters, each gradient one rxode2 solve of the sensitivity-augmented system.  The
+posterior means sit on the simulated truth:
+
+```{r recover}
+round(rbind(truth = truth,
+            posterior = colMeans(as.matrix(fit, pars = c("lka", "lcl", "lv")))), 3)
+```
+
+`rxsSolveStats()` counts what the sampler actually asked the bridge for, including how
+many proposals rxode2 refused (HMC proposes bad parameters routinely; each one becomes a
+rejected proposal rather than an error):
+
+```{r stats}
+rxsSolveStats(h)
 ```
 
 ## What crosses the boundary
@@ -220,23 +311,32 @@ In the example above, `depot` and `center` are states; `cp` is derived and forme
 
 ## Checking the gradient
 
-Before fitting, use `rxsCheckGradient()` to verify that the analytic sensitivities agree with 
-finite differences:
+Before trusting a fit, use `rxsCheckGradient()` to verify that the analytic sensitivities
+agree with finite differences of the model's own log density.  It needs a `stanfit` from
+the compiled model -- the one just fitted will do, and `sampling(..., chains = 0)` is
+enough if you have not fitted yet -- plus the parameter vector to test at, on the
+*unconstrained* scale Stan works in:
 
-```{r check, eval=FALSE}
-# After compiling the Stan model
-fit_init <- rstan::sampling(sm, data = standata, chains = 0)
-
-# Test parameter vector
-test_pars <- c(lka = 0.5, lcl = 1.0, lv = 3.4, sigma = 0.2)
-
-# Check gradient
-check <- rxsCheckGradient(fit_init, test_pars, h = 1e-5)
-print(check)
+```{r check}
+rxsCheckGradient(fit, c(lka = 0.1, lcl = 1.4, lv = 3.4, sigma = 0.2))
 ```
 
-Look for relative differences close to 1e-6 or better. Anything much worse suggests 
-a problem with the bridge or the solver tolerances.
+Look for relative differences close to `1e-6` or better. Anything much worse suggests a
+problem with the bridge or, far more often, with the solver tolerances -- the value and
+the gradient come from two *different* integrations (the state equations and the
+sensitivity equations), so they agree only as far as `atol`/`rtol` make them.  Re-run this
+whenever you loosen them from the `rxsRegister()` defaults.
+
+## Cleaning up
+
+A handle holds a compiled rxode2 model and its solve structure for the life of the
+session.  Release it when you are done, or `rxsReleaseAll()` for all of them:
+
+```{r release}
+rxsRelease(h)
+rxsRelease(gen$handle)
+rxsHandles()
+```
 
 ## Limits
 

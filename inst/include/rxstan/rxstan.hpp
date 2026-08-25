@@ -65,7 +65,11 @@ class solve_guard {
   }
 };
 
-// --- C ABI exposed by the rxstan package -----------------------------------
+// --- C ABI exposed by the nlmixr2bayes package -----------------------------
+//
+// The bridge used to ship as a package called `rxstan`; it now lives inside
+// nlmixr2bayes, and src/init.c registers these entry points under that name
+// (R_RegisterCCallable keys on the string, so the two have to agree).
 
 typedef int (*rxs_layout_t)(int, int *, int *, int *, int *);
 typedef int (*rxs_out_block_t)(int, int *, int);
@@ -74,19 +78,19 @@ typedef int (*rxs_solve_sens_t)(int, const double *, int, double *, double *,
 
 inline rxs_layout_t layout_fn() {
   static rxs_layout_t f =
-      reinterpret_cast<rxs_layout_t>(R_GetCCallable("rxstan", "rxs_layout"));
+      reinterpret_cast<rxs_layout_t>(R_GetCCallable("nlmixr2bayes", "rxs_layout"));
   return f;
 }
 
 inline rxs_out_block_t out_block_fn() {
   static rxs_out_block_t f = reinterpret_cast<rxs_out_block_t>(
-      R_GetCCallable("rxstan", "rxs_out_block"));
+      R_GetCCallable("nlmixr2bayes", "rxs_out_block"));
   return f;
 }
 
 inline rxs_solve_sens_t solve_fn() {
   static rxs_solve_sens_t f = reinterpret_cast<rxs_solve_sens_t>(
-      R_GetCCallable("rxstan", "rxs_solve_sens"));
+      R_GetCCallable("nlmixr2bayes", "rxs_solve_sens"));
   return f;
 }
 

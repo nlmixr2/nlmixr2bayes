@@ -21,6 +21,8 @@ HMC sampler) the way `est="advi"` and `est="pathfinder"` name theirs,
 instead of naming the software tool (`est="stan"`). `"NUTS"` is
 already `stanControl()`'s default, so this is mostly a naming
 convenience; asking for a variational algorithm under `est="nuts"` is
-an error rather than a silent override.
+an error rather than a silent override.  \code{\link[=nutsControl]{nutsControl()}}
+is its control, and `nlmixr2(model, data, nutsControl())` infers
+`est="nuts"` from it.
 }
 \keyword{internal}

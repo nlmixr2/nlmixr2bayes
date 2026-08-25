@@ -4,6 +4,8 @@
 ^\.Rproj\.user$
 ^\.lintr$
 ^vignettes/.*\.html$
+^vignettes/precompute\.R$
 ^_pkgdown\.yml$
 ^docs$
 ^pkgdown$
+^README\.Rmd$

@@ -880,6 +880,31 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   }), use.names = FALSE)
 }
 
+#' Put the control(s) on the fit env
+#'
+#' The engine always runs a `stanControl`, but an `est="nuts"`/`"advi"`/
+#' `"pathfinder"` run also carries the sugar control the user wrote
+#' ([nutsControl()]/[adviControl()]/[pathfinderControl()]) -- that is what
+#' `nmObjGetControl` and `rxUiDeparse` should report back, the way an
+#' `est="foce"` fit reports a `foceControl` rather than the `foceiControl`
+#' its engine ran.
+#' @param env the estimation environment (holds `stanEstName` + the sugar
+#'   control)
+#' @param env2 the fit environment
+#' @return nothing, called for the side effect
+#' @noRd
+.stanHandleControlObjects <- function(env, env2) {
+  .est <- env$stanEstName
+  if (!is.null(.est)) {
+    .sugar <- env[[paste0(.est, "Control")]]
+    if (!is.null(.sugar)) {
+      nlmixr2est::nmObjHandleControlObject(.sugar, env2)
+    }
+  }
+  nlmixr2est::nmObjHandleControlObject(env2$stanControl, env2)
+  invisible()
+}
+
 #' Posterior -> nlmixr2 fit for tier 0 (population-only, no etas)
 #' @noRd
 .stanFinalizeEnvPop <- function(ret, ui, env, sf, map, gen, dx, control,
@@ -942,7 +967,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   env2$stanDiagnostics <- dx
   env2$posteriorSummary <- .posteriorSummary
   nlmixr2est::.nlmixr2FitUpdateParams(env2)
-  nlmixr2est::nmObjHandleControlObject(env2$stanControl, env2)
+  .stanHandleControlObjects(env, env2)
   .stanControlToFoceiControl(env2)
   .fit <- nlmixr2est::nlmixr2CreateOutputFromUi(env2$ui, data = env2$origData,
                                                 control = env2$control,
@@ -1068,7 +1093,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   env2$stanDiagnostics <- dx
   env2$posteriorSummary <- .posteriorSummary
   nlmixr2est::.nlmixr2FitUpdateParams(env2)
-  nlmixr2est::nmObjHandleControlObject(env2$stanControl, env2)
+  .stanHandleControlObjects(env, env2)
   .stanControlToFoceiControl(env2)
   .fit <- nlmixr2est::nlmixr2CreateOutputFromUi(env2$ui, data = env2$origData,
                                                 control = env2$control,

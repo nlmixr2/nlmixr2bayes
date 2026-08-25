@@ -7,8 +7,11 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r, include = FALSE}
-knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      message = FALSE, warning = FALSE)
+## Everything here runs in a couple of seconds -- one rxode2 compile and a few
+## solves -- so nothing is cached.
 ```
 
 ## Delay differential equations: a Stan limitation
@@ -38,8 +41,8 @@ rather than now.
 
 $$\frac{dR}{dt} = k_{in} - k_{out}\,R(t - \tau), \qquad R(s) = 1 \ \text{for}\ s \le 0$$
 
-```{r model, eval=FALSE}
-library(nlmixr2)
+```{r model}
+library(nlmixr2bayes)
 
 dde <- "
 kin  <- exp(lkin)
@@ -53,27 +56,35 @@ d/dt(R) <- kin - kout * delay(R, tau)
 `R(0) <- 1` does double duty: it is the initial condition *and* the pre-history, 
 so `delay(R, tau)` returns 1 whenever $t - \tau \le 0$.
 
+Everything is on the log scale (`lkin`, `lkout`, `ltau`) because that is the scale Stan
+will sample on, and it keeps all three parameters positive without a constraint.
+
 ## Register the DDE model
 
 Register it the same way as any other model. All three parameters are differentiated, 
 including the delay:
 
-```{r register, eval=FALSE}
+```{r register}
 tms <- seq(0.25, 25, by = 0.25)
-invisible(capture.output(  # swallow rxode2's compile progress bar
-  h <- rxsRegister(dde, events = rxode2::et(tms),
-                   sens = c("lkin", "lkout", "ltau"), output = "R",
-                   atol = 1e-10, rtol = 1e-10, method = "dop853")
-))
+h <- rxsRegister(dde, events = rxode2::et(tms),
+                 sens = c("lkin", "lkout", "ltau"), output = "R",
+                 atol = 1e-10, rtol = 1e-10, method = "dop853")
 h
 ```
 
 `method = "dop853"` rather than the default `liblsoda`: the delay machinery needs 
 a solver that keeps a dense history to interpolate from.
 
+The handle prints the layout Stan will see -- three parameters in, one state out, one row
+per requested time.  That `100 obs -> 100 outputs` line is what the Stan program's
+`vector[nObs]` has to match.
+
 ## Solve and inspect the sensitivities
 
-```{r solve, eval=FALSE}
+`rxsSolve()` calls the same C entry point the Stan program does, so it is the direct way to
+see what crosses the bridge:
+
+```{r solve}
 truth <- c(kin = 0.7, kout = 0.4, tau = 1.5)
 p <- log(unname(truth))
 res <- rxsSolve(h, p)
@@ -81,6 +92,14 @@ head(res, 3)
 ```
 
 Column 1 is $R$; the rest are $\partial R/\partial(\ell k_{in}, \ell k_{out}, \ell\tau)$.
+The fourth column is exactly zero in those first rows, and that is correct rather than
+suspicious: before the first delay has elapsed the solution has not yet seen the lagged
+term, so it does not depend on $\tau$ at all.  It becomes non-zero once $t > \tau$:
+
+```{r tauSens}
+range(res[tms <= truth[["tau"]], 4])   # before the first delay
+range(res[tms >  truth[["tau"]], 4])   # after it
+```
 
 ## Checking it without trusting finite differences
 
@@ -91,7 +110,7 @@ While $t \le \tau$ the lagged term is still the constant pre-history, so the equ
 collapses to $R' = k_{in} - k_{out}$, giving $R = 1 + (k_{in} - k_{out})t$. On the 
 log scale the sensitivities are then exactly $k_{in}t$ and $-k_{out}t$:
 
-```{r oracle, eval=FALSE}
+```{r oracle}
 early <- which(tms <= truth[["tau"]])
 data.frame(t        = tms[early],
            dlkin    = res[early, 2],
@@ -101,39 +120,73 @@ data.frame(t        = tms[early],
 ```
 
 An exact match (to solver tolerances) verifies that the delay itself and its derivatives 
-are handled correctly.
+are handled correctly:
+
+```{r oracleMax}
+max(abs(res[early, 2] - truth[["kin"]] * tms[early]))
+max(abs(res[early, 3] + truth[["kout"]] * tms[early]))
+```
+
+Past the first delay interval there is no closed form left, so the fallback there is
+central differences of whole solves -- which is what `rxsCheckGradient()` does once the
+model is compiled into Stan.
 
 ## Using the DDE in a hand-coded Stan program
 
 Once registered, use it in Stan exactly as you would an ODE:
 
-```stan
+```{r stanCode}
+ddeStan <- "
 functions {
   vector rx_solve(int handle, vector p);
 }
 data {
   int<lower=1> nObs;
   int<lower=1> handle;
-  vector[nObs] tms;
-  vector<lower=0>[nObs] rObs;
+  vector[nObs] rObs;
 }
 parameters {
   real lkin;
   real lkout;
-  real<lower=0> ltau;
+  real ltau;
   real<lower=0> sigma;
 }
 model {
   vector[3] p = [lkin, lkout, ltau]';
   vector[nObs] r = rx_solve(handle, p);
-  
+
   lkin ~ normal(0, 1);
   lkout ~ normal(-1, 1);
   ltau ~ normal(0, 1);
   sigma ~ exponential(1);
-  
+
   rObs ~ normal(r, sigma);
 }
+"
+```
+
+Nothing in it mentions a delay: from Stan's side `rx_solve()` is just a function with
+known partials.  `rstan::stanc()` confirms it is a valid program -- `allow_undefined`
+is what lets `rx_solve()` stay undeclared until the bridge supplies it at link time:
+
+```{r stanc}
+sc <- rstan::stanc(model_code = ddeStan, model_name = "dde",
+                   allow_undefined = TRUE)
+sc$status
+```
+
+Compiling and fitting it is then the ordinary pattern from
+`vignette("rxstan-handcoded", "nlmixr2bayes")` -- write `ddeStan` to a `.stan` file,
+`rxsStanModel()` it, and `rstan::sampling()` with
+`list(nObs = length(rObs), handle = h, rObs = rObs)`:
+
+```{r fit, eval = FALSE}
+f <- tempfile(fileext = ".stan")
+writeLines(ddeStan, f)
+sm <- rxsStanModel(f, modelName = "dde")
+fit <- rstan::sampling(sm, data = list(nObs = length(rObs), handle = h,
+                                       rObs = rObs),
+                       chains = 2, iter = 1000)
 ```
 
 The bridge compiles the rxode2 model with the forward-sensitivity DDE system augmented, 
@@ -150,7 +203,18 @@ autodiff. No DDE solver in Stan; no finite differencing; exact sensitivities.
   the condition at $t=0$ and the pre-history for $t < 0$. It must be a constant 
   (not a function of time or parameters).
 - **The fast path is automatic**: rxstan detects DDEs and enables the fast path
-  when safe; use `rxsFastAvailable(handle)` to check.
+  when safe; `rxsFastAvailable()` reports whether this handle got it (a modelled
+  `alag()`/`f()`/`dur()`/`rate()` with dose rows is the case that refuses it):
+
+```{r fast}
+rxsFastAvailable(h)
+```
+
+Release the handle when you are done with it:
+
+```{r release}
+rxsRelease(h)
+```
 
 ## See also
 

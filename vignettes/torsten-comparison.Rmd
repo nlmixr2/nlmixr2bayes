@@ -8,7 +8,10 @@ vignette: >
 ---
 
 ```{r setup, include = FALSE}
-knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      message = FALSE, warning = FALSE)
+## Every port below is generated for real with stanControl(run = FALSE) and
+## handed to stanc, which takes seconds -- no sampling, so nothing is cached.
 ```
 
 [Torsten](https://github.com/metrumresearchgroup/Torsten) (Metrum Research
@@ -75,6 +78,35 @@ equations, which no Stan-native solver provides).  It shares the same
 no-Stan-code-in-the-linked-`.so` architecture as the automatic path,
 just at the ODE level instead of the likelihood level.
 
+## How the ports below are checked
+
+Each port is a real nlmixr2 model, and each one is put through `est = "stan"`
+code generation with `run = FALSE` -- which builds the complete Stan program
+and its data list without touching the sampler -- and the result is handed to
+`rstan::stanc()`.  A program that stanc accepts is a program that would have
+compiled and sampled; that is what keeps these ports honest without needing
+cmdstan and Torsten installed.  (The same checks run in the package's own
+`test-torsten-port.R`.)
+
+```{r helper}
+library(nlmixr2)
+library(nlmixr2bayes)
+
+## generate the Stan program for a model + data, and assert stanc accepts it
+portCheck <- function(model, data) {
+  code <- nlmixr2est::nlmixr2(model, data, est = "stan",
+                              control = stanControl(run = FALSE))
+  stopifnot(rstan::stanc(model_code = code$code,
+                         allow_undefined = TRUE)$status)
+  code
+}
+```
+
+The datasets below are small synthetic event tables in the NONMEM convention,
+enough to exercise generation.  Sampling-level agreement with Torsten itself
+would need cmdstan plus Torsten's own example data; see "A note on
+completeness" at the end.
+
 ## Port: `poppk2cpt` (two-compartment population model)
 
 Torsten's `example-models/poppk2cpt` is ~150 lines of Stan:
@@ -82,7 +114,7 @@ NONMEM-style arrays in `data`, `pmx_solve_twocpt` per subject, Matt's
 trick (Matt Hoffman) for the etas, lognormal priors, lognormal
 residual.  The same model in nlmixr2bayes:
 
-```{r}
+```{r poppk2cpt}
 poppk2cpt <- function() {
   ini({
     lcl <- log(10)
@@ -121,31 +153,27 @@ poppk2cpt <- function() {
     cp ~ lnorm(lnorm.sd)
   })
 }
-fit <- nlmixr2est::nlmixr2(poppk2cpt, d, est = "nuts",
-                           control = stanControl(seed = 42))
 ```
 
 The event table is the same NONMEM-convention data both tools consume --
-no `iObs`/`start`/`end` index bookkeeping; rxode2 derives it.
+no `iObs`/`start`/`end` index bookkeeping; rxode2 derives it:
 
-**A note on completeness**: these ports are verified at the code level
-(each generates a program that stanc accepts -- see
-`test-torsten-port.R`) but have **not** been run against Torsten's own
-example datasets, which ship inside the Torsten repository as R dump
-files rather than in any R package.  To reproduce a port against the
-original data, load Torsten's dump and reshape the NONMEM-style vectors
-into the event-table columns nlmixr2 expects:
+```{r poppk2cptData}
+d <- do.call(rbind, lapply(1:4, function(id) {
+  rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 1000, EVID = 1),
+        data.frame(ID = id, TIME = c(1, 2, 4, 8, 12, 24),
+                   DV = c(20, 25, 18, 10, 6, 2), AMT = 0, EVID = 0))
+}))
+codePop <- portCheck(poppk2cpt, d)
+```
 
-```{r}
-e <- new.env()
-source(file.path(torstenDir, "example-models/poppk2cpt/poppk2cpt.data.R"),
-       local = e)
-d <- with(e, data.frame(ID = rep(seq_len(nSubjects),
-                                 times = end - start + 1),
-                        TIME = time, AMT = amt, EVID = evid, CMT = cmt,
-                        RATE = rate, II = ii, ADDL = addl, SS = ss,
-                        DV = NA_real_))
-d$DV[e$iObs] <- e$cObs
+A real run is then `nlmixr2(poppk2cpt, d, est = "nuts")`.  The generated
+program is what it would sample; the correlated five-eta block is where
+Torsten's hand-coded Matt's trick shows up, emitted rather than written:
+
+```{r poppk2cptCode}
+cat(grep("Lcorr|lkj|^\\s*z\\b|eta\\[|matrix", strsplit(codePop$code, "\n")[[1]],
+         value = TRUE), sep = "\n")
 ```
 
 A note on the eta parameterization: nlmixr2bayes's generated program uses
@@ -157,6 +185,14 @@ by hand.  `stanControl(etaParam = "centered")` switches to the centered
 form (`eta[i] ~ multi_normal_cholesky(0, L)`); the two are verified to
 target the identical posterior.
 
+```{r centered}
+codeCentered <- nlmixr2est::nlmixr2(
+  poppk2cpt, d, est = "stan",
+  control = stanControl(run = FALSE, etaParam = "centered"))
+cat(grep("multi_normal_cholesky|std_normal",
+         strsplit(codeCentered$code, "\n")[[1]], value = TRUE), sep = "\n")
+```
+
 ## Port: Friberg-Karlsson neutropenia (population PK/PD, two endpoints)
 
 Torsten's `FribergKarlsson` example: a two-compartment PK driving the
@@ -164,7 +200,7 @@ classic proliferation/transit/circulation myelosuppression chain, ~200
 lines with a hand-written 8-state ODE function and separate PK/PD
 observation indexing.  In nlmixr2 syntax:
 
-```{r}
+```{r fk}
 fk <- function() {
   ini({
     lcl <- log(10); lq <- log(15); lv1 <- log(35); lv2 <- log(105)
@@ -215,9 +251,33 @@ fk <- function() {
 }
 ```
 
+The two endpoints are told apart by `CMT`, and nothing else about the data
+changes:
+
+```{r fkData}
+dFk <- do.call(rbind, lapply(1:3, function(id) {
+  rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 80, EVID = 1,
+                   CMT = "depot"),
+        data.frame(ID = id, TIME = c(1, 4, 12, 24),
+                   DV = c(1.5, 1.1, 0.5, 0.2), AMT = 0, EVID = 0,
+                   CMT = "conc"),
+        data.frame(ID = id, TIME = c(24, 96, 168, 336),
+                   DV = c(4.9, 3.2, 2.1, 4.4), AMT = 0, EVID = 0,
+                   CMT = "circ"))
+}))
+codeFk <- portCheck(fk, dFk)
+```
+
 Multi-endpoint likelihoods, initial conditions, and the stiff ODE solve are
 all standard rxode2/nlmixr2est machinery; `likInner0` sums the per-endpoint
-terms and the analytic gradients flow through the same linkage.
+terms and the analytic gradients flow through the same linkage.  None of that
+shows up in the Stan program, which is the point -- the whole 8-state system,
+both residual models and both endpoints reduce to one external call:
+
+```{r fkCode}
+cat(grep("nlmixr2_cond_all2|^\\s*(vector|matrix|real|array)",
+         strsplit(codeFk$code, "\n")[[1]], value = TRUE)[1:12], sep = "\n")
+```
 
 ## Port: `effCpt` (effect-compartment population PK/PD)
 
@@ -226,7 +286,7 @@ compartment (`ke0`) driving an Emax response, fit to concentration and
 response observations simultaneously (~250 lines of Stan with a
 hand-built rate matrix and separate PK/PD indexing):
 
-```{r}
+```{r effCpt}
 effCpt <- function() {
   ini({
     lcl <- log(10); lq <- log(15); lv1 <- log(35); lv2 <- log(105)
@@ -266,10 +326,30 @@ effCpt <- function() {
     resp ~ add(resp.sd)
   })
 }
+
+dEff <- do.call(rbind, lapply(1:3, function(id) {
+  rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 100, EVID = 1,
+                   CMT = "depot"),
+        data.frame(ID = id, TIME = c(0.5, 1, 2, 4, 8, 12),
+                   DV = c(15, 22, 24, 18, 12, 8), AMT = 0, EVID = 0,
+                   CMT = "cp"),
+        data.frame(ID = id, TIME = c(1, 2, 4, 8, 12, 24),
+                   DV = c(10, 25, 40, 35, 25, 12), AMT = 0, EVID = 0,
+                   CMT = "resp"))
+}))
+codeEff <- portCheck(effCpt, dEff)
 ```
 
 Both endpoints ride the same solve; `likInner0` sums the per-endpoint
-terms, and the analytic gradients flow through the same linkage.
+terms, and the analytic gradients flow through the same linkage.  Note that
+the two residual models are *different* families (lognormal on concentration,
+additive on response) and both are ordinary `ini({})` parameters with their
+own priors:
+
+```{r effCptCode}
+cat(grep("lnorm_sd|resp_sd", strsplit(codeEff$code, "\n")[[1]], value = TRUE),
+    sep = "\n")
+```
 
 ## IOV
 
@@ -279,7 +359,7 @@ share one variance, and added into the occasion's parameters.
 nlmixr2bayes has first-class syntax for the same structure -- `iov.x ~ v
 | occ` declares one shared IOV magnitude across occasions:
 
-```{r}
+```{r iov}
 iov <- function() {
   ini({
     lcl <- log(10)
@@ -297,6 +377,17 @@ iov <- function() {
     cp ~ lnorm(lnorm.sd)
   })
 }
+
+dIov <- do.call(rbind, lapply(1:4, function(id) {
+  do.call(rbind, lapply(1:2, function(occ) {
+    t0 <- (occ - 1) * 24
+    rbind(data.frame(ID = id, TIME = t0, DV = NA_real_, AMT = 1000, EVID = 1,
+                     OCC = occ),
+          data.frame(ID = id, TIME = t0 + c(1, 2, 4, 8, 12),
+                     DV = c(20, 25, 18, 10, 6), AMT = 0, EVID = 0, OCC = occ))
+  }))
+}))
+codeIov <- portCheck(iov, dIov)
 ```
 
 Under the hood, nlmixr2est's preprocessing hook expands `iov.cl` into
@@ -304,7 +395,15 @@ per-occasion etas with variance **fixed to one**, and a single estimated
 `sd` theta carries the IOV magnitude -- the same construction a Torsten
 user would otherwise hand-write (a unit-variance parameter scaled by a
 shared SD), except emitted for you and FD-verified end to end.  The
-linked likelihood never sees anything but ordinary subject-level etas: the
+expansion is visible in the generated parameter block, where the IOV
+magnitude appears as an ordinary theta:
+
+```{r iovCode}
+cat(grep("iov", strsplit(codeIov$code, "\n")[[1]], value = TRUE,
+         ignore.case = TRUE), sep = "\n")
+```
+
+The linked likelihood never sees anything but ordinary subject-level etas: the
 expansion happens before the Stan program is generated, so no upstream
 likelihood change was needed to support it.
 
@@ -315,9 +414,42 @@ likelihood change was needed to support it.
   `target += nlmixr2_pop_ll(theta)` (nlmixr2est's nlm path -- the
   likelihood and analytic theta gradients on the natural scale).  The
   pk2cpt port is the population port above minus the etas, with Torsten's
-  lognormal priors verbatim -- it is codegen-verified in
-  `test-torsten-port.R`, and the tier-0 target is verified against a
-  hand-written density with FD-checked gradients.
+  lognormal priors verbatim:
+
+```{r pk2cpt}
+pk2cpt <- function() {
+  ini({
+    lcl <- log(10); lq <- log(15); lv1 <- log(35); lv2 <- log(105)
+    lka <- log(2.5)
+    prior(lcl) ~ dnorm(log(10), 0.25)
+    prior(lq) ~ dnorm(log(15), 0.5)
+    prior(lv1) ~ dnorm(log(35), 0.25)
+    prior(lv2) ~ dnorm(log(105), 0.5)
+    prior(lka) ~ dnorm(log(2.5), 1)
+    lnorm.sd <- c(0, 0.2)
+    prior(lnorm.sd) ~ dcauchy(0, 1)
+  })
+  model({
+    cl <- exp(lcl); q <- exp(lq); v <- exp(lv1); vp <- exp(lv2)
+    ka <- exp(lka)
+    cp <- linCmt()
+    cp ~ lnorm(lnorm.sd)
+  })
+}
+
+d1 <- rbind(data.frame(ID = 1, TIME = 0, DV = NA_real_, AMT = 1000, EVID = 1),
+            data.frame(ID = 1, TIME = c(0.5, 1, 2, 4, 8, 12, 24),
+                       DV = c(15, 22, 24, 18, 12, 8, 3), AMT = 0, EVID = 0))
+code1 <- portCheck(pk2cpt, d1)
+cat(grep("nlmixr2_pop_ll", strsplit(code1$code, "\n")[[1]], value = TRUE),
+    sep = "\n")
+```
+
+  That single external scalar is the whole difference: with no etas there is
+  nothing to marginalize, so nlmixr2est's nlm path hands Stan the complete
+  data log-likelihood and its analytic theta gradient in one call.  The
+  tier-0 target is verified against a hand-written density with FD-checked
+  gradients.
 
 - Torsten's `pmx_solve_group_*` **MPI parallelism** distributes subjects
   across processes; nlmixr2bayes parallelizes subjects with OpenMP threads
@@ -331,3 +463,31 @@ likelihood change was needed to support it.
   one rxode2 capability Torsten also lacks but that nlmixr2bayes does not
   yet expose automatically -- reach them through the rxstan hand-coded
   bridge (`vignette("rxstan-dde", "nlmixr2bayes")`) instead.
+
+## A note on completeness
+
+These ports are verified at the code level -- each generates a program stanc
+accepts, which is exactly what the chunks above did -- but they have **not**
+been run against Torsten's own example datasets, which ship inside the Torsten
+repository as R dump files rather than in any R package.  The synthetic event
+tables above exercise generation, not agreement.
+
+To reproduce a port against the original data, load Torsten's dump and reshape
+the NONMEM-style vectors into the event-table columns nlmixr2 expects:
+
+```{r torstenData, eval = FALSE}
+e <- new.env()
+source(file.path(torstenDir, "example-models/poppk2cpt/poppk2cpt.data.R"),
+       local = e)
+d <- with(e, data.frame(ID = rep(seq_len(nSubjects),
+                                 times = end - start + 1),
+                        TIME = time, AMT = amt, EVID = evid, CMT = cmt,
+                        RATE = rate, II = ii, ADDL = addl, SS = ss,
+                        DV = NA_real_))
+d$DV[e$iObs] <- e$cObs
+fit <- nlmixr2est::nlmixr2(poppk2cpt, d, est = "nuts",
+                           control = nutsControl(seed = 42))
+```
+
+That chunk is the only one on this page that does not run when the vignette is
+built -- `torstenDir` has to point at a clone of the Torsten repository.

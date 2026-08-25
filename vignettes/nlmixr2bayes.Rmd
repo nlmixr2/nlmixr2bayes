@@ -8,26 +8,26 @@ vignette: >
 ---
 
 ```{r setup, include = FALSE}
-knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      message = FALSE, warning = FALSE)
+## Every fit below is run for real and cached under inst/cache with
+## nlmixr2save's `:=` operator, so this page shows live output without
+## re-sampling on every build.  See vignettes/cacheSetup.R.
+source("cacheSetup.R")
+bayesCache("nlmixr2bayes-")
 ```
 
 ## Automatic model generation: likelihood-level linking
 
-`nlmixr2bayes` adds a Bayesian HMC estimation method to nlmixr2 that **automatically
-generates and compiles a Stan program**:
+`nlmixr2bayes` adds a Bayesian HMC estimation method to nlmixr2 that
+**automatically generates and compiles a Stan program**.  You write the model
+once, in nlmixr2 syntax, declare priors in the `ini({})` block, and
+`est = "nuts"` handles everything else: Stan program generation, compilation,
+linking, and sampling.  **No Stan code to write** -- this vignette is for you.
 
-```{r}
-library(nlmixr2bayes)
-fit <- nlmixr2est::nlmixr2(model, data, est = "nuts")
-```
-
-`est = "nuts"` names the ALGORITHM (Stan's No-U-Turn HMC sampler) rather than the
-software tool -- it is sugar for `est = "stan"` with NUTS, which is `stanControl()`'s
-default anyway, so the two are equivalent here.
-
-You write your model once (in nlmixr2 syntax), declare priors in the `ini({})` block,
-and let `est = "nuts"` handle everything else: Stan program generation, compilation,
-linking, and sampling. **No Stan code to write** -- this vignette is for you.
+`est = "nuts"` names the ALGORITHM (Stan's No-U-Turn HMC sampler) rather than
+the software tool -- it is sugar for `est = "stan"` with NUTS, which is
+`stanControl()`'s default anyway, so the two are equivalent here.
 
 ### When to use this approach
 
@@ -69,9 +69,16 @@ emitted Stan-side.
 
 Priors are declared next to the parameters they describe, with the
 lotri/rxode2 prior syntax -- the distribution catalog is one-to-one with
-Stan's (`lotri::lotriPriorDists()`):
+Stan's (`lotri::lotriPriorDists()`).
 
-```{r}
+The model below is the standard one-compartment oral theophylline model, with
+between-subject variability on `ka`, `cl` and `v` and an additive residual
+error, plus one `prior()` line per estimated parameter:
+
+```{r model}
+library(nlmixr2)
+library(nlmixr2bayes)
+
 one.cmt <- function() {
   ini({
     tka <- 0.45
@@ -93,9 +100,30 @@ one.cmt <- function() {
     linCmt() ~ add(add.sd)
   })
 }
+```
 
-fit <- nlmixr2est::nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "nuts",
-                           control = stanControl(seed = 42))
+Fitting it is one call.  The `:=` here is nlmixr2save's caching assignment
+(see `vignettes/cacheSetup.R`): the first render runs the sampler for real and
+writes the fit into `inst/cache`, and every later render loads it back, so the
+numbers on this page are the ones the code produced.  Written with `<-`
+instead, the line is an ordinary fit that runs every time:
+
+```{r fit}
+fit := nlmixr2est::nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "nuts",
+                           control = nutsControl(seed = 42, chains = 2,
+                                                 iter = 1000))
+```
+
+A short run (2 chains of 1000, half of them warmup) keeps this page quick to
+rebuild and its cached fit small; the defaults are 4 chains of 2000, which is
+what you want for a real analysis.
+
+The result prints as an ordinary nlmixr2 fit, with the sampler's headline
+diagnostics in the header and the posterior summarized in the usual parameter
+table:
+
+```{r fitPrint}
+print(fit)
 ```
 
 Notes on how priors are handled:
@@ -116,9 +144,40 @@ Notes on how priors are handled:
 - Parameters that are `fix()`ed are dissolved before generation
   (`literalFix = TRUE`); a prior on a fixed parameter is an error.
 
+That refusal is worth seeing, because the error is also the fix -- it prints
+the `prior()` lines to paste back into `ini({})`:
+
+```{r noPriors, error = TRUE}
+noPriors <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- log(c(0, 2.7, 100))
+    tv <- 3.45
+    add.sd <- c(0, 0.7)
+    eta.ka ~ 0.6
+    eta.cl ~ 0.3
+    eta.v ~ 0.1
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+nlmixr2est::nlmixr2(noPriors, nlmixr2data::theo_sd, est = "nuts")
+```
+
+Those suggested priors are derived from the model's own `ini()` values and
+bounds; they are a starting point to edit, not a recommendation.
+
 ## Controlling the run
 
-```{r}
+`stanControl()` collects everything about the run.  Calling it on its own
+returns the control object, which is also how you can check what a setting
+resolved to before spending an hour on a fit:
+
+```{r control}
 stanControl(
   chains = 4, iter = 2000, warmup = 1000, seed = 42,
   adapt_delta = 0.8, max_treedepth = 10, # Stan's own sampler defaults
@@ -147,7 +206,7 @@ omega variances/covariances (`om.<eta>`, `cov.<eta1>.<eta2>` -- Stan
 samples omega, so these move), and `-2*sum(conditional log-lik)`.  The
 printed rows are recorded on the fit as `$parHistData`.
 
-## Other Stan inference algorithms: ADVI
+## Other Stan inference algorithms: ADVI and Pathfinder
 
 `stanControl(algorithm=)` selects the inference algorithm that runs on the
 same generated program and the same linked likelihood:
@@ -163,37 +222,94 @@ same generated program and the same linked likelihood:
   ELBO-selected local Gaussian per path, and Pareto-smoothed importance
   resampling over the path mixture.  Needs the `loo` package.
 
-```{r, eval=FALSE}
-fit <- nlmixr2(one.cmt, theo_sd, est = "stan",
-               control = stanControl(algorithm = "meanfield"))
-# or the sugar methods, like "foce"/"focei" in nlmixr2est -- these select
-# the ALGORITHM instead of the software tool:
-fit <- nlmixr2(one.cmt, theo_sd, est = "nuts")        # NUTS (full Bayes; the default)
-fit <- nlmixr2(one.cmt, theo_sd, est = "advi")        # meanfield ADVI
-fit <- nlmixr2(one.cmt, theo_sd, est = "pathfinder")  # Pathfinder
+Each has a sugar `est=` name -- these select the ALGORITHM instead of the
+software tool, the way `"foce"`/`"focei"` do in nlmixr2est:
+
+```{r advi}
+fitAdvi := nlmixr2est::nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi",
+                               control = adviControl(seed = 42))
+fitPf := nlmixr2est::nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "pathfinder",
+                             control = pathfinderControl(seed = 42))
 ```
 
-Everything downstream is identical -- the variational draws flow through
-the same posterior-to-fit machinery, so `$parFixed`, `$etaObf`, `$omega`,
-`$posteriorSummary`, WAIC/LOO and the iteration print all work -- and
-ADVI is typically 5-10x faster than NUTS on these models (~40 s vs
-~260 s on `theo_sd`).  But ADVI is an *approximation*: it understates
-tails and posterior correlations.  The Pareto-\(\hat k\) diagnostic of
-the importance ratios replaces Rhat/ESS/divergences on the fit
-(`$stanDiagnostics$khat`, also shown in the fit header): \(\hat k \le
-0.7\) means the approximation supports importance correction; above that
-the fit warns (via `onDiagnostic`) that the approximation is unreliable
-and NUTS should be used.  Hierarchical PK posteriors routinely exceed it
--- treat ADVI as the fast first look and NUTS as the answer.
+Each sugar method has its own control -- `nutsControl()`, `adviControl()`,
+`pathfinderControl()` -- which is `stanControl()` with that algorithm
+forced and everything else unchanged.  Passing one *is* the `est=`, the
+same way `foceControl()` implies `est="foce"` in nlmixr2est, so these two
+lines are the same fit:
+
+```{r sugarEquivalent, eval = FALSE}
+nlmixr2est::nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "advi",
+                    control = adviControl(seed = 42))
+nlmixr2est::nlmixr2(one.cmt, nlmixr2data::theo_sd, adviControl(seed = 42))
+```
+
+A contradiction is an error rather than a silent override, and the message
+names the call that would have meant it:
+
+```{r contradiction, error = TRUE}
+adviControl(algorithm = "pathfinder")
+```
+
+The fit also reports back the control you wrote -- `fit$control` on the NUTS
+fit is a `nutsControl`, not a bare `stanControl`:
+
+```{r controlClass}
+class(fit$control)
+class(fitAdvi$control)
+```
+
+Everything downstream is identical -- the variational draws flow through the
+same posterior-to-fit machinery, so `$parFixed`, `$etaObf`, `$omega`,
+`$posteriorSummary`, WAIC/LOO and the iteration print all work.  Lining the
+three algorithms up on the same model shows both halves of the trade: the
+population parameters agree closely, and the run times do not.
+
+```{r compare}
+cbind(NUTS = fit$parFixedDf$Estimate,
+      ADVI = fitAdvi$parFixedDf$Estimate,
+      Pathfinder = fitPf$parFixedDf$Estimate) |>
+  `rownames<-`(rownames(fit$parFixedDf)) |>
+  round(3)
+```
+
+But ADVI is an *approximation*: it understates tails and posterior
+correlations.  The Pareto-\(\hat k\) diagnostic of the importance ratios
+replaces Rhat/ESS/divergences on those fits (`$stanDiagnostics$khat`, also
+shown in the fit header): \(\hat k \le 0.7\) means the approximation supports
+importance correction; above that the fit warns (via `onDiagnostic`) that the
+approximation is unreliable and NUTS should be used.
+
+```{r khat}
+fitAdvi$stanDiagnostics$khat
+fitPf$stanDiagnostics$khat
+```
+
+Hierarchical PK posteriors routinely exceed that threshold -- treat ADVI and
+Pathfinder as the fast first look and NUTS as the answer.
 
 `run = FALSE` returns the generated Stan program and data without touching
-rstan -- useful for inspection and for codegen tests:
+rstan -- useful for inspection and for codegen tests.  This is the program the
+fit above actually sampled:
 
-```{r}
+```{r code, message = TRUE}
 code <- nlmixr2est::nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "nuts",
                             control = stanControl(run = FALSE))
 cat(code$code)
 ```
+
+The messages above the program are the announced omega defaults: this model
+leaves its three eta blocks without a `prior()`, so each diagonal gets a
+half-Cauchy scaled from its `ini()` variance, and a correlated block would
+also get `lkj_corr_cholesky(2)`.  They are printed rather than assumed
+silently, for the same reason a model with no priors at all is refused.
+
+Two things to notice in it.  The `functions{}` block declares
+`nlmixr2_cond_all2()` -- the external hook Stan calls for the conditional
+log-likelihood and its analytic gradient -- and nothing about the ODE system
+appears anywhere, because rxode2 owns that.  And the declared parameter names
+read like the model (`tka`, `add_sd`, `sd_eta_ka`), not like an anonymous
+translation of it.
 
 ## Reading the fit
 
@@ -204,29 +320,70 @@ IPRED/CWRES tables, `plot(fit)` all work.  On top of that:
   parameter.  The `$parFixed` confidence intervals are a **Wald (Gaussian)
   approximation** built from the posterior covariance; for skewed
   posteriors (SDs, small omegas) prefer the exact quantiles here.
+
+```{r posteriorSummary}
+fit$posteriorSummary
+```
+
+The `om.<eta>` rows are the omega variances on their natural scale, and
+`cov.<eta1>.<eta2>` rows (absent here -- this model has no correlated block)
+would carry the covariances.  Compare the `2.5%`/`97.5%` columns for
+`om.eta.ka` with the symmetric Wald interval in `$parFixed` to see why the
+exact quantiles are the ones to quote for a variance.
+
 - `fit$etaObf` -- posterior-mean etas (with `OBJI` = -2 x mean conditional
   log-likelihood per subject).  The FOCEi empirical Bayes estimates
   computed for the comparability row are kept as `fit$etaObfFocei`.
+
+```{r etaObf}
+head(fit$etaObf)
+```
 
 ### Working with the rstan object
 
 The full `rstan::stanfit` is kept on the fit and retrieved with
 
-```{r}
+```{r stanfit}
 sf <- fit$stanfit          # the rstan::stanfit (also fit$env$stanfit)
+sf
 ```
 
-Everything in the rstan/Bayesian ecosystem works from there:
+Everything in the rstan/Bayesian ecosystem works from there.  `rstan::summary()`
+gives the full table including the per-subject eta rows the nlmixr2 summary
+folds away:
 
-```{r}
-rstan::summary(sf)$summary            # full summary incl. per-eta rows
-draws <- rstan::extract(sf)           # posterior draws by parameter
-rstan::extract(sf, permuted = FALSE)  # iterations x chains x parameter
+```{r rstanSummary}
+head(rstan::summary(sf)$summary)
+```
+
+`extract()` gives the draws themselves, permuted (a list, one element per
+parameter) or as the raw iterations x chains x parameter array:
+
+```{r extract}
+draws <- rstan::extract(sf)
+names(draws)
+dim(draws$tka)                        # 1000 post-warmup draws, chains pooled
+dim(rstan::extract(sf, permuted = FALSE))
+```
+
+The sampler's own per-draw diagnostics -- step size, tree depth, divergences --
+come from `get_sampler_params()`:
+
+```{r samplerParams}
+head(rstan::get_sampler_params(sf, inc_warmup = FALSE)[[1]], 3)
+```
+
+And the plotting/posterior packages take the `stanfit` directly:
+
+```{r plots, fig.height = 3, fig.width = 7}
 rstan::traceplot(sf, pars = c("tka", "tcl", "tv"))
-rstan::get_sampler_params(sf, inc_warmup = FALSE)
+```
 
-# bayesplot / posterior work directly on the stanfit
+```{r pairs, fig.height = 5, fig.width = 6}
 bayesplot::mcmc_pairs(sf, pars = c("tka", "tcl", "tv"))
+```
+
+```{r posterior}
 posterior::as_draws_df(sf)
 ```
 
@@ -235,11 +392,20 @@ Parameter naming inside the Stan program: `.` in nlmixr2 names becomes `_`
 `eta[subject, k]`, and the omega blocks appear as `omegaOut` (the
 covariance in the model's eta order).  `fit$stanCode` and `fit$stanData`
 hold the generated program and its data list, so any draw-level question
-can be answered against the exact program that produced it.
+can be answered against the exact program that produced it:
+
+```{r stanData}
+names(fit$stanData)
+identical(fit$stanCode, code$code)
+```
 
 ### The objective-function rows
 
 `fit$objDf` carries several rows on the deviance scale:
+
+```{r objDf}
+fit$objDf
+```
 
 - **FOCEi** -- a plug-in frequentist objective evaluated at the posterior
   point estimate, for comparability with other nlmixr2 methods.  It
@@ -249,7 +415,16 @@ can be answered against the exact program that produced it.
   conditional log-likelihood draws, so they are **leave-one-subject-out**
   quantities (the subject is the exchangeable unit of a hierarchical
   model) conditional on the eta factorization.  The full `loo` objects are
-  at `fit$env$loo` / `fit$env$waic`.
+  at `fit$loo` / `fit$waic` (also `fit$env$loo` / `fit$env$waic`), which is
+  where the Pareto-k table and the standard errors live:
+
+```{r loo}
+fit$loo
+```
+
+With only 12 subjects, high Pareto-k values here are expected -- each subject
+carries a large share of the information, which is exactly the situation
+leave-one-out importance sampling struggles with.
 
 ### Diagnostics
 
@@ -257,9 +432,15 @@ Sampler diagnostics run right after sampling and again at print time:
 divergences, Rhat, bulk/tail ESS, treedepth saturation.  Each produces an
 actionable message (which knob to turn); `onDiagnostic` selects
 warn/error/message/none, and the headline numbers print above the parameter
-table in `fit$extra`.  Do not use estimates from a run with divergences or
-Rhat above 1.01 -- raise `adapt_delta` toward 0.99, or reconsider the
-model.
+table in `fit$extra`.
+
+```{r diagnostics}
+fit$stanDiagnostics
+```
+
+Do not use estimates from a run with divergences or Rhat above 1.01 -- raise
+`adapt_delta` toward 0.99, or reconsider the model.  `$messages` is empty when
+every check passed.
 
 ## What is refused (and why)
 
@@ -267,6 +448,14 @@ Rather than produce a silently wrong posterior, `est="stan"` refuses
 mixtures with more than 2 components and discrete priors (every
 `ini({})` parameter is real-valued).  2-component `mix()` models are
 supported, with per-subject membership posteriors in `fit$env$mixProb`.
+
+A discrete prior is refused at generation time, before anything is compiled:
+
+```{r discrete, error = TRUE}
+discreteModel <- one.cmt |> ini(prior(tka) ~ dpois(2))
+nlmixr2est::nlmixr2(discreteModel, nlmixr2data::theo_sd, est = "nuts",
+                    control = stanControl(run = FALSE))
+```
 
 IOV is supported: `iov.x ~ v | OCC` expands into per-occasion
 fixed-variance etas scaled by an estimated magnitude theta, the same way

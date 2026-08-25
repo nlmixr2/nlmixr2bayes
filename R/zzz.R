@@ -21,6 +21,10 @@ NULL
   .Call(`_nlmixr2bayes_iniRxodePtrs`, rxode2::.rxode2ptrs())
   rxode2::.s3register("nlmixr2est::nmObjGet", "stanfit")
   rxode2::.s3register("nlmixr2est::nmObjGet", "posteriorSummary")
+  # nlmixr2save is a Suggests, so its saveFitItem() method is registered here
+  # rather than in NAMESPACE (see R/stanSave.R)
+  rxode2::.s3register("nlmixr2save::saveFitItem", "stanfit")
+  rxode2::.s3register("nlmixr2save::saveFitItem", "nlmixr2bayesPathfinder")
   invisible()
 }
 
