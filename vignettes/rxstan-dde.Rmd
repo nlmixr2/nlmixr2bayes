@@ -10,8 +10,11 @@ vignette: >
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
                       message = FALSE, warning = FALSE)
-## Everything here runs in a couple of seconds -- one rxode2 compile and a few
-## solves -- so nothing is cached.
+## The est="nuts" fit below is run for real and cached under inst/cache with
+## nlmixr2save's `:=` operator; the bridge-level material is a few seconds of
+## rxode2 solving and is not cached.  See vignettes/cacheSetup.R.
+source("cacheSetup.R")
+bayesCache("dde-")
 ```
 
 ## Delay differential equations: a Stan limitation
@@ -20,17 +23,20 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
 a lagged state, and you cannot write one in the Stan language, because the solution has to be 
 interpolated at $t - \tau$ while it is still being computed.
 
-However, **rxode2 has `delay()`**, and it propagates sensitivities through the delay correctly. 
-With rxstan's hand-coded approach (see `vignette("rxstan-handcoded", "nlmixr2bayes")`),
-a DDE becomes an ordinary Stan model.
+However, **rxode2 has `delay()`**, and it propagates sensitivities through the delay
+correctly.  Because nlmixr2bayes links Stan to a *likelihood* rather than translating a
+model into the Stan language, that limitation never reaches Stan: whatever rxode2 can
+solve, Stan can sample.
 
-This vignette walks through a realistic example: delayed indirect response with feedback.
+So a DDE is reachable **both** ways nlmixr2bayes offers, and this vignette walks the same
+example through each:
 
-### Other approaches
-
-- **Automatic generation**: `nlmixr2(model, data, est = "nuts")` doesn't support DDEs yet.
-  See `vignette("nlmixr2bayes", "nlmixr2bayes")` for automatic estimation of ODE models.
-- **Hand-coded ODEs**: See `vignette("rxstan-handcoded", "nlmixr2bayes")` for the general pattern.
+1. **Automatically** -- `nlmixr2(model, data, est = "nuts")` on an ordinary nlmixr2 model
+   containing `delay()`.  No Stan code, and nothing special to configure.
+2. **Hand-coded** -- register the DDE as a solver backend with `rxsRegister()` and call it
+   from a Stan program you wrote yourself (see
+   `vignette("rxstan-handcoded", "nlmixr2bayes")` for the general pattern), which is also
+   the level at which you can inspect the delayed sensitivities directly.
 
 ---
 
@@ -40,6 +46,94 @@ Turnover with delayed feedback: the loss term depends on the response one delay 
 rather than now.
 
 $$\frac{dR}{dt} = k_{in} - k_{out}\,R(t - \tau), \qquad R(s) = 1 \ \text{for}\ s \le 0$$
+
+`R(0) <- 1` does double duty: it is the initial condition *and* the pre-history, so
+`delay(R, tau)` returns 1 whenever $t - \tau \le 0$.  Everything is parameterized on the
+log scale (`lkin`, `lkout`, `ltau`), which is the scale Stan samples on and keeps all
+three positive without a constraint.
+
+## Part 1: the automatic path
+
+Written as an nlmixr2 model with priors, the delay is just another line -- there is
+nothing DDE-specific in the `ini({})` block, and `tau` is estimated like any other theta:
+
+```{r autoModel}
+library(nlmixr2)
+library(nlmixr2bayes)
+
+ddeMod <- function() {
+  ini({
+    lkin <- log(0.7)
+    lkout <- log(0.4)
+    ltau <- log(1.5)
+    add.sd <- c(0, 0.3)
+    eta.kin ~ 0.05
+    prior(lkin) ~ dnorm(log(0.7), 0.5)
+    prior(lkout) ~ dnorm(log(0.4), 0.5)
+    prior(ltau) ~ dnorm(log(1.5), 0.5)
+    prior(add.sd) ~ dcauchy(0, 1)
+  })
+  model({
+    kin <- exp(lkin + eta.kin)
+    kout <- exp(lkout)
+    tau <- exp(ltau)
+    R(0) <- 1
+    d/dt(R) <- kin - kout * delay(R, tau)
+    R ~ add(add.sd)
+  })
+}
+```
+
+Six subjects, simulated from the model itself so there is a known truth to recover:
+
+```{r autoData}
+set.seed(42)
+tmsAuto <- seq(0.5, 20, by = 1.5)
+evAuto <- rxode2::et(tmsAuto)
+evAuto <- rxode2::et(evAuto, id = 1:6)
+
+simAuto <- rxode2::rxSolve(ddeMod, evAuto, returnType = "data.frame")
+datAuto <- as.data.frame(evAuto)
+names(datAuto) <- tolower(names(datAuto))
+datAuto$dv <- simAuto$sim
+head(datAuto, 3)
+```
+
+And that is the whole fit -- an ordinary `est = "nuts"` call.  `:=` is nlmixr2save's
+caching assignment, so it runs once and is reloaded on later builds:
+
+```{r autoFit}
+fitAuto := nlmixr2est::nlmixr2(ddeMod, datAuto, est = "nuts",
+                               control = nutsControl(seed = 42, chains = 2,
+                                                     iter = 1000,
+                                                     max_treedepth = 12L))
+print(fitAuto)
+```
+
+The posterior sits on the simulating values:
+
+```{r autoRecover}
+truthAuto <- c(lkin = log(0.7), lkout = log(0.4), ltau = log(1.5), add.sd = 0.3)
+cbind(truth = truthAuto,
+      posterior = fitAuto$posteriorSummary[names(truthAuto), "mean"],
+      `2.5%` = fitAuto$posteriorSummary[names(truthAuto), "2.5%"],
+      `97.5%` = fitAuto$posteriorSummary[names(truthAuto), "97.5%"])
+```
+
+Two practical notes, both of them about the *solver* rather than about Stan:
+
+- rxode2 detects the delay and picks a dense-output method itself, the same way it does
+  under `est = "focei"` or `est = "saem"`; nothing in `stanControl()` mentions DDEs.
+- A DDE solve is expensive, and HMC asks for one per gradient.  This example raises
+  `max_treedepth` because the default of 10 saturates on it; expect DDE fits to be
+  slower per draw than the equivalent ODE fit, and budget iterations accordingly.
+
+## Part 2: the bridge view
+
+The rest of this vignette works the same equation one level lower, through
+`rxsRegister()`.  That is the level you want when you are writing the Stan program
+yourself -- and it is also the most direct way to *see* the delayed sensitivities, which
+the automatic path keeps inside the likelihood.
 
 ```{r model}
 library(nlmixr2bayes)
@@ -53,11 +147,8 @@ d/dt(R) <- kin - kout * delay(R, tau)
 "
 ```
 
-`R(0) <- 1` does double duty: it is the initial condition *and* the pre-history, 
-so `delay(R, tau)` returns 1 whenever $t - \tau \le 0$.
-
-Everything is on the log scale (`lkin`, `lkout`, `ltau`) because that is the scale Stan
-will sample on, and it keeps all three parameters positive without a constraint.
+The same equation as a bare rxode2 model, with no residual model or priors -- the Stan
+program supplies those:
 
 ## Register the DDE model
 
@@ -221,4 +312,4 @@ rxsRelease(h)
 - `vignette("rxstan-handcoded", "nlmixr2bayes")` -- the general hand-coded
   Stan pattern this vignette specializes for DDEs.
 - `vignette("nlmixr2bayes", "nlmixr2bayes")` -- the automatic,
-  likelihood-level approach (does not support DDEs).
+  likelihood-level approach used in the first half of this vignette.

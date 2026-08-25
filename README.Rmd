@@ -46,7 +46,7 @@ Both approaches share the same fundamental advantage: **things Stan's ODE interf
 
 - **dosing events** (bolus, infusion, `addl`, steady state, multiple compartments) with exact event timing
 - **derivatives with respect to modeled dose handling** -- an estimated lag time, bioavailability, duration or rate
-- **delay differential equations**, via rxode2's `delay()` / `past()` (hand-coded approach only -- automatic generation does not support DDEs)
+- **delay differential equations**, via rxode2's `delay()` / `past()` -- through *both* approaches: a `delay()` model is an ordinary nlmixr2 model to `est = "nuts"`, because the linked likelihood is the same one FOCEi solves
 - **analytic parameter sensitivities** via forward sensitivity equations (no autodiff through the solver)
 - **the residual-error and censoring machinery** (M2/M3/M4) already validated in nlmixr2est (likelihood-level only)
 
@@ -408,7 +408,8 @@ Supported: mixed AND population-only models (a no-eta model -- e.g. a
 single-subject Bayesian fit -- runs as "tier 0" through nlmixr2est's nlm
 path: one external scalar `nlmixr2_pop_ll(theta)` carrying the complete
 data log-likelihood and its analytic gradient, value tied to a
-hand-written density and FD-verified), ODE and `linCmt()` models, normal
+hand-written density and FD-verified), ODE, delay-differential (`delay()`
+/ `past()`) and `linCmt()` models, normal
 residual models (add/prop/combined and transforms with fixed lambda),
 censored data (M2/M3/M4 via CENS/LIMIT) and user-written `ll()` endpoints
 (both verified: values tie to textbook densities up to a parameter-free

@@ -38,9 +38,12 @@ the software tool -- it is sugar for `est = "stan"` with NUTS, which is
 
 ### When to use hand-coded Stan instead
 
-If you want **full control over your Stan program** -- custom priors, derived quantities,
-multiple endpoints with mixed structures, or you're fitting **delay differential equations** --
-see `vignette("rxstan-handcoded", "nlmixr2bayes")` for the rxstan approach.
+If you want **full control over your Stan program** -- custom priors, derived
+quantities, multiple endpoints with mixed structures, or a hierarchy the
+nlmixr2 ui cannot express -- see `vignette("rxstan-handcoded", "nlmixr2bayes")`
+for the rxstan approach.  Delay differential equations are *not* a reason to
+go there: `delay()` and `past()` work through this automatic path too (see
+`vignette("rxstan-dde", "nlmixr2bayes")`).
 
 ---
 
@@ -56,6 +59,14 @@ gradients through the Omega parameterization.  A model with **no** etas
 (a population-only or single-subject fit) runs as "tier 0" through
 nlmixr2est's nlm path instead -- one external scalar carrying the whole
 data log-likelihood with its analytic gradient.
+
+Because Stan only ever sees the likelihood, anything rxode2 can solve is in
+scope without the generator knowing about it -- **delay differential
+equations** included.  `d/dt(R) <- kin - kout * delay(R, tau)` is an ordinary
+model here, with `tau` estimated like any other theta; rxode2 switches to a
+dense solver for it exactly as it does under FOCEi or SAEM.  Stan itself has
+no DDE solver at all, so this is a capability that exists only because the
+model is linked rather than translated.
 
 Beyond the core: finite mixtures (`mix()`, 2 components) marginalize with
 the Stan `log_sum_exp` pattern and put per-subject membership posteriors
@@ -298,11 +309,12 @@ code <- nlmixr2est::nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "nuts",
 cat(code$code)
 ```
 
-The messages above the program are the announced omega defaults: this model
-leaves its three eta blocks without a `prior()`, so each diagonal gets a
-half-Cauchy scaled from its `ini()` variance, and a correlated block would
-also get `lkj_corr_cholesky(2)`.  They are printed rather than assumed
-silently, for the same reason a model with no priors at all is refused.
+Past nlmixr2's usual model-parse notes, the messages above the program are the
+announced omega defaults: this model leaves its three eta blocks without a
+`prior()`, so each diagonal gets a half-Cauchy scaled from its `ini()`
+variance, and a correlated block would also get `lkj_corr_cholesky(2)`.  They
+are printed rather than assumed silently, for the same reason a model with no
+priors at all is refused.
 
 Two things to notice in it.  The `functions{}` block declares
 `nlmixr2_cond_all2()` -- the external hook Stan calls for the conditional

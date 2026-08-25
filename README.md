@@ -31,9 +31,10 @@ ODE interface cannot express**
   compartments) with exact event timing
 - **derivatives with respect to modeled dose handling** – an estimated
   lag time, bioavailability, duration or rate
-- **delay differential equations**, via rxode2’s `delay()` / `past()`
-  (hand-coded approach only – automatic generation does not support
-  DDEs)
+- **delay differential equations**, via rxode2’s `delay()` / `past()` –
+  through *both* approaches: a `delay()` model is an ordinary nlmixr2
+  model to `est = "nuts"`, because the linked likelihood is the same one
+  FOCEi solves
 - **analytic parameter sensitivities** via forward sensitivity equations
   (no autodiff through the solver)
 - **the residual-error and censoring machinery** (M2/M3/M4) already
@@ -144,30 +145,6 @@ one.cmt <- function() {
 fit := nlmixr2est::nlmixr2(one.cmt, theo_sd, est = "nuts",
                            control = nutsControl(seed = 42, chains = 2,
                                                  iter = 1000))
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00 
-#> 
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00 
-#> 
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00 
-#> 
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00 
-#> 
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
 ```
 
 (`:=` is nlmixr2save’s caching assignment – it runs the fit once, caches
@@ -208,6 +185,7 @@ print(fit)
 #> add.sd 0.707 0.0544 7.69    0.707 (0.601, 0.814)                     
 #>  
 #>   Covariance Type ($covMethod): stan.posterior
+#>   Fixed parameter correlations in $cor
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
@@ -222,7 +200,7 @@ print(fit)
 #> 3 1      0.57  6.57  5.90  0.673  6.80 -0.234 -0.331 0.0884 -0.481 -0.0811  118.
 #> # ℹ 129 more rows
 #> # ℹ 6 more variables: central <dbl>, ka <dbl>, cl <dbl>, v <dbl>, tad <dbl>,
-#> #   dosenum <dbl>
+#> #   dosenum <int>
 ```
 
 On top of the usual fit contents it carries `$stanfit`,
@@ -665,7 +643,7 @@ print(fit2, pars = c("lka", "lcl", "lv", "sigma"))
 #> lv    3.36    0.00 0.09  3.17 3.31 3.37 3.42  3.53   336    1
 #> sigma 0.15    0.00 0.04  0.10 0.12 0.14 0.17  0.26   278    1
 #> 
-#> Samples were drawn using NUTS(diag_e) at Tue Aug 25 14:46:18 2026.
+#> Samples were drawn using NUTS(diag_e) at Tue Aug 25 17:25:51 2026.
 #> For each parameter, n_eff is a crude measure of effective sample size,
 #> and Rhat is the potential scale reduction factor on split chains (at 
 #> convergence, Rhat=1).
@@ -778,15 +756,15 @@ Supported: mixed AND population-only models (a no-eta model – e.g. a
 single-subject Bayesian fit – runs as “tier 0” through nlmixr2est’s nlm
 path: one external scalar `nlmixr2_pop_ll(theta)` carrying the complete
 data log-likelihood and its analytic gradient, value tied to a
-hand-written density and FD-verified), ODE and `linCmt()` models, normal
-residual models (add/prop/combined and transforms with fixed lambda),
-censored data (M2/M3/M4 via CENS/LIMIT) and user-written `ll()`
-endpoints (both verified: values tie to textbook densities up to a
-parameter-free constant, gradients FD-verified), mu-referenced and
-non-mu etas, mu-referenced covariates (subject-constant and
-time-varying), all 39 real-valued prior distributions in the lotri
-catalog (univariate, multivariate normal families, LKJ/Wishart on omega
-blocks).
+hand-written density and FD-verified), ODE, delay-differential
+(`delay()` / `past()`) and `linCmt()` models, normal residual models
+(add/prop/combined and transforms with fixed lambda), censored data
+(M2/M3/M4 via CENS/LIMIT) and user-written `ll()` endpoints (both
+verified: values tie to textbook densities up to a parameter-free
+constant, gradients FD-verified), mu-referenced and non-mu etas,
+mu-referenced covariates (subject-constant and time-varying), all 39
+real-valued prior distributions in the lotri catalog (univariate,
+multivariate normal families, LKJ/Wishart on omega blocks).
 
 Mu-referenced covariates work for both subject-constant covariates (the
 `cov_i * d/deta` scatter identity) and time-varying covariates (the

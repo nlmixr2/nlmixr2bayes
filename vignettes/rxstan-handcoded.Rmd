@@ -120,7 +120,8 @@ ev <- rxode2::et(ev, id = 1:8)
 sim <- rxode2::rxSolve(oneCmt, ev, returnType = "data.frame")
 dat <- as.data.frame(ev)
 names(dat) <- tolower(names(dat))
-dat$dv <- sim$sim
+dat$dv <- NA_real_
+dat$dv[dat$evid == 0] <- sim$sim   # dose rows carry no observation
 head(dat, 3)
 ```
 

@@ -18,8 +18,10 @@ runtime but have no code paths in common otherwise:
 2. **ODE-level hand-coded Stan models** (the "rxstan" bridge —
    `rxsRegister()`/`rxsStanModel()`/`rxsStanFromUi()`): write your own `.stan`
    program and declare rxode2 as the ODE solver backend (`rx_solve()`), for
-   when you need custom Stan code, DDEs, or full control the automatic path
-   doesn't expose.
+   when you need custom Stan code or full control the automatic path
+   doesn't expose.  (DDEs are *not* on that list -- `delay()`/`past()` work
+   through the likelihood-level path too, since the generated program never
+   sees the ODE system.)
 
 Read `README.md` for the full "why two approaches" pitch, the speed/gradient
 benchmark numbers, and the correctness-oracle table — it's kept up to date
