@@ -471,7 +471,14 @@ nlmixr2est::nlmixr2(discreteModel, nlmixr2data::theo_sd, est = "nuts",
 
 IOV is supported: `iov.x ~ v | OCC` expands into per-occasion
 fixed-variance etas scaled by an estimated magnitude theta, the same way
-nlmixr2est's own methods treat occasion-level variability.
+nlmixr2est's own methods treat occasion-level variability.  The magnitude
+theta *is* the occasion standard deviation: `prior(iov.x)` is therefore a
+univariate prior on the SD scale (a matrix prior such as `invWishart()`
+is refused with an explanatory error), and an IOV parameter without a
+declared prior gets the same `stanControl(diagOmegaSdPrior=)` half-Cauchy
+an ordinary omega diagonal SD gets -- announced in the notes, so the
+expansion never silently changes which prior a random effect ends up
+with.
 
 Estimated transform-both-sides lambda (Box-Cox/Yeo-Johnson) is supported:
 the linked conditional supplies the transformed-scale density with an

@@ -791,7 +791,12 @@ mixture target is FD-verified through `grad_log_prob`.
 
 IOV is supported: `iov.x ~ v | OCC` expands (via nlmixr2est’s
 preprocessing hook) into per-occasion fixed unit-variance etas scaled by
-an estimated magnitude theta.
+an estimated magnitude theta. That magnitude theta *is* the occasion
+standard deviation, so a `prior(iov.x)` is a univariate prior on the SD
+scale (a matrix prior such as `invWishart()` is refused); declare none
+and it gets the same `stanControl(diagOmegaSdPrior=)` half-Cauchy an
+ordinary omega diagonal SD gets, announced in the generator notes – the
+expansion never changes which prior a random effect ends up with.
 
 Refused with an explanatory error (not silently wrong): mixtures with
 more than 2 components (for now), and the 8 discrete distributions
