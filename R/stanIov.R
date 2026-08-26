@@ -103,14 +103,29 @@
   invisible(TRUE)
 }
 
-#' Default Stan prior statement for an IOV magnitude theta without one
+#' Default Stan prior statements for the IOV magnitude thetas without one
 #'
-#' The magnitude theta is the occasion SD, so it gets the same
+#' A magnitude theta is the occasion SD, so it gets the same
 #' `stanControl(diagOmegaSdPrior=)` half-Cauchy an ordinary omega diagonal
 #' SD gets, scaled off the same `2.5 * sd0`.
+#'
+#' @param names IOV magnitude thetas that carry no declared prior
+#' @param free the generator's free-theta data frame (`name`, `est`)
+#' @return list(statements=, notes=), both possibly empty
 #' @noRd
-.stanIovDefaultPrior <- function(sd0, ctl) {
-  sprintf(ctl$diagOmegaSdPrior, .stanNum(2.5 * abs(sd0)))
+.stanIovDefaultPriors <- function(names, free, ctl) {
+  .statements <- character(0)
+  .notes <- character(0)
+  for (.n in names) {
+    .p <- sprintf(ctl$diagOmegaSdPrior,
+                  .stanNum(2.5 * abs(free$est[match(.n, free$name)])))
+    .statements <- c(.statements,
+                     paste0("  ", .stanParName(.n), " ~ ", .p, ";"))
+    .notes <- c(.notes,
+                paste0("default prior ", .stanParName(.n), " ~ ", .p,
+                       " on the inter-occasion magnitude (SD) of '", .n, "'"))
+  }
+  list(statements = .statements, notes = .notes)
 }
 
 #' Re-attach the declared IOV priors to a rewritten ui's prior rows
