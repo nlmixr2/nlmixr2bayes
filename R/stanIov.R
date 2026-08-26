@@ -151,6 +151,12 @@
   .mag <- .stanIovMagnitude(iniDf)
   if (length(.mag) == 0L) return(pri)
   .cap <- .stanIovEnv$priors
+  # The capture is keyed by parameter name and is refreshed by every
+  # estimation, so it is always the current fit's during a fit.  The one way
+  # to read a wrong (not merely absent) prior is to call the exported
+  # stanPriors() by hand on a rewritten ui kept from an EARLIER fit, after
+  # fitting a DIFFERENT model whose IOV parameters carry the same names; the
+  # name check below cannot see that.
   if (!setequal(.mag, names(.cap))) {
     stop("cannot recover the priors declared on the inter-occasion ",
          "parameter(s) ", paste0("'", .mag, "'", collapse = ", "),
