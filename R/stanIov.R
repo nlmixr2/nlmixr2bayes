@@ -41,10 +41,19 @@
 
 # `backTransform` of an IOV magnitude theta: one of nlmixr2est's
 # nlmixr2iov{Sd,Var,Logsd,Logvar}{Cv,Sd} back-transformations, which nothing
-# else in an iniDf carries
+# else in an iniDf carries.  The middle group also RECORDS the `iovXform`
+# the rewrite used, which is what makes the SD scale checkable rather than
+# assumed.
 .stanIovBackTransform <- "^nlmixr2iov(Sd|Var|Logsd|Logvar)(Cv|Sd)$"
 
 #' IOV magnitude theta names in a ui rewritten by nlmixr2est's IOV hook
+#'
+#' Everything downstream reads the magnitude theta as a standard deviation
+#' (its declared prior, and the default `diagOmegaSdPrior` when there is
+#' none), which holds for `iovXform = "sd"` -- what `stanControl()` leaves
+#' nlmixr2est to default to.  Rather than assume that, read back the xform
+#' the rewrite actually used and refuse the others: on a "var"/"logsd"/
+#' "logvar" theta the same prior would silently mean something else.
 #' @noRd
 .stanIovMagnitude <- function(iniDf) {
   if (!is.data.frame(iniDf) || !("backTransform" %in% names(iniDf))) {
@@ -52,6 +61,17 @@
   }
   .w <- which(!is.na(iniDf$ntheta) & !is.na(iniDf$backTransform) &
                 grepl(.stanIovBackTransform, iniDf$backTransform))
+  .bad <- .w[!grepl("^nlmixr2iovSd", iniDf$backTransform[.w])]
+  if (length(.bad) > 0L) {
+    stop("est=\"stan\" samples an inter-occasion magnitude as a standard ",
+         "deviation, but ",
+         paste0("'", iniDf$name[.bad], "'", collapse = ", "),
+         " was expanded with a different iovXform (",
+         paste(unique(sub("^nlmixr2iov", "", iniDf$backTransform[.bad])),
+               collapse = ", "),
+         "); its prior would mean something else on that scale",
+         call. = FALSE)
+  }
   iniDf$name[.w]
 }
 

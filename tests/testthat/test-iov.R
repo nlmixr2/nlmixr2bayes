@@ -333,3 +333,96 @@ test_that("the capture hook is registered ahead of nlmixr2est's IOV rewrite", {
   expect_true(which(.hooks == ".stanCaptureIovPriors") <
                 which(.hooks == ".uiApplyIov"))
 })
+
+test_that("several IOV parameters over several occasion variables", {
+  skip_on_cran()
+  skip_if_not(.stanHasIovSens(),
+              "IOV gated off: upstream sens column wrong (nlmixr2est#952)")
+  .twoIov <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3
+      add.sd <- c(0, 0.5)
+      prior(tcl) ~ dnorm(-7.25, 0.125)
+      prior(add.sd) ~ dcauchy(0, 2.5)
+      prior(iov.v) ~ dcauchy(0, 3)   # declared on the SECOND one only
+      eta.cl ~ 0.1
+      iov.cl ~ 0.02 | OCC
+      iov.v ~ 0.03 | VIS
+    })
+    model({
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv + iov.v)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  .d <- .iovData()
+  .d$VIS <- .d$OCC
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.twoIov, .d, est = "stan",
+                        control = stanControl(run = FALSE)))
+  .lines <- strsplit(.code$code, "\n")[[1]]
+  # each magnitude gets ITS OWN prior: the declared one, the default one
+  expect_true(any(grepl("iov_v ~ cauchy(0, 3);", .lines, fixed = TRUE)))
+  expect_true(any(grepl("^\\s*iov_cl ~ cauchy\\(0, 0\\.3535533905932", .lines)))
+  expect_false(any(grepl("iov_cl ~ normal|iov_v ~ normal", .lines)))
+  if (requireNamespace("rstan", quietly = TRUE)) {
+    expect_silent(rstan::stanc(model_code = .code$code,
+                               allow_undefined = TRUE))
+  }
+})
+
+test_that("a parameter-dependent IOV prior is truncated at the SD's zero", {
+  skip_on_cran()
+  skip_if_not(.stanHasIovSens(),
+              "IOV gated off: upstream sens column wrong (nlmixr2est#952)")
+  # the magnitude theta is lower-bounded at 0, so a prior whose arguments
+  # reference another parameter needs the T[0, ] normalizer (rule 2 of
+  # R/stanPriors.R) rather than the half-Cauchy literal idiom
+  .depIov <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3
+      tauScale <- c(0, 1)
+      add.sd <- c(0, 0.5)
+      prior(tcl) ~ dnorm(1, 2)
+      prior(add.sd) ~ dcauchy(0, 2.5)
+      prior(tauScale) ~ dcauchy(0, 1)
+      prior(iov.cl) ~ dcauchy(0, tauScale)
+      eta.cl ~ 0.1
+      iov.cl ~ 0.02 | OCC
+    })
+    model({
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv) * tauScale / tauScale
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.depIov, .iovData(), est = "stan",
+                        control = stanControl(run = FALSE)))
+  .lines <- strsplit(.code$code, "\n")[[1]]
+  expect_true(any(grepl("iov_cl ~ cauchy(0, tauScale) T[0, ];", .lines,
+                        fixed = TRUE)))
+  if (requireNamespace("rstan", quietly = TRUE)) {
+    expect_silent(rstan::stanc(model_code = .code$code,
+                               allow_undefined = TRUE))
+  }
+})
+
+test_that("a non-sd iovXform expansion is refused, not read as an SD", {
+  skip_on_cran()
+  # est="stan" leaves iovXform at nlmixr2est's "sd" default, which is what
+  # makes the magnitude theta an SD; the backTransform records the xform
+  # that was actually used, so a "logvar" expansion must refuse rather than
+  # emit an SD-scale prior on a log-variance
+  .iniDf <- data.frame(ntheta = c(1, 2), neta1 = c(NA_real_, NA_real_),
+                       name = c("tcl", "iov.cl"),
+                       backTransform = c(NA_character_, "nlmixr2iovLogvarCv"),
+                       stringsAsFactors = FALSE)
+  expect_error(.stanIovMagnitude(.iniDf), "standard deviation")
+  .iniDf$backTransform[2] <- "nlmixr2iovSdCv"
+  expect_equal(.stanIovMagnitude(.iniDf), "iov.cl")
+})
