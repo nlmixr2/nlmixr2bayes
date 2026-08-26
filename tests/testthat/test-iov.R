@@ -275,11 +275,16 @@ test_that("a matrix prior on an IOV magnitude is refused, not mis-emitted", {
       cp ~ add(add.sd)
     })
   }
+  # which side refuses depends on the nlmixr2est: once the IOV rewrite
+  # carries the declared prior onto the magnitude theta itself, rxode2's own
+  # validation gets there first ("applies to a covariance matrix, but
+  # 'iov.cl' is a population estimate"); before that, the repair here is
+  # what sees it.  Either way it is refused, never mis-emitted.
   expect_error(
     suppressMessages(
       nlmixr2est::nlmixr2(.mvIov, .iovData(), est = "stan",
                           control = stanControl(run = FALSE))),
-    "must be univariate")
+    "must be univariate|covariance matrix")
 })
 
 test_that("prior(iov.x) alone satisfies the est=\"stan\" prior requirement", {
