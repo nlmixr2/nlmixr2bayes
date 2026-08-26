@@ -18,6 +18,17 @@
 # magnitude theta here.  The capture is checked against the rewritten ui
 # before it is used: a mismatch is an error, never a guess.
 #
+# NOT repaired here, because the template copy breaks them INSIDE the rewrite,
+# before an estimation method is reached -- both fail loudly, upstream, and
+# want the same one-line nlmixr2est fix (clear `prior` on the copied template
+# rows):
+#   * `iov.x ~ fix(v) | OCC` with a prior on theta #1 -- the fixed magnitude
+#     theta inherits it and rxode2 refuses "a prior given for fixed
+#     parameter(s): 'iov.x'";
+#   * a prior on the model's FIRST eta -- `.eta1 <- .etas[1, ]` is the
+#     template for the per-occasion etas too, so every `rx.<iov>.<occ>` row
+#     inherits it and rxode2 refuses one of those instead.
+#
 # Scale: est="stan" never sets `iovXform`, so the hook always uses its "sd"
 # default -- the magnitude theta IS the occasion standard deviation, and a
 # declared `prior(iov.x)` is emitted on that SD scale.  Without a declared
