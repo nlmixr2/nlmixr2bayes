@@ -225,7 +225,7 @@
 #' @author Matthew L Fidler
 stanPriors <- function(ui) {
   .ui <- rxode2::assertRxUi(ui)
-  .pri <- rxode2::rxUiPriors(.ui)
+  .pri <- .stanUiPriors(.ui)
   .popRow <- function(name, par, prior, stanName, kind, lower, upper,
                       constraint, truncated, members, statement) {
     data.frame(name = name, par = par, prior = prior, stanName = stanName,

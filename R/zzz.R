@@ -25,6 +25,9 @@ NULL
   # rather than in NAMESPACE (see R/stanSave.R)
   rxode2::.s3register("nlmixr2save::saveFitItem", "stanfit")
   rxode2::.s3register("nlmixr2save::saveFitItem", "nlmixr2bayesPathfinder")
+  # Capture the priors declared on occasion (IOV) etas before nlmixr2est's
+  # IOV preprocessing deletes those rows (see R/stanIov.R, issue #15)
+  .stanIovRegisterHook()
   invisible()
 }
 

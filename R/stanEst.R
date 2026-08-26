@@ -234,7 +234,7 @@
   # D10: no priors at all is an error, with the exact lines to add --
   # Bayesian inference with silently-invented priors produces a
   # publishable-looking wrong answer
-  .pri <- rxode2::rxUiPriors(ui)
+  .pri <- .stanUiPriors(ui)
   if (nrow(.pri) == 0L) {
     stop("est=\"stan\" needs prior distributions in the ini({}) block and ",
          "this model declares none; for example:\n  ",

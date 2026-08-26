@@ -107,8 +107,16 @@
     }
     .decl <- c(.decl, paste0("  real", .con, " ", .r$par, ";"))
   }
+  # IOV magnitude thetas ARE occasion standard deviations (nlmixr2est's IOV
+  # rewrite, see R/stanIov.R); one without a declared prior gets the same
+  # default half-Cauchy an ordinary omega diagonal SD gets, rather than being
+  # left flat -- the rewrite must not change which prior a random effect ends
+  # up with
+  .iovMag <- .stanIovMagnitude(ui$iniDf)
+  .iovDefault <- setdiff(intersect(.iovMag, .free$name), pri$pop$name)
   # flat thetas: allowed, but say so loudly
   .flat <- .free$name[!(.free$name %in% pri$pop$name) &
+                        !(.free$name %in% .iovDefault) &
                         !(.free$name %in% unlist(strsplit(stats::na.omit(pri$pop$members), ",")))]
   if (length(.flat) > 0L) {
     .notes <- c(.notes, paste0("flat (improper) priors on: ",
@@ -276,6 +284,13 @@
       next
     }
     .thPrior <- c(.thPrior, paste0("  ", .r$statement))
+  }
+  for (.n in .iovDefault) {
+    .p <- .stanIovDefaultPrior(.free$est[match(.n, .free$name)], ctl)
+    .thPrior <- c(.thPrior, paste0("  ", .stanParName(.n), " ~ ", .p, ";"))
+    .notes <- c(.notes, paste0("default prior ", .stanParName(.n), " ~ ", .p,
+                               " on the inter-occasion magnitude (SD) of '",
+                               .n, "'"))
   }
   # ---- estimated transform-both-sides lambda: DV-transform Jacobian ------
   # The linked conditional evaluates the TRANSFORMED-scale density and omits
