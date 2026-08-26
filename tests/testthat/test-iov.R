@@ -182,3 +182,154 @@ test_that("IOV models are refused while the upstream sens column is wrong (#952)
       nlmixr2est::nlmixr2(.iovMod, .iovData(), est = "stan",
                           control = stanControl(run = FALSE))))
 })
+
+# issue #15: nlmixr2est's IOV rewrite builds the magnitude theta by copying
+# the model's FIRST theta row, so without the R/stanIov.R repair the
+# magnitude tracks theta #1's prior and the declared prior(iov.x) -- which
+# lives on the deleted eta row -- never reaches the program.
+
+.iovPriorMod <- function() {
+  ini({
+    tcl <- 1
+    tv <- 3
+    add.sd <- c(0, 0.5)
+    prior(tcl) ~ dnorm(-7.25, 0.125)  # deliberately distinctive
+    prior(add.sd) ~ dcauchy(0, 2.5)
+    prior(iov.cl) ~ dcauchy(0, 1)
+    eta.cl ~ 0.1
+    iov.cl ~ 0.02 | OCC
+  })
+  model({
+    cl <- exp(tcl + eta.cl + iov.cl)
+    v <- exp(tv)
+    cp <- 100 / v * exp(-cl / v * time)
+    cp ~ add(add.sd)
+  })
+}
+
+test_that("a declared prior(iov.x) lands on the IOV magnitude theta", {
+  skip_on_cran()
+  skip_if_not(.stanHasIovSens(),
+              "IOV gated off: upstream sens column wrong (nlmixr2est#952)")
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.iovPriorMod, .iovData(), est = "stan",
+                        control = stanControl(run = FALSE)))
+  .lines <- strsplit(.code$code, "\n")[[1]]
+  expect_true(any(grepl("iov_cl ~ cauchy(0, 1);", .lines, fixed = TRUE)))
+  # the first theta's prior stays on the first theta and nowhere else
+  expect_true(any(grepl("tcl ~ normal(-7.25, 0.125);", .lines, fixed = TRUE)))
+  expect_false(any(grepl("iov_cl ~ normal", .lines, fixed = TRUE)))
+  # the magnitude IS an SD: lower-bounded, so cauchy() is the half-Cauchy
+  # idiom (literal arguments -> constraint declared, T[,] omitted)
+  expect_true(any(grepl("real<lower=0> iov_cl;", .lines, fixed = TRUE)))
+  if (requireNamespace("rstan", quietly = TRUE)) {
+    expect_silent(rstan::stanc(model_code = .code$code,
+                               allow_undefined = TRUE))
+  }
+})
+
+test_that("an undeclared IOV magnitude gets the omega-SD default, not a leak", {
+  skip_on_cran()
+  skip_if_not(.stanHasIovSens(),
+              "IOV gated off: upstream sens column wrong (nlmixr2est#952)")
+  # .iovMod declares prior(tcl) ~ dnorm(1, 2) but nothing on iov.cl
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.iovMod, .iovData(), est = "stan",
+                        control = stanControl(run = FALSE)))
+  .lines <- strsplit(.code$code, "\n")[[1]]
+  expect_false(any(grepl("iov_cl ~ normal", .lines, fixed = TRUE)))
+  # diagOmegaSdPrior at 2.5 * sd0, exactly as an omega diagonal gets
+  expect_true(any(grepl("^\\s*iov_cl ~ cauchy\\(0, 0\\.3535533905932",
+                        .lines)))
+  # ... announced, and NOT reported as flat
+  expect_true(any(grepl("default prior iov_cl ~ cauchy", .code$notes)))
+  expect_false(any(grepl("flat[^\n]*iov", .code$notes)))
+  # the template stays honest for a non-default diagOmegaSdPrior too
+  .code2 <- suppressMessages(
+    nlmixr2est::nlmixr2(.iovMod, .iovData(), est = "stan",
+                        control = stanControl(run = FALSE,
+                                              diagOmegaSdPrior = "normal(0, %s)")))
+  expect_true(any(grepl("iov_cl ~ normal(0, ", strsplit(.code2$code, "\n")[[1]],
+                        fixed = TRUE)))
+})
+
+test_that("a matrix prior on an IOV magnitude is refused, not mis-emitted", {
+  skip_on_cran()
+  skip_if_not(.stanHasIovSens(),
+              "IOV gated off: upstream sens column wrong (nlmixr2est#952)")
+  .mvIov <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3
+      add.sd <- c(0, 0.5)
+      prior(tcl) ~ dnorm(1, 2)
+      prior(add.sd) ~ dcauchy(0, 2.5)
+      prior(iov.cl) ~ invWishart(4)
+      eta.cl ~ 0.1
+      iov.cl ~ 0.02 | OCC
+    })
+    model({
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  expect_error(
+    suppressMessages(
+      nlmixr2est::nlmixr2(.mvIov, .iovData(), est = "stan",
+                          control = stanControl(run = FALSE))),
+    "must be univariate")
+})
+
+test_that("prior(iov.x) alone satisfies the est=\"stan\" prior requirement", {
+  skip_on_cran()
+  skip_if_not(.stanHasIovSens(),
+              "IOV gated off: upstream sens column wrong (nlmixr2est#952)")
+  # with the leak, the declared prior vanished and theta #1 had none, so
+  # this model was refused as "declares none"
+  .onlyIov <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3
+      add.sd <- c(0, 0.5)
+      prior(iov.cl) ~ dcauchy(0, 1)
+      eta.cl ~ 0.1
+      iov.cl ~ 0.02 | OCC
+    })
+    model({
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.onlyIov, .iovData(), est = "stan",
+                        control = stanControl(run = FALSE)))
+  expect_true(any(grepl("iov_cl ~ cauchy(0, 1);",
+                        strsplit(.code$code, "\n")[[1]], fixed = TRUE)))
+})
+
+test_that("the IOV prior capture is checked, not trusted", {
+  skip_on_cran()
+  # a rewritten ui whose magnitude thetas the capture never saw must error
+  # rather than fall back to whatever the rewrite left behind
+  skip_if_not(.stanHasIovSens(),
+              "IOV gated off: upstream sens column wrong (nlmixr2est#952)")
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.iovPriorMod, .iovData(), est = "stan",
+                        control = stanControl(run = FALSE)))
+  .old <- .stanIovEnv$priors
+  on.exit(.stanIovEnv$priors <- .old, add = TRUE)
+  .stanIovEnv$priors <- character(0)
+  expect_error(stanPriors(.code$ui), "did not see this model")
+})
+
+test_that("the capture hook is registered ahead of nlmixr2est's IOV rewrite", {
+  skip_on_cran()
+  .hooks <- nlmixr2est::preProcessHooks()
+  expect_true(".stanCaptureIovPriors" %in% .hooks)
+  expect_true(which(.hooks == ".stanCaptureIovPriors") <
+                which(.hooks == ".uiApplyIov"))
+})
