@@ -341,6 +341,13 @@ attr(nlmixr2Est.nuts, "type") <- "Markov chain Monte Carlo"
 attr(nlmixr2Est.nuts, "description") <-
   "Stan NUTS (Hamiltonian Monte Carlo) linked to the rxode2/nlmixr2est likelihood"
 attr(nlmixr2Est.nuts, "covPresent") <- TRUE
+# a declared non-normal random effect arrives here already expanded by
+# nlmixr2est's pre-processing hook: the latent eta is a FIXED unit
+# variance (which the generator already supports), the transform lives
+# inside the linked nlmixr2_cond_all2() likelihood, and the copula
+# correlation is an ordinary unbounded theta -- so nothing in the
+# generated Stan program is special cased for it
+attr(nlmixr2Est.nuts, "etaDist") <- TRUE
 attr(nlmixr2Est.nuts, "mu") <- FALSE
 attr(nlmixr2Est.nuts, "unbounded") <- FALSE
 attr(nlmixr2Est.nuts, "iov") <- function(control) .stanHasIovSens()
@@ -368,6 +375,13 @@ attr(nlmixr2Est.advi, "type") <- "Variational inference"
 attr(nlmixr2Est.advi, "description") <-
   "Stan ADVI (variational Bayes) linked to the rxode2/nlmixr2est likelihood"
 attr(nlmixr2Est.advi, "covPresent") <- TRUE
+# a declared non-normal random effect arrives here already expanded by
+# nlmixr2est's pre-processing hook: the latent eta is a FIXED unit
+# variance (which the generator already supports), the transform lives
+# inside the linked nlmixr2_cond_all2() likelihood, and the copula
+# correlation is an ordinary unbounded theta -- so nothing in the
+# generated Stan program is special cased for it
+attr(nlmixr2Est.advi, "etaDist") <- TRUE
 attr(nlmixr2Est.advi, "mu") <- FALSE
 attr(nlmixr2Est.advi, "unbounded") <- FALSE
 attr(nlmixr2Est.advi, "iov") <- function(control) .stanHasIovSens()
@@ -394,6 +408,13 @@ attr(nlmixr2Est.pathfinder, "type") <- "Variational inference"
 attr(nlmixr2Est.pathfinder, "description") <-
   "Stan Pathfinder linked to the rxode2/nlmixr2est likelihood"
 attr(nlmixr2Est.pathfinder, "covPresent") <- TRUE
+# a declared non-normal random effect arrives here already expanded by
+# nlmixr2est's pre-processing hook: the latent eta is a FIXED unit
+# variance (which the generator already supports), the transform lives
+# inside the linked nlmixr2_cond_all2() likelihood, and the copula
+# correlation is an ordinary unbounded theta -- so nothing in the
+# generated Stan program is special cased for it
+attr(nlmixr2Est.pathfinder, "etaDist") <- TRUE
 attr(nlmixr2Est.pathfinder, "mu") <- FALSE
 attr(nlmixr2Est.pathfinder, "unbounded") <- FALSE
 attr(nlmixr2Est.pathfinder, "iov") <- function(control) .stanHasIovSens()

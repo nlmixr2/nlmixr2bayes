@@ -272,6 +272,13 @@ attr(nlmixr2Est.stan, "type") <- "Markov chain Monte Carlo"
 attr(nlmixr2Est.stan, "description") <-
   "Hamiltonian Monte Carlo (Stan/rstan) linked to the rxode2/nlmixr2est likelihood"
 attr(nlmixr2Est.stan, "covPresent") <- TRUE
+# a declared non-normal random effect arrives here already expanded by
+# nlmixr2est's pre-processing hook: the latent eta is a FIXED unit
+# variance (which the generator already supports), the transform lives
+# inside the linked nlmixr2_cond_all2() likelihood, and the copula
+# correlation is an ordinary unbounded theta -- so nothing in the
+# generated Stan program is special cased for it
+attr(nlmixr2Est.stan, "etaDist") <- TRUE
 attr(nlmixr2Est.stan, "mu") <- FALSE
 # unbounded=FALSE is load-bearing: the natural lower/upper survive in iniDf
 # for the generator to turn into Stan constraints
