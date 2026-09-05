@@ -66,7 +66,7 @@ test_that("a declared gamma random effect samples and recovers its parameters", 
   expect_true(abs(.f$fixef[["lclm"]]) < 1)
   expect_true(abs(.f$fixef[["lclrv"]] + 2.408) < 1.5)
   ## the latent random effect and the declared one both come back
-  expect_true("rxz.eta.cl" %in% names(.f))
+  expect_true("z.eta.cl" %in% names(.f))
   expect_true("eta.cl" %in% names(.f))
   expect_true(all(.f$eta.cl > 0))
 })
