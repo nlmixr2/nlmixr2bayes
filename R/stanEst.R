@@ -1095,6 +1095,15 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   nlmixr2est::.nlmixr2FitUpdateParams(env2)
   .stanHandleControlObjects(env, env2)
   .stanControlToFoceiControl(env2)
+  # ofv="focei" puts the focei objective function row on this fit (below).
+  # addCwres() cannot add CWRES to a fit that already reports that row, so the
+  # residual columns are calculated here or not at all -- the EBE model this
+  # method finalizes with carries no inner problem (rxUiGet.getEBEEnv drops it),
+  # which is what the table step keys its default off.  An explicit
+  # tableControl(cwres=) still wins.
+  if (identical(control$ofv, "focei") && is.null(env2$table$cwres)) {
+    env2$table$cwres <- TRUE
+  }
   .fit <- nlmixr2est::nlmixr2CreateOutputFromUi(env2$ui, data = env2$origData,
                                                 control = env2$control,
                                                 table = env2$table,
