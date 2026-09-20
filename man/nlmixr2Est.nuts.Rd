@@ -18,11 +18,14 @@ nlmixr2 fit
 `est="nuts"` is `est="stan"` with `stanControl(algorithm="NUTS")`
 forced -- naming the SAMPLING ALGORITHM (Stan's No-U-Turn full-Bayes
 HMC sampler) the way `est="advi"` and `est="pathfinder"` name theirs,
-instead of naming the software tool (`est="stan"`). `"NUTS"` is
+instead of naming the software tool (`est="stan"`).  `"NUTS"` is
 already `stanControl()`'s default, so this is mostly a naming
 convenience; asking for a variational algorithm under `est="nuts"` is
-an error rather than a silent override.  \code{\link[=nutsControl]{nutsControl()}}
-is its control, and `nlmixr2(model, data, nutsControl())` infers
-`est="nuts"` from it.
+an error rather than a silent override.  [nutsControl()] is its
+control, and `nlmixr2(model, data, nutsControl())` infers `est="nuts"`
+from it.
+}
+\author{
+Matthew L Fidler
 }
 \keyword{internal}

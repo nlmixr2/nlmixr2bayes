@@ -7,35 +7,33 @@
 adviControl(..., algorithm = c("meanfield", "fullrank"))
 }
 \arguments{
-\item{...}{\code{\link[=stanControl]{stanControl()}} options}
+\item{...}{[stanControl()] options}
 
-\item{algorithm}{the ADVI variant: \code{"meanfield"} (default;
-independent Gaussians on the unconstrained scale) or \code{"fullrank"}
-(one full-covariance Gaussian).  \code{"NUTS"} is accepted only because
-it is \code{\link[=stanControl]{stanControl()}}'s default and selects
-\code{"meanfield"}; \code{"pathfinder"} errors}
+\item{algorithm}{the ADVI variant: `"meanfield"` (default; independent
+Gaussians on the unconstrained scale) or `"fullrank"` (one
+full-covariance Gaussian).  `"NUTS"` is accepted only because it is
+[stanControl()]'s default and selects `"meanfield"`; `"pathfinder"`
+errors}
 }
 \value{
 an `adviControl` list
 }
 \description{
-`adviControl()` is \code{\link[=stanControl]{stanControl()}} with an ADVI
-`algorithm` forced -- the same options, named after the INFERENCE
-ALGORITHM instead of the software tool.  Because `class(adviControl())`
-is `"adviControl"`, `nlmixr2(model, data, adviControl())` infers
-`est="advi"` with no `est=` argument.
+`adviControl()` is [stanControl()] with an ADVI `algorithm` forced --
+the same options, named after the INFERENCE ALGORITHM instead of the
+software tool.  Because `class(adviControl())` is `"adviControl"`,
+`nlmixr2(model, data, adviControl())` infers `est="advi"` with no
+`est=` argument.
 }
 \details{
-ADVI is typically 10-100x faster than NUTS and is a fair first look, but
-it is an APPROXIMATION -- it understates tails and correlations; the
-Pareto-k diagnostic (`khat`) replaces Rhat/divergences and `khat > 0.7`
-means NUTS should be used instead.
+ADVI is typically 10-100x faster than NUTS and is a fair first look,
+but it is an APPROXIMATION -- it understates tails and correlations;
+the Pareto-k diagnostic (`khat`) replaces Rhat/divergences and
+`khat > 0.7` means NUTS should be used instead.
 }
 \seealso{
-\code{\link[=stanControl]{stanControl()}},
-\code{\link[=nutsControl]{nutsControl()}},
-\code{\link[=pathfinderControl]{pathfinderControl()}}
+[stanControl()], [nutsControl()], [pathfinderControl()]
 }
 \author{
-Matthew L. Fidler
+Matthew L Fidler
 }

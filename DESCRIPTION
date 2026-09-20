@@ -15,10 +15,11 @@ Description: Bayesian estimation for 'nlmixr2' models by linking Stan (via
     analytically-supplied gradients as an external function.  Prior
     distributions come from the model's 'ini({})' block, whose distribution
     catalog is one-to-one with Stan's.
-License: MIT
+License: MIT + file LICENSE
 URL: https://github.com/nlmixr2/nlmixr2bayes,
     https://nlmixr2.github.io/nlmixr2bayes/
 BugReports: https://github.com/nlmixr2/nlmixr2bayes/issues
+Additional_repositories: https://andrjohns.r-universe.dev
 Depends: R (>= 4.2)
 Imports:
     nlmixr2est (>= 7.0.3),
@@ -33,6 +34,7 @@ Imports:
     utils
 Suggests:
     bayesplot,
+    callr,
     loo,
     posterior,
     testthat (>= 3.0.0),
@@ -43,16 +45,12 @@ Suggests:
     numDeriv,
     mvtnorm,
     knitr,
-    rmarkdown
+    rmarkdown,
+    StanEstimators
 LinkingTo:
     rxode2,
     nlmixr2est,
     Rcpp
-Remotes:
-   nlmixr2/nlmixr2est,
-   nlmixr2/rxode2,
-   nlmixr2/lotri,
-   nlmixr2/nlmixr2save
 Encoding: UTF-8
 VignetteBuilder: knitr
 Config/testthat/edition: 3

@@ -18,3 +18,6 @@ a valid `stanControl`
 Validate a stanControl for the nlmixr2 dispatch (mandatory: the default
 errors before `nlmixr2Est` dispatch)
 }
+\author{
+Matthew L Fidler
+}

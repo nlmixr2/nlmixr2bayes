@@ -1,4 +1,6 @@
 #' Path to the rxstan C++ headers
+#' @return a single string: the installed `include` directory holding the
+#'   rxstan C++ headers
 #' @author Lukas A. Widmer
 #' @export
 rxsIncludePath <- function() {

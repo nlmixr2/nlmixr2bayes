@@ -21,4 +21,7 @@ first nlmixr2 estimation method to declare `nlmixr2Priors = "all"`: prior
 distributions come from the model's `ini({})` block and are required
 (a model without any errors, printing the lines to add).
 }
+\author{
+Matthew L Fidler
+}
 \keyword{internal}

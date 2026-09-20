@@ -720,10 +720,21 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     .init <- .init
     .sm <- sm
     function(.cid) {
-      nlmixr2bayes:::.stanLinkSetupForRun(.ui, .data, .map, .cov, .needSens, .control)
-      on.exit(nlmixr2bayes:::stanLinkFree(), add = TRUE)
+      utils::getFromNamespace(".stanLinkSetupForRun", "nlmixr2bayes")(
+        .ui,
+        .data,
+        .map,
+        .cov,
+        .needSens,
+        .control
+      )
+      on.exit(nlmixr2bayes::stanLinkFree(), add = TRUE)
       on.exit(.Call(`_nlmixr2bayes_clearThetaBase`), add = TRUE)
-      .i1 <- nlmixr2bayes:::.stanChainInit(.init, .cid, .control$chains)
+      .i1 <- utils::getFromNamespace(".stanChainInit", "nlmixr2bayes")(
+        .init,
+        .cid,
+        .control$chains
+      )
       rstan::sampling(
         .sm,
         data = .gen$data,

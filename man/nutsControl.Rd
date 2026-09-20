@@ -7,34 +7,30 @@
 nutsControl(..., algorithm = "NUTS")
 }
 \arguments{
-\item{...}{\code{\link[=stanControl]{stanControl()}} options}
+\item{...}{[stanControl()] options}
 
-\item{algorithm}{must be \code{"NUTS"} (present so a
-\code{\link[=stanControl]{stanControl()}} can be converted to a
-\code{nutsControl}; a variational algorithm errors)}
+\item{algorithm}{must be `"NUTS"` (present so a [stanControl()] can be
+converted to a `nutsControl`; a variational algorithm errors)}
 }
 \value{
 a `nutsControl` list
 }
 \description{
-`nutsControl()` is \code{\link[=stanControl]{stanControl()}} with
-`algorithm = "NUTS"` forced -- the same options, named after the
-SAMPLING ALGORITHM instead of the software tool, the way nlmixr2est's
-`foceControl()` is `foceiControl()` with `interaction = FALSE` forced.
-Because `class(nutsControl())` is `"nutsControl"`,
-`nlmixr2(model, data, nutsControl())` infers `est="nuts"` with no
-`est=` argument.
+`nutsControl()` is [stanControl()] with `algorithm = "NUTS"` forced --
+the same options, named after the SAMPLING ALGORITHM instead of the
+software tool, the way nlmixr2est's `foceControl()` is `foceiControl()`
+with `interaction = FALSE` forced.  Because `class(nutsControl())` is
+`"nutsControl"`, `nlmixr2(model, data, nutsControl())` infers
+`est="nuts"` with no `est=` argument.
 }
 \details{
-`"NUTS"` is already \code{\link[=stanControl]{stanControl()}}'s default,
-so this is mostly a naming convenience; asking for a variational
-algorithm here is an error rather than a silent override.
+`"NUTS"` is already [stanControl()]'s default, so this is mostly a
+naming convenience; asking for a variational algorithm here is an error
+rather than a silent override.
 }
 \seealso{
-\code{\link[=stanControl]{stanControl()}},
-\code{\link[=adviControl]{adviControl()}},
-\code{\link[=pathfinderControl]{pathfinderControl()}}
+[stanControl()], [adviControl()], [pathfinderControl()]
 }
 \author{
-Matthew L. Fidler
+Matthew L Fidler
 }

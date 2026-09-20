@@ -7,17 +7,16 @@
 pathfinderControl(..., algorithm = c("pathfinder", "NUTS"))
 }
 \arguments{
-\item{...}{\code{\link[=stanControl]{stanControl()}} options}
+\item{...}{[stanControl()] options}
 
-\item{algorithm}{must be \code{"pathfinder"} (\code{"NUTS"} is accepted
-only because it is \code{\link[=stanControl]{stanControl()}}'s default;
-an ADVI variant errors)}
+\item{algorithm}{must be `"pathfinder"` (`"NUTS"` is accepted only
+because it is [stanControl()]'s default; an ADVI variant errors)}
 }
 \value{
 a `pathfinderControl` list
 }
 \description{
-`pathfinderControl()` is \code{\link[=stanControl]{stanControl()}} with
+`pathfinderControl()` is [stanControl()] with
 `algorithm = "pathfinder"` forced -- the same options, named after the
 INFERENCE ALGORITHM instead of the software tool.  Because
 `class(pathfinderControl())` is `"pathfinderControl"`,
@@ -26,14 +25,12 @@ with no `est=` argument.
 }
 \details{
 Pathfinder needs the `StanEstimators` package installed (rstan does not
-expose Pathfinder yet); see \code{\link[=stanControl]{stanControl()}} for
-`pathfinderPaths` and the `khat` diagnostic.
+expose Pathfinder yet); see [stanControl()] for `pathfinderPaths` and
+the `khat` diagnostic.
 }
 \seealso{
-\code{\link[=stanControl]{stanControl()}},
-\code{\link[=nutsControl]{nutsControl()}},
-\code{\link[=adviControl]{adviControl()}}
+[stanControl()], [nutsControl()], [adviControl()]
 }
 \author{
-Matthew L. Fidler
+Matthew L Fidler
 }

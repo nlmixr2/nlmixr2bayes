@@ -18,8 +18,10 @@ nlmixr2 fit
 `est="advi"` is `est="stan"` with `stanControl(algorithm="meanfield")`
 unless the control already names an ADVI variant (`"fullrank"` is
 honored; asking for `"NUTS"`/`"pathfinder"` under `est="advi"` is an
-error rather than a silent override).  \code{\link[=adviControl]{adviControl()}}
-is its control, and `nlmixr2(model, data, adviControl())` infers
-`est="advi"` from it.
+error rather than a silent override).  [adviControl()] is its control,
+and `nlmixr2(model, data, adviControl())` infers `est="advi"` from it.
+}
+\author{
+Matthew L Fidler
 }
 \keyword{internal}

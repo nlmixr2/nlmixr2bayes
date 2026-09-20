@@ -13,5 +13,5 @@ invisibly `TRUE` if a link was freed, `FALSE` if none was active
 Free the linked likelihood
 }
 \author{
-Matthew L. Fidler
+Matthew L Fidler
 }

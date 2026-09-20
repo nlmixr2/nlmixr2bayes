@@ -17,8 +17,11 @@ nlmixr2 fit
 \description{
 `est="pathfinder"` is `est="stan"` with
 `stanControl(algorithm="pathfinder")` forced.
-\code{\link[=pathfinderControl]{pathfinderControl()}} is its control, and
+[pathfinderControl()] is its control, and
 `nlmixr2(model, data, pathfinderControl())` infers `est="pathfinder"`
 from it.
+}
+\author{
+Matthew L Fidler
 }
 \keyword{internal}

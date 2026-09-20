@@ -31,5 +31,5 @@ cached by a hash of the program, the header, and the rstan/nlmixr2bayes
 versions.
 }
 \author{
-Matthew L. Fidler
+Matthew L Fidler
 }

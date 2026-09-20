@@ -18,3 +18,6 @@ the rxode2/nlmixr2est subject loop inside each likelihood evaluation.  This
 sets how many threads that loop uses (clamped to what the loaded solve pool
 supports, and to 1 when the ODE method is not thread safe).
 }
+\author{
+Matthew L Fidler
+}
