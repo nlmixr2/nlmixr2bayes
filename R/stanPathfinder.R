@@ -29,22 +29,27 @@
 #' @noRd
 .pfInvHessChol <- function(sList, yList, n) {
   .m <- length(sList)
-  if (.m == 0L) return(NULL)
+  if (.m == 0L) {
+    return(NULL)
+  }
   .s <- sList[[.m]]
   .y <- yList[[.m]]
   .sy <- sum(.s * .y)
-  if (!is.finite(.sy) || .sy <= 0) return(NULL)
+  if (!is.finite(.sy) || .sy <= 0) {
+    return(NULL)
+  }
   .gamma <- .sy / sum(.y * .y)
   .h <- diag(.gamma, n)
   for (.k in seq_len(.m)) {
     .s <- sList[[.k]]
     .y <- yList[[.k]]
     .rho <- 1 / sum(.s * .y)
-    if (!is.finite(.rho) || .rho <= 0) next
+    if (!is.finite(.rho) || .rho <= 0) {
+      next
+    }
     # H <- (I - rho s y') H (I - rho y s') + rho s s'
     .hy <- .h %*% .y
-    .h <- .h - .rho * (.s %*% t(.hy) + .hy %*% t(.s)) +
-      (.rho^2 * sum(.y * .hy) + .rho) * (.s %*% t(.s))
+    .h <- .h - .rho * (.s %*% t(.hy) + .hy %*% t(.s)) + (.rho^2 * sum(.y * .hy) + .rho) * (.s %*% t(.s))
   }
   .h <- (.h + t(.h)) / 2
   .ch <- tryCatch(chol(.h), error = function(e) NULL)
@@ -73,14 +78,17 @@
 #' selection.  fn(x) is the log density (-Inf allowed), gr(x) its
 #' gradient.  Returns NULL when no usable approximation was found.
 #' @noRd
-.pathfinderOne <- function(fn, gr, x0, maxIter = 100L, history = 6L,
-                           elboDraws = 25L, tolGrad = 1e-8) {
+.pathfinderOne <- function(fn, gr, x0, maxIter = 100L, history = 6L, elboDraws = 25L, tolGrad = 1e-8) {
   .n <- length(x0)
   .x <- x0
   .f <- fn(.x)
-  if (!is.finite(.f)) return(NULL)
+  if (!is.finite(.f)) {
+    return(NULL)
+  }
   .g <- gr(.x)
-  if (any(!is.finite(.g))) return(NULL)
+  if (any(!is.finite(.g))) {
+    return(NULL)
+  }
   .sList <- list()
   .yList <- list()
   # candidate approximations along the path
@@ -94,7 +102,9 @@
       # H g via the factor
       as.numeric(t(.ch) %*% (.ch %*% .g))
     }
-    if (sum(.dir * .g) <= 0) .dir <- .g # ensure ascent
+    if (sum(.dir * .g) <= 0) {
+      .dir <- .g
+    } # ensure ascent
     # backtracking Armijo line search (maximization)
     .step <- 1
     .ok <- FALSE
@@ -107,9 +117,13 @@
       }
       .step <- .step / 2
     }
-    if (!.ok) break
+    if (!.ok) {
+      break
+    }
     .gn <- gr(.xn)
-    if (any(!is.finite(.gn))) break
+    if (any(!is.finite(.gn))) {
+      break
+    }
     .s <- .xn - .x
     # y on the NEGATIVE log density scale so s'y > 0 near a maximum
     .y <- .g - .gn
@@ -133,13 +147,14 @@
       .keep <- is.finite(.lp)
       if (sum(.keep) >= max(2L, elboDraws %/% 2L)) {
         .elbo <- mean(.lp[.keep] - .lq[.keep])
-        .cand[[length(.cand) + 1L]] <- list(mu = .x, chol = .ch,
-                                            elbo = .elbo)
+        .cand[[length(.cand) + 1L]] <- list(mu = .x, chol = .ch, elbo = .elbo)
       }
     }
     if (sqrt(sum(.g^2)) < tolGrad) break
   }
-  if (length(.cand) == 0L) return(NULL)
+  if (length(.cand) == 0L) {
+    return(NULL)
+  }
   .best <- which.max(vapply(.cand, function(c) c$elbo, numeric(1)))
   .cand[[.best]]
 }
@@ -148,24 +163,36 @@
 #' mixture, PSIS-smoothed importance resampling.  Returns
 #' list(draws, khat, lp, nPathsOk) or NULL when every path failed.
 #' @noRd
-.pathfinderMulti <- function(fn, gr, x0, paths = 4L, jitterSd = 2,
-                             drawsPerPath = 1000L, nDraws = 1000L,
-                             maxIter = 100L, history = 6L,
-                             elboDraws = 25L) {
+.pathfinderMulti <- function(
+  fn,
+  gr,
+  x0,
+  paths = 4L,
+  jitterSd = 2,
+  drawsPerPath = 1000L,
+  nDraws = 1000L,
+  maxIter = 100L,
+  history = 6L,
+  elboDraws = 25L
+) {
   .n <- length(x0)
   .apx <- list()
   for (.j in seq_len(paths)) {
     .xj <- if (.j == 1L) x0 else x0 + stats::rnorm(.n, 0, jitterSd)
-    .a <- .pathfinderOne(fn, gr, .xj, maxIter = maxIter,
-                         history = history, elboDraws = elboDraws)
+    .a <- .pathfinderOne(fn, gr, .xj, maxIter = maxIter, history = history, elboDraws = elboDraws)
     if (!is.null(.a)) .apx[[length(.apx) + 1L]] <- .a
   }
-  if (length(.apx) == 0L) return(NULL)
+  if (length(.apx) == 0L) {
+    return(NULL)
+  }
   .nap <- length(.apx)
   # pooled draws + mixture density of the selected Gaussians
-  .z <- do.call(rbind, lapply(.apx, function(a) {
-    .pfMvnDraw(drawsPerPath, a$mu, a$chol)
-  }))
+  .z <- do.call(
+    rbind,
+    lapply(.apx, function(a) {
+      .pfMvnDraw(drawsPerPath, a$mu, a$chol)
+    })
+  )
   .lqm <- matrix(0, nrow(.z), .nap)
   for (.k in seq_len(.nap)) {
     .lqm[, .k] <- .pfMvnLogd(.z, .apx[[.k]]$mu, .apx[[.k]]$chol)
@@ -178,23 +205,22 @@
   .keep <- is.finite(.lp)
   .z <- .z[.keep, , drop = FALSE]
   .lw <- .lp[.keep] - .lq[.keep]
-  if (nrow(.z) < 10L) return(NULL)
+  if (nrow(.z) < 10L) {
+    return(NULL)
+  }
   # PSIS smoothing + khat (loo is a hard requirement of the pathfinder
   # algorithm; it is in Suggests for the LOO fit rows already)
   .khat <- NA_real_
   .w <- .lw - max(.lw)
   if (requireNamespace("loo", quietly = TRUE)) {
-    .ps <- tryCatch(suppressWarnings(loo::psis(.lw, r_eff = NA)),
-                    error = function(e) NULL)
+    .ps <- tryCatch(suppressWarnings(loo::psis(.lw, r_eff = NA)), error = function(e) NULL)
     if (!is.null(.ps)) {
       .khat <- .ps$diagnostics$pareto_k
       .w <- as.numeric(stats::weights(.ps, log = TRUE, normalize = TRUE))
     }
   }
-  .idx <- sample.int(nrow(.z), size = nDraws, replace = TRUE,
-                     prob = exp(.w - max(.w)))
-  list(draws = .z[.idx, , drop = FALSE], khat = .khat,
-       lp = .lp[.keep][.idx], nPathsOk = .nap)
+  .idx <- sample.int(nrow(.z), size = nDraws, replace = TRUE, prob = exp(.w - max(.w)))
+  list(draws = .z[.idx, , drop = FALSE], khat = .khat, lp = .lp[.keep][.idx], nPathsOk = .nap)
 }
 
 # ---- the est="stan" runner -------------------------------------------------
@@ -204,8 +230,7 @@
 #' @noRd
 .stanRunPathfinder <- function(sm, gen, map, nid, control, init) {
   if (!requireNamespace("loo", quietly = TRUE)) {
-    stop("algorithm=\"pathfinder\" needs the loo package for ",
-         "Pareto-smoothed importance resampling", call. = FALSE)
+    stop("algorithm=\"pathfinder\" needs the loo package for ", "Pareto-smoothed importance resampling", call. = FALSE)
   }
   # a minimal stanfit to expose log_prob/grad_log_prob (2 iterations from
   # the ini() values; milliseconds)
@@ -214,34 +239,47 @@
   } else {
     init
   }
-  .f0 <- rstan::sampling(sm, data = gen$data, chains = 1, iter = 2,
-                         warmup = 1, refresh = 0, seed = control$seed,
-                         init = list(.i1))
+  .f0 <- rstan::sampling(
+    sm,
+    data = gen$data,
+    chains = 1,
+    iter = 2,
+    warmup = 1,
+    refresh = 0,
+    seed = control$seed,
+    init = list(.i1)
+  )
   .up0 <- rstan::unconstrain_pars(.f0, .i1)
   .fn <- function(x) {
-    tryCatch(rstan::log_prob(.f0, x, adjust_transform = TRUE,
-                             gradient = FALSE),
-             error = function(e) -Inf)
+    tryCatch(rstan::log_prob(.f0, x, adjust_transform = TRUE, gradient = FALSE), error = function(e) -Inf)
   }
   .gr <- function(x) {
-    tryCatch(as.numeric(rstan::grad_log_prob(.f0, x,
-                                             adjust_transform = TRUE)),
-             error = function(e) rep(NaN, length(x)))
+    tryCatch(as.numeric(rstan::grad_log_prob(.f0, x, adjust_transform = TRUE)), error = function(e) rep(NaN, length(x)))
   }
-  .res <- .pathfinderMulti(.fn, .gr, .up0,
-                           paths = control$pathfinderPaths,
-                           jitterSd = max(control$initJitterSd, 0.5),
-                           drawsPerPath = control$vbOutputSamples,
-                           nDraws = control$vbOutputSamples,
-                           maxIter = 250L, history = 6L,
-                           elboDraws = 25L)
+  .res <- .pathfinderMulti(
+    .fn,
+    .gr,
+    .up0,
+    paths = control$pathfinderPaths,
+    jitterSd = max(control$initJitterSd, 0.5),
+    drawsPerPath = control$vbOutputSamples,
+    nDraws = control$vbOutputSamples,
+    maxIter = 250L,
+    history = 6L,
+    elboDraws = 25L
+  )
   if (is.null(.res)) {
-    stop("Pathfinder failed on every path (no usable local Gaussian); ",
-         "use algorithm=\"NUTS\"", call. = FALSE)
+    stop("Pathfinder failed on every path (no usable local Gaussian); ", "use algorithm=\"NUTS\"", call. = FALSE)
   }
-  .pf <- list(fit0 = .f0, draws = .res$draws, khat = .res$khat,
-              lp = .res$lp, nPathsOk = .res$nPathsOk, gen = gen,
-              cache = new.env(parent = emptyenv()))
+  .pf <- list(
+    fit0 = .f0,
+    draws = .res$draws,
+    khat = .res$khat,
+    lp = .res$lp,
+    nPathsOk = .res$nPathsOk,
+    gen = gen,
+    cache = new.env(parent = emptyenv())
+  )
   class(.pf) <- "nlmixr2bayesPathfinder"
   .pf
 }
@@ -266,7 +304,9 @@
 #' the exact generated code produces them
 #' @noRd
 .pathfinderConstrain <- function(pf) {
-  if (!is.null(pf$cache$constrained)) return(pf$cache$constrained)
+  if (!is.null(pf$cache$constrained)) {
+    return(pf$cache$constrained)
+  }
   .f0 <- pf$fit0
   .nd <- nrow(pf$draws)
   .cp1 <- rstan::constrain_pars(.f0, pf$draws[1L, ])
@@ -295,12 +335,13 @@
     .con <- .pathfinderConstrain(sf)
     .miss <- setdiff(pars, names(.con))
     if (length(.miss) > 0L) {
-      if (is.null(sf$cache$gq)) sf$cache$gq <- .pathfinderGqs(sf)
+      if (is.null(sf$cache$gq)) {
+        sf$cache$gq <- .pathfinderGqs(sf)
+      }
       .con <- c(.con, sf$cache$gq)
       .still <- setdiff(pars, names(.con))
       if (length(.still) > 0L) {
-        stop("Pathfinder draws lack ", paste(.still, collapse = ", "),
-             call. = FALSE) # nocov
+        stop("Pathfinder draws lack ", paste(.still, collapse = ", "), call. = FALSE) # nocov
       }
     }
     return(.con[pars])
@@ -323,23 +364,22 @@
   .fn <- character(0)
   for (.nm in .parNames) {
     .v <- .con[[.nm]]
-    if (is.null(.v)) next # transformed/gq names resolve later
+    if (is.null(.v)) {
+      next
+    } # transformed/gq names resolve later
     .dims <- dim(.v)
     if (length(.dims) == 2L) {
       .m <- .v
       .cn <- if (.dims[2] == 1L) .nm else paste0(.nm, "[", seq_len(.dims[2]), "]")
     } else {
       .m <- matrix(.v, .nd, prod(.dims[-1]))
-      .cn <- paste0(.nm, "[",
-                    apply(expand.grid(lapply(.dims[-1], seq_len)), 1,
-                          paste, collapse = ","), "]")
+      .cn <- paste0(.nm, "[", apply(expand.grid(lapply(.dims[-1], seq_len)), 1, paste, collapse = ","), "]")
     }
     colnames(.m) <- .cn
     .flat <- if (is.null(.flat)) .m else cbind(.flat, .m)
     .fn <- c(.fn, .cn)
   }
-  .gq <- rstan::gqs(rstan::get_stanmodel(.f0), data = pf$gen$data,
-                    draws = .flat)
+  .gq <- rstan::gqs(rstan::get_stanmodel(.f0), data = pf$gen$data, draws = .flat)
   rstan::extract(.gq)
 }
 
@@ -359,11 +399,14 @@
     .cn <- if (ncol(.m) == 1L) .nm else paste0(.nm, "[", seq_len(ncol(.m)), "]")
     for (.k in seq_len(ncol(.m))) {
       .x <- .m[, .k]
-      .rows[[.cn[.k]]] <- c(mean = mean(.x), se_mean = NA_real_,
-                            sd = stats::sd(.x),
-                            stats::quantile(.x, c(0.025, 0.25, 0.5,
-                                                  0.75, 0.975)),
-                            n_eff = NA_real_, Rhat = NA_real_)
+      .rows[[.cn[.k]]] <- c(
+        mean = mean(.x),
+        se_mean = NA_real_,
+        sd = stats::sd(.x),
+        stats::quantile(.x, c(0.025, 0.25, 0.5, 0.75, 0.975)),
+        n_eff = NA_real_,
+        Rhat = NA_real_
+      )
     }
   }
   do.call(rbind, .rows)

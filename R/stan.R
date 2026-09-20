@@ -42,8 +42,13 @@ rxsStanIncludes <- function(modelName, tag = NULL, pre = NULL, post = NULL) {
     "\n} // close the model namespace so the bridge lands at global scope\n",
     if (!is.null(pre)) paste0(pre, "\n") else "",
     if (!is.null(tag)) paste0("#define RXSTAN_MODEL_TAG ", tag, "\n") else "",
-    "#include \"", header, "\"\n",
+    "#include \"",
+    header,
+    "\"\n",
     if (!is.null(post)) paste0(post, "\n") else "",
-    "namespace model_", modelName, "_namespace {\n",
-    "using ::rxstan::rx_solve;\n")
+    "namespace model_",
+    modelName,
+    "_namespace {\n",
+    "using ::rxstan::rx_solve;\n"
+  )
 }

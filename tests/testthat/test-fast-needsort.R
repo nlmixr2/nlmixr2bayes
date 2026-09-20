@@ -32,11 +32,19 @@ test_that("a DDE reports needSort but still gets the fast path", {
   m <- rxode2::rxode2(ddeModel, calcSens = c("lkin", "lkout", "ltau"))
   expect_gt(as.integer(rxode2::rxModelVars(m)$needSort)[1], 0L)
   expect_equal(
-    as.integer(rxode2::rxModelVars(rxode2::rxode2(ddeModel))$needSort)[1], 0L)
+    as.integer(rxode2::rxModelVars(rxode2::rxode2(ddeModel))$needSort)[1],
+    0L
+  )
 
-  h <- rxsRegister(ddeModel, events = rxode2::et(seq(0.25, 25, by = 0.25)),
-                   sens = c("lkin", "lkout", "ltau"), output = "R",
-                   atol = 1e-10, rtol = 1e-10, method = "dop853")
+  h <- rxsRegister(
+    ddeModel,
+    events = rxode2::et(seq(0.25, 25, by = 0.25)),
+    sens = c("lkin", "lkout", "ltau"),
+    output = "R",
+    atol = 1e-10,
+    rtol = 1e-10,
+    method = "dop853"
+  )
   on.exit(rxsRelease(h))
 
   expect_null(attr(h, "fastDisabled"))
@@ -45,9 +53,15 @@ test_that("a DDE reports needSort but still gets the fast path", {
 })
 
 test_that("the DDE fast path agrees with the slow one exactly", {
-  h <- rxsRegister(ddeModel, events = rxode2::et(seq(0.25, 25, by = 0.25)),
-                   sens = c("lkin", "lkout", "ltau"), output = "R",
-                   atol = 1e-10, rtol = 1e-10, method = "dop853")
+  h <- rxsRegister(
+    ddeModel,
+    events = rxode2::et(seq(0.25, 25, by = 0.25)),
+    sens = c("lkin", "lkout", "ltau"),
+    output = "R",
+    atol = 1e-10,
+    rtol = 1e-10,
+    method = "dop853"
+  )
   on.exit(rxsRelease(h))
 
   ## Sweep the way HMC would rather than checking one point.
@@ -66,9 +80,15 @@ test_that("the DDE fast path agrees with the slow one exactly", {
 test_that("a modeled alag with real doses still refuses the fast path", {
   ev <- rxode2::et(amt = 100, cmt = "depot")
   ev <- rxode2::et(ev, c(1, 2, 4, 8, 12))
-  h <- rxsRegister(lagModel, events = ev,
-                   sens = c("lka", "lcl", "ltlag"), output = "center",
-                   eventSens = "jump", atol = 1e-10, rtol = 1e-10)
+  h <- rxsRegister(
+    lagModel,
+    events = ev,
+    sens = c("lka", "lcl", "ltlag"),
+    output = "center",
+    eventSens = "jump",
+    atol = 1e-10,
+    rtol = 1e-10
+  )
   on.exit(rxsRelease(h))
 
   expect_match(attr(h, "fastDisabled"), "needSort")
@@ -86,8 +106,7 @@ d/dt(center) <-  ka * depot - (cl / v) * center
 "
   ev <- rxode2::et(amt = 100, cmt = "depot")
   ev <- rxode2::et(ev, seq(0.5, 24, by = 1.5))
-  h <- rxsRegister(pk, events = ev, sens = c("lka", "lcl", "lv"),
-                   output = "center", atol = 1e-10, rtol = 1e-10)
+  h <- rxsRegister(pk, events = ev, sens = c("lka", "lcl", "lv"), output = "center", atol = 1e-10, rtol = 1e-10)
   on.exit(rxsRelease(h))
 
   expect_null(attr(h, "fastDisabled"))

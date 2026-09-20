@@ -21,28 +21,29 @@
 #' @noRd
 .stanPhase0Code <- function() {
   paste(
-        "functions {",
-        "  // external (allow_undefined): value + analytic d/d(eta) supplied by",
-        "  // the linked rxode2/nlmixr2est likelihood via nlmixr2bayes_lp.hpp",
-        "  vector nlmixr2_cond_all(matrix etaMat);",
-        "}",
-        "data {",
-        "  int<lower=1> N;              // subjects, in the link handle's idLvl order",
-        "  int<lower=1> P;              // etas per subject",
-        "  cholesky_factor_cov[P] L;    // Omega = L L', fixed in phase 0",
-        "}",
-        "parameters {",
-        "  matrix[N, P] eta;",
-        "}",
-        "model {",
-        "  // Stan owns the FULL, normalized eta prior; nlmixr2_cond_all returns",
-        "  // the CONDITIONAL log p(y_i | eta_i) only, so nothing is double-counted",
-        "  for (i in 1:N) {",
-        "    eta[i]' ~ multi_normal_cholesky(rep_vector(0, P), L);",
-        "  }",
-        "  target += sum(nlmixr2_cond_all(eta));",
-        "}",
-        sep = "\n")
+    "functions {",
+    "  // external (allow_undefined): value + analytic d/d(eta) supplied by",
+    "  // the linked rxode2/nlmixr2est likelihood via nlmixr2bayes_lp.hpp",
+    "  vector nlmixr2_cond_all(matrix etaMat);",
+    "}",
+    "data {",
+    "  int<lower=1> N;              // subjects, in the link handle's idLvl order",
+    "  int<lower=1> P;              // etas per subject",
+    "  cholesky_factor_cov[P] L;    // Omega = L L', fixed in phase 0",
+    "}",
+    "parameters {",
+    "  matrix[N, P] eta;",
+    "}",
+    "model {",
+    "  // Stan owns the FULL, normalized eta prior; nlmixr2_cond_all returns",
+    "  // the CONDITIONAL log p(y_i | eta_i) only, so nothing is double-counted",
+    "  for (i in 1:N) {",
+    "    eta[i]' ~ multi_normal_cholesky(rep_vector(0, P), L);",
+    "  }",
+    "  target += sum(nlmixr2_cond_all(eta));",
+    "}",
+    sep = "\n"
+  )
 }
 
 #' Whether a cached `stanmodel` object's compiled module can actually be
@@ -58,17 +59,22 @@
 #' @noRd
 .stanModelUsable <- function(m) {
   isTRUE(methods::is(m, "stanmodel")) &&
-    isTRUE(tryCatch({
-      rstan:::mk_cppmodule(m)
-      TRUE
-    }, error = function(e) FALSE))
+    isTRUE(tryCatch(
+      {
+        rstan:::mk_cppmodule(m)
+        TRUE
+      },
+      error = function(e) FALSE
+    ))
 }
 
 #' Path to the injected external-function header
 #' @noRd
 .stanLpHeader <- function() {
   .h <- system.file("include", "nlmixr2bayes_lp.hpp", package = "nlmixr2bayes")
-  if (!nzchar(.h)) stop("nlmixr2bayes_lp.hpp not found", call. = FALSE) # nocov
+  if (!nzchar(.h)) {
+    stop("nlmixr2bayes_lp.hpp not found", call. = FALSE)
+  } # nocov
   # forward slashes: rstan uses includes= as a sub() replacement, where
   # backslashes are escape characters
   normalizePath(.h, winslash = "/")
@@ -89,15 +95,17 @@
 #' @return an `rstan::stanmodel`
 #' @export
 #' @author Matthew L Fidler
-stanCompile <- function(code = .stanPhase0Code(), cache = TRUE,
-                        cacheDir = NULL, verbose = FALSE) {
+stanCompile <- function(code = .stanPhase0Code(), cache = TRUE, cacheDir = NULL, verbose = FALSE) {
   rxode2::rxReq("rstan")
   .stanAssertBuildOk()
   .hpp <- .stanLpHeader()
-  .key <- digest::digest(list(code, readLines(.hpp),
-                              as.character(utils::packageVersion("rstan")),
-                              as.character(utils::packageVersion("nlmixr2bayes")),
-                              R.version.string))
+  .key <- digest::digest(list(
+    code,
+    readLines(.hpp),
+    as.character(utils::packageVersion("rstan")),
+    as.character(utils::packageVersion("nlmixr2bayes")),
+    R.version.string
+  ))
   if (cache && exists(.key, envir = .stanCompileEnv, inherits = FALSE)) {
     return(get(.key, envir = .stanCompileEnv, inherits = FALSE))
   }
@@ -125,22 +133,29 @@ stanCompile <- function(code = .stanPhase0Code(), cache = TRUE,
   # and restore around the Stan compile.
   .leak <- c("PKG_CPPFLAGS", "PKG_LIBS", "USE_CXX17", "PKG_CXXFLAGS")
   .old <- Sys.getenv(.leak, unset = NA_character_)
-  on.exit({
-    for (.v in .leak) {
-      if (is.na(.old[[.v]])) {
-        Sys.unsetenv(.v)
-      } else {
-        do.call(Sys.setenv, stats::setNames(list(.old[[.v]]), .v))
+  on.exit(
+    {
+      for (.v in .leak) {
+        if (is.na(.old[[.v]])) {
+          Sys.unsetenv(.v)
+        } else {
+          do.call(Sys.setenv, stats::setNames(list(.old[[.v]]), .v))
+        }
       }
-    }
-  }, add = TRUE)
+    },
+    add = TRUE
+  )
   # a fresh program shape takes 1-2 minutes to compile; say so, or the
   # user reasonably concludes the session froze
   cli::cli_inform("compiling Stan model (typically 1-2 minutes)...")
-  .m <- rstan::stan_model(model_code = code, model_name = "nlmixr2bayes",
-                          allow_undefined = TRUE,
-                          includes = paste0("\n#include \"", .hpp, "\"\n"),
-                          auto_write = FALSE, verbose = verbose)
+  .m <- rstan::stan_model(
+    model_code = code,
+    model_name = "nlmixr2bayes",
+    allow_undefined = TRUE,
+    includes = paste0("\n#include \"", .hpp, "\"\n"),
+    auto_write = FALSE,
+    verbose = verbose
+  )
   cli::cli_inform("done")
   if (cache) {
     assign(.key, .m, envir = .stanCompileEnv)

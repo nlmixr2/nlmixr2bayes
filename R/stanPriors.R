@@ -44,11 +44,16 @@
 #' Format a number for Stan source
 #' @noRd
 .stanNum <- function(x) {
-  vapply(x, function(v) {
-    if (is.infinite(v)) stop("cannot emit an infinite value into Stan source",
-                             call. = FALSE) # nocov
-    format(v, digits = 15, trim = TRUE, scientific = FALSE)
-  }, character(1))
+  vapply(
+    x,
+    function(v) {
+      if (is.infinite(v)) {
+        stop("cannot emit an infinite value into Stan source", call. = FALSE)
+      } # nocov
+      format(v, digits = 15, trim = TRUE, scientific = FALSE)
+    },
+    character(1)
+  )
 }
 
 #' The bounds declaration for a Stan parameter, "" when unbounded
@@ -56,9 +61,15 @@
 .stanConstraint <- function(lower, upper) {
   .l <- is.finite(lower)
   .u <- is.finite(upper)
-  if (.l && .u) return(paste0("<lower=", .stanNum(lower), ",upper=", .stanNum(upper), ">"))
-  if (.l) return(paste0("<lower=", .stanNum(lower), ">"))
-  if (.u) return(paste0("<upper=", .stanNum(upper), ">"))
+  if (.l && .u) {
+    return(paste0("<lower=", .stanNum(lower), ",upper=", .stanNum(upper), ">"))
+  }
+  if (.l) {
+    return(paste0("<lower=", .stanNum(lower), ">"))
+  }
+  if (.u) {
+    return(paste0("<upper=", .stanNum(upper), ">"))
+  }
   ""
 }
 
@@ -69,7 +80,9 @@
 #' accidentally resolve.
 #' @noRd
 .stanArgIsLiteral <- function(arg) {
-  if (is.numeric(arg)) return(TRUE)
+  if (is.numeric(arg)) {
+    return(TRUE)
+  }
   .v <- tryCatch(eval(arg, envir = baseenv()), error = function(e) NULL)
   is.numeric(.v) && length(.v) == 1L
 }
@@ -80,10 +93,15 @@
   if (.stanArgIsLiteral(arg)) {
     return(.stanNum(eval(arg, envir = baseenv())))
   }
-  if (is.name(arg)) return(.stanParName(as.character(arg)))
-  stop("cannot translate prior argument '", deparse1(arg),
-       "' to Stan: arguments must be numeric literals or parameter names",
-       call. = FALSE)
+  if (is.name(arg)) {
+    return(.stanParName(as.character(arg)))
+  }
+  stop(
+    "cannot translate prior argument '",
+    deparse1(arg),
+    "' to Stan: arguments must be numeric literals or parameter names",
+    call. = FALSE
+  )
 }
 
 #' Look a prior call up in the lotri distribution catalog
@@ -94,7 +112,9 @@
 #' @noRd
 .stanPriorLookup <- function(priorStr) {
   .lang <- str2lang(priorStr)
-  if (is.name(.lang)) .lang <- as.call(list(.lang)) # bare stdNormal
+  if (is.name(.lang)) {
+    .lang <- as.call(list(.lang))
+  } # bare stdNormal
   .nm <- as.character(.lang[[1]])
   .tbl <- lotri::lotriPriorDists()
   .w <- which(.tbl$name == .nm | .tbl$camelName == .nm | .tbl$stanName == .nm)
@@ -102,8 +122,14 @@
     stop("unknown prior distribution '", .nm, "'", call. = FALSE) # nocov
   }
   .row <- .tbl[.w, ]
-  list(name = .nm, stanName = .row$stanName, kind = .row$kind,
-       support = .row$support, args = as.list(.lang)[-1], dist = .row)
+  list(
+    name = .nm,
+    stanName = .row$stanName,
+    kind = .row$kind,
+    support = .row$support,
+    args = as.list(.lang)[-1],
+    dist = .row
+  )
 }
 
 #' Apply the support-promotion rule
@@ -117,12 +143,15 @@
     lower <- max(lower, 0)
     upper <- min(upper, 1)
   } else if (support == "circular") {
-    if ((is.finite(lower) && (lower < -pi || lower > pi)) ||
-          (is.finite(upper) && (upper > pi || upper < -pi))) {
-      stop("parameter '", name, "' has bounds outside [-pi, pi] but a circular",
-           " prior", call. = FALSE)
+    if (
+      (is.finite(lower) && (lower < -pi || lower > pi)) ||
+        (is.finite(upper) && (upper > pi || upper < -pi))
+    ) {
+      stop("parameter '", name, "' has bounds outside [-pi, pi] but a circular", " prior", call. = FALSE)
     }
-    if (!is.finite(lower)) lower <- -pi
+    if (!is.finite(lower)) {
+      lower <- -pi
+    }
     if (!is.finite(upper)) upper <- pi
   }
   c(lower = lower, upper = upper)
@@ -141,9 +170,17 @@
   .bounded <- is.finite(.b[["lower"]]) || is.finite(.b[["upper"]])
   .truncated <- .bounded && !all(.lit)
   if (.truncated && lk$stanName %in% .stanNoLcdf) {
-    stop("prior '", lk$name, "' on '", name, "' has parameter-dependent ",
-         "arguments and finite bounds, but Stan has no ", lk$stanName,
-         "_lcdf to normalize the truncation", call. = FALSE)
+    stop(
+      "prior '",
+      lk$name,
+      "' on '",
+      name,
+      "' has parameter-dependent ",
+      "arguments and finite bounds, but Stan has no ",
+      lk$stanName,
+      "_lcdf to normalize the truncation",
+      call. = FALSE
+    )
   }
   .stmt <- paste0(.par, " ~ ", lk$stanName, "(", .argStr, ")")
   if (.truncated) {
@@ -151,10 +188,13 @@
     .tu <- if (is.finite(.b[["upper"]])) .stanNum(.b[["upper"]]) else ""
     .stmt <- paste0(.stmt, " T[", .tl, ", ", .tu, "]")
   }
-  list(constraint = .stanConstraint(.b[["lower"]], .b[["upper"]]),
-       statement = paste0(.stmt, ";"),
-       truncated = .truncated,
-       lower = .b[["lower"]], upper = .b[["upper"]])
+  list(
+    constraint = .stanConstraint(.b[["lower"]], .b[["upper"]]),
+    statement = paste0(.stmt, ";"),
+    truncated = .truncated,
+    lower = .b[["lower"]],
+    upper = .b[["upper"]]
+  )
 }
 
 #' Evaluate a multivariate prior argument by value (c() vectors and lotri()
@@ -165,9 +205,12 @@
   assign("lotri", lotri::lotri, envir = .env)
   .v <- tryCatch(eval(arg, envir = .env), error = function(e) NULL)
   if (is.null(.v) || !is.numeric(.v)) {
-    stop("cannot evaluate multivariate prior argument '", deparse1(arg),
-         "': it must be a numeric vector or a lotri() matrix",
-         call. = FALSE)
+    stop(
+      "cannot evaluate multivariate prior argument '",
+      deparse1(arg),
+      "': it must be a numeric vector or a lotri() matrix",
+      call. = FALSE
+    )
   }
   .v
 }
@@ -176,9 +219,16 @@
 #' @noRd
 .stanVecLit <- function(v) paste0("[", paste(.stanNum(v), collapse = ", "), "]'")
 .stanMatLit <- function(m) {
-  paste0("[", paste(apply(m, 1, function(r) {
-    paste0("[", paste(.stanNum(r), collapse = ", "), "]")
-  }), collapse = ", "), "]")
+  paste0(
+    "[",
+    paste(
+      apply(m, 1, function(r) {
+        paste0("[", paste(.stanNum(r), collapse = ", "), "]")
+      }),
+      collapse = ", "
+    ),
+    "]"
+  )
 }
 
 #' Emit one multivariate (normal-family) prior over a member set
@@ -186,12 +236,15 @@
 .stanPriorMultivariate <- function(members, lk) {
   .pars <- .stanParName(members)
   .lhs <- paste0("to_vector({", paste(.pars, collapse = ", "), "})")
-  .args <- vapply(lk$args, function(a) {
-    .v <- .stanEvalMvArg(a)
-    if (is.matrix(.v)) .stanMatLit(.v) else .stanVecLit(.v)
-  }, character(1))
-  list(statement = paste0("target += ", lk$stanName, "_lpdf(", .lhs, " | ",
-                          paste(.args, collapse = ", "), ");"))
+  .args <- vapply(
+    lk$args,
+    function(a) {
+      .v <- .stanEvalMvArg(a)
+      if (is.matrix(.v)) .stanMatLit(.v) else .stanVecLit(.v)
+    },
+    character(1)
+  )
+  list(statement = paste0("target += ", lk$stanName, "_lpdf(", .lhs, " | ", paste(.args, collapse = ", "), ");"))
 }
 
 #' Member set (in order) of a multivariate prior from its embedded lotri()
@@ -226,65 +279,137 @@
 stanPriors <- function(ui) {
   .ui <- rxode2::assertRxUi(ui)
   .pri <- .stanUiPriors(.ui)
-  .popRow <- function(name, par, prior, stanName, kind, lower, upper,
-                      constraint, truncated, members, statement) {
-    data.frame(name = name, par = par, prior = prior, stanName = stanName,
-               kind = kind, lower = lower, upper = upper,
-               constraint = constraint, truncated = truncated,
-               members = members, statement = statement,
-               stringsAsFactors = FALSE)
+  .popRow <- function(name, par, prior, stanName, kind, lower, upper, constraint, truncated, members, statement) {
+    data.frame(
+      name = name,
+      par = par,
+      prior = prior,
+      stanName = stanName,
+      kind = kind,
+      lower = lower,
+      upper = upper,
+      constraint = constraint,
+      truncated = truncated,
+      members = members,
+      statement = statement,
+      stringsAsFactors = FALSE
+    )
   }
-  .pop <- .popRow(character(0), character(0), character(0), character(0),
-                  character(0), numeric(0), numeric(0), character(0),
-                  logical(0), character(0), character(0))
-  .om <- data.frame(name = character(0), neta1 = numeric(0),
-                    neta2 = numeric(0), prior = character(0),
-                    stanName = character(0), kind = character(0),
-                    stringsAsFactors = FALSE)
-  if (nrow(.pri) == 0L) return(list(pop = .pop, omega = .om))
+  .pop <- .popRow(
+    character(0),
+    character(0),
+    character(0),
+    character(0),
+    character(0),
+    numeric(0),
+    numeric(0),
+    character(0),
+    logical(0),
+    character(0),
+    character(0)
+  )
+  .om <- data.frame(
+    name = character(0),
+    neta1 = numeric(0),
+    neta2 = numeric(0),
+    prior = character(0),
+    stanName = character(0),
+    kind = character(0),
+    stringsAsFactors = FALSE
+  )
+  if (nrow(.pri) == 0L) {
+    return(list(pop = .pop, omega = .om))
+  }
   .mvSeen <- character(0)
   for (.i in seq_len(nrow(.pri))) {
     .r <- .pri[.i, ]
     .lk <- .stanPriorLookup(.r$prior)
     if (.lk$kind == "discrete") {
-      stop("prior '", .lk$name, "' on '", .r$name, "' is a discrete ",
-           "distribution; every nlmixr2 parameter is real-valued",
-           call. = FALSE)
+      stop(
+        "prior '",
+        .lk$name,
+        "' on '",
+        .r$name,
+        "' is a discrete ",
+        "distribution; every nlmixr2 parameter is real-valued",
+        call. = FALSE
+      )
     }
     if (!is.na(.r$neta1)) {
       # omega-block prior: classified here, emitted by the model generator
       # (the declared Stan parameter is whatever the prior is written on, so
       # Stan's own constraining transform supplies the only Jacobian needed)
-      .om <- rbind(.om, data.frame(name = .r$name, neta1 = .r$neta1,
-                                   neta2 = .r$neta2, prior = .r$prior,
-                                   stanName = .lk$stanName, kind = .lk$kind,
-                                   stringsAsFactors = FALSE))
+      .om <- rbind(
+        .om,
+        data.frame(
+          name = .r$name,
+          neta1 = .r$neta1,
+          neta2 = .r$neta2,
+          prior = .r$prior,
+          stanName = .lk$stanName,
+          kind = .lk$kind,
+          stringsAsFactors = FALSE
+        )
+      )
       next
     }
     if (.lk$kind == "matrix") {
-      stop("matrix prior '", .lk$name, "' on population parameter '",
-           .r$name, "' is not supported", call. = FALSE) # nocov
+      # nocov start
+      stop(
+        "matrix prior '",
+        .lk$name,
+        "' on population parameter '",
+        .r$name,
+        "' is not supported",
+        call. = FALSE
+      )
+      # nocov end
     }
     if (.lk$kind == "multivariate") {
       # duplicated byte-identically on every member row: dedupe, keep order
       # from the embedded lotri() dimnames
       .members <- .stanMvMembers(.lk, .pri$name[.pri$prior == .r$prior])
       .key <- digest::digest(list(.r$prior, sort(.members)))
-      if (.key %in% .mvSeen) next
+      if (.key %in% .mvSeen) {
+        next
+      }
       .mvSeen <- c(.mvSeen, .key)
       .mv <- .stanPriorMultivariate(.members, .lk)
-      .pop <- rbind(.pop, .popRow(.r$name, .stanParName(.r$name), .r$prior,
-                                  .lk$stanName, .lk$kind, .r$lower, .r$upper,
-                                  .stanConstraint(.r$lower, .r$upper), FALSE,
-                                  paste(.members, collapse = ","),
-                                  .mv$statement))
+      .pop <- rbind(
+        .pop,
+        .popRow(
+          .r$name,
+          .stanParName(.r$name),
+          .r$prior,
+          .lk$stanName,
+          .lk$kind,
+          .r$lower,
+          .r$upper,
+          .stanConstraint(.r$lower, .r$upper),
+          FALSE,
+          paste(.members, collapse = ","),
+          .mv$statement
+        )
+      )
       next
     }
     .u <- .stanPriorUnivariate(.r$name, .lk, .r$lower, .r$upper)
-    .pop <- rbind(.pop, .popRow(.r$name, .stanParName(.r$name), .r$prior,
-                                .lk$stanName, .lk$kind, .u$lower, .u$upper,
-                                .u$constraint, .u$truncated, NA_character_,
-                                .u$statement))
+    .pop <- rbind(
+      .pop,
+      .popRow(
+        .r$name,
+        .stanParName(.r$name),
+        .r$prior,
+        .lk$stanName,
+        .lk$kind,
+        .u$lower,
+        .u$upper,
+        .u$constraint,
+        .u$truncated,
+        NA_character_,
+        .u$statement
+      )
+    )
   }
   list(pop = .pop, omega = .om)
 }

@@ -4,8 +4,8 @@
 test_that("run=FALSE returns the generated program without touching rstan", {
   skip_on_cran()
   .out <- suppressMessages(
-                           nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan",
-                                               control = stanControl(run = FALSE)))
+    nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan", control = stanControl(run = FALSE))
+  )
   expect_s3_class(.out, "nlmixr2bayesCode")
   .code <- .out$code
   # external declaration + call
@@ -55,8 +55,8 @@ test_that("an invWishart omega prior declares cov_matrix with that prior", {
     })
   }
   .out <- suppressMessages(
-                           nlmixr2est::nlmixr2(.f, .linkData(), est = "stan",
-                                               control = stanControl(run = FALSE)))
+    nlmixr2est::nlmixr2(.f, .linkData(), est = "stan", control = stanControl(run = FALSE))
+  )
   expect_match(.out$code, "cov_matrix\\[1\\] omega_eta_cl;")
   expect_match(.out$code, "omega_eta_cl ~ inv_wishart\\(4, \\[\\[0.1\\]\\]\\);")
   expect_match(.out$code, "L_eta_cl = cholesky_decompose\\(omega_eta_cl\\);")
@@ -65,20 +65,20 @@ test_that("an invWishart omega prior declares cov_matrix with that prior", {
 test_that("a model without priors errors with the exact lines to add (D10)", {
   skip_on_cran()
   expect_error(
-               suppressMessages(
-                                nlmixr2est::nlmixr2(.linkMod, .linkData(), est = "stan",
-                                                    control = stanControl(run = FALSE))),
-               "prior\\(tcl\\) ~ dnorm")
+    suppressMessages(
+      nlmixr2est::nlmixr2(.linkMod, .linkData(), est = "stan", control = stanControl(run = FALSE))
+    ),
+    "prior\\(tcl\\) ~ dnorm"
+  )
 })
 
 test_that("the generated program parses with stanc", {
   skip_on_cran()
   skip_if_not_installed("rstan")
   .out <- suppressMessages(
-                           nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan",
-                                               control = stanControl(run = FALSE)))
-  .sc <- rstan::stanc(model_code = .out$code, allow_undefined = TRUE,
-                      model_name = "gen_parse")
+    nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan", control = stanControl(run = FALSE))
+  )
+  .sc <- rstan::stanc(model_code = .out$code, allow_undefined = TRUE, model_name = "gen_parse")
   expect_true(is.list(.sc))
 })
 
@@ -101,8 +101,9 @@ test_that("a multivariate prior with a fixed member is refused, not dropped", {
     })
   }
   expect_error(
-               suppressMessages(
-                                nlmixr2est::nlmixr2(.f, .linkData(), est = "stan",
-                                                    control = stanControl(run = FALSE))),
-               "fixed")
+    suppressMessages(
+      nlmixr2est::nlmixr2(.f, .linkData(), est = "stan", control = stanControl(run = FALSE))
+    ),
+    "fixed"
+  )
 })

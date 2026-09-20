@@ -33,12 +33,15 @@
 .odeDetData <- function() {
   set.seed(42)
   .tt <- c(0.5, 1, 2, 4, 8)
-  do.call(rbind, lapply(1:4, function(id) {
-    rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 100, EVID = 1),
-          data.frame(ID = id, TIME = .tt,
-                     DV = 5 * exp(-0.05 * .tt) + stats::rnorm(5, 0, 0.5),
-                     AMT = 0, EVID = 0))
-  }))
+  do.call(
+    rbind,
+    lapply(1:4, function(id) {
+      rbind(
+        data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 100, EVID = 1),
+        data.frame(ID = id, TIME = .tt, DV = 5 * exp(-0.05 * .tt) + stats::rnorm(5, 0, 0.5), AMT = 0, EVID = 0)
+      )
+    })
+  )
 }
 
 test_that("cond batch: 500 interleaved evaluations are bitwise identical (G2)", {
@@ -55,10 +58,12 @@ test_that("cond batch: 500 interleaved evaluations are bitwise identical (G2)", 
   for (.i in 1:250) {
     .a <- .condBatch(.etaA)
     .b <- .condBatch(.etaB)
-    if (!identical(.a$value, .refA$value) ||
-          !identical(.a$grad, .refA$grad) ||
-          !identical(.b$value, .refB$value) ||
-          !identical(.b$grad, .refB$grad)) {
+    if (
+      !identical(.a$value, .refA$value) ||
+        !identical(.a$grad, .refA$grad) ||
+        !identical(.b$value, .refB$value) ||
+        !identical(.b$grad, .refB$grad)
+    ) {
       .ok <- FALSE
       break
     }
@@ -78,15 +83,17 @@ test_that("cond batch: 500 interleaved evaluations are bitwise identical (G2)", 
 test_that("tier-2 batch: interleaved theta+eta evaluations are bitwise identical (G2)", {
   skip_on_cran()
   h <- stanLinkSetup(.odeDetMod, .odeDetData(), thetaSens = TRUE, cores = 1L)
-  on.exit({
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
-    stanLinkFree()
-  }, add = TRUE)
+  on.exit(
+    {
+      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      stanLinkFree()
+    },
+    add = TRUE
+  )
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
   .bt <- function(theta, e) {
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta),
-          as.matrix(e))
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
   }
   set.seed(23)
   .eta <- matrix(stats::rnorm(4, 0, 0.2), 4, 1)
@@ -98,11 +105,13 @@ test_that("tier-2 batch: interleaved theta+eta evaluations are bitwise identical
   for (.i in 1:100) {
     .a <- .bt(.thA, .eta)
     .b <- .bt(.thB, .eta)
-    if (!identical(.a$value, .refA$value) ||
-          !identical(.a$gradEta, .refA$gradEta) ||
-          !identical(.a$gradTheta, .refA$gradTheta) ||
-          !identical(.b$value, .refB$value) ||
-          !identical(.b$gradTheta, .refB$gradTheta)) {
+    if (
+      !identical(.a$value, .refA$value) ||
+        !identical(.a$gradEta, .refA$gradEta) ||
+        !identical(.a$gradTheta, .refA$gradTheta) ||
+        !identical(.b$value, .refB$value) ||
+        !identical(.b$gradTheta, .refB$gradTheta)
+    ) {
       .ok <- FALSE
       break
     }

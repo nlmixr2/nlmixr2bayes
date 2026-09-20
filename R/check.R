@@ -11,8 +11,7 @@
 #' @return a `stanmodel`
 #' @author Lukas A. Widmer
 #' @export
-rxsStanModel <- function(file, modelName = "rxstan_model",
-                         tag = NULL, pre = NULL, post = NULL, ...) {
+rxsStanModel <- function(file, modelName = "rxstan_model", tag = NULL, pre = NULL, post = NULL, ...) {
   if (!requireNamespace("rstan", quietly = TRUE)) {
     stop("rxsStanModel() needs rstan", call. = FALSE)
   }
@@ -23,19 +22,25 @@ rxsStanModel <- function(file, modelName = "rxstan_model",
   ## back so registering another handle after compiling still works.
   vars <- c("PKG_CPPFLAGS", "PKG_CXXFLAGS", "PKG_LIBS")
   saved <- Sys.getenv(vars, names = TRUE, unset = NA)
-  on.exit({
-    set <- saved[!is.na(saved)]
-    if (length(set)) do.call(Sys.setenv, as.list(set))
-    unset <- names(saved)[is.na(saved)]
-    if (length(unset)) Sys.unsetenv(unset)
-  }, add = TRUE)
+  on.exit(
+    {
+      set <- saved[!is.na(saved)]
+      if (length(set)) {
+        do.call(Sys.setenv, as.list(set))
+      }
+      unset <- names(saved)[is.na(saved)]
+      if (length(unset)) Sys.unsetenv(unset)
+    },
+    add = TRUE
+  )
 
-  sc <- rstan::stanc(file = file, model_name = modelName,
-                     allow_undefined = TRUE, obfuscate_model_name = FALSE)
-  rstan::stan_model(stanc_ret = sc,
-                    includes = rxsStanIncludes(modelName, tag = tag,
-                                               pre = pre, post = post),
-                    obfuscate_model_name = FALSE, ...)
+  sc <- rstan::stanc(file = file, model_name = modelName, allow_undefined = TRUE, obfuscate_model_name = FALSE)
+  rstan::stan_model(
+    stanc_ret = sc,
+    includes = rxsStanIncludes(modelName, tag = tag, pre = pre, post = post),
+    obfuscate_model_name = FALSE,
+    ...
+  )
 }
 
 #' Compare a Stan model's gradient against finite differences of its log density
@@ -73,16 +78,20 @@ rxsCheckGradient <- function(fit, upars, h = 1e-5) {
   }
   lp <- function(u) rstan::log_prob(fit, u, adjust_transform = FALSE)
 
-  analytic <- as.numeric(rstan::grad_log_prob(fit, upars,
-                                              adjust_transform = FALSE))
-  numeric <- vapply(seq_along(upars), function(i) {
-    step <- h * max(1, abs(upars[i]))
-    up <- upars; up[i] <- up[i] + step
-    um <- upars; um[i] <- um[i] - step
-    (lp(up) - lp(um)) / (2 * step)
-  }, numeric(1))
+  analytic <- as.numeric(rstan::grad_log_prob(fit, upars, adjust_transform = FALSE))
+  numeric <- vapply(
+    seq_along(upars),
+    function(i) {
+      step <- h * max(1, abs(upars[i]))
+      up <- upars
+      up[i] <- up[i] + step
+      um <- upars
+      um[i] <- um[i] - step
+      (lp(up) - lp(um)) / (2 * step)
+    },
+    numeric(1)
+  )
 
   scale <- pmax(1, abs(analytic), abs(numeric))
-  data.frame(par = seq_along(upars), analytic = analytic, numeric = numeric,
-             relDiff = abs(analytic - numeric) / scale)
+  data.frame(par = seq_along(upars), analytic = analytic, numeric = numeric, relDiff = abs(analytic - numeric) / scale)
 }

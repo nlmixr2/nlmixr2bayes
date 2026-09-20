@@ -29,28 +29,48 @@
 #' @return the forced algorithm
 #' @noRd
 .stanSugarAlgorithm <- function(algorithm, est) {
-  if (length(algorithm) != 1L) algorithm <- algorithm[1]
-  .bad <- function(what) {
-    stop("est=\"", est, "\" runs ", what, "; use stanControl(algorithm=\"",
-         algorithm, "\") with est=\"stan\" instead", call. = FALSE)
+  if (length(algorithm) != 1L) {
+    algorithm <- algorithm[1]
   }
-  switch(est,
-         nuts = {
-           if (!identical(algorithm, "NUTS")) .bad("Stan's NUTS sampler")
-           "NUTS"
-         },
-         advi = {
-           # "NUTS" here is stanControl()'s default; est="advi" selects
-           # the ADVI default rather than refusing it
-           if (identical(algorithm, "NUTS")) algorithm <- "meanfield"
-           if (!(algorithm %in% c("meanfield", "fullrank"))) .bad("ADVI")
-           algorithm
-         },
-         pathfinder = {
-           if (!(algorithm %in% c("NUTS", "pathfinder"))) .bad("Pathfinder")
-           "pathfinder"
-         },
-         stop("unknown stan sugar est \"", est, "\"", call. = FALSE)) # nocov
+  .bad <- function(what) {
+    stop(
+      "est=\"",
+      est,
+      "\" runs ",
+      what,
+      "; use stanControl(algorithm=\"",
+      algorithm,
+      "\") with est=\"stan\" instead",
+      call. = FALSE
+    )
+  }
+  switch(
+    est,
+    nuts = {
+      if (!identical(algorithm, "NUTS")) {
+        .bad("Stan's NUTS sampler")
+      }
+      "NUTS"
+    },
+    advi = {
+      # "NUTS" here is stanControl()'s default; est="advi" selects
+      # the ADVI default rather than refusing it
+      if (identical(algorithm, "NUTS")) {
+        algorithm <- "meanfield"
+      }
+      if (!(algorithm %in% c("meanfield", "fullrank"))) {
+        .bad("ADVI")
+      }
+      algorithm
+    },
+    pathfinder = {
+      if (!(algorithm %in% c("NUTS", "pathfinder"))) {
+        .bad("Pathfinder")
+      }
+      "pathfinder"
+    },
+    stop("unknown stan sugar est \"", est, "\"", call. = FALSE)
+  ) # nocov
 }
 
 #' Build a sugar control from stanControl()
@@ -60,8 +80,7 @@
 #' @return an `<est>Control`
 #' @noRd
 .stanSugarControl <- function(est, algorithm, dots) {
-  .ctl <- do.call(stanControl,
-                  c(dots, list(algorithm = .stanSugarAlgorithm(algorithm, est))))
+  .ctl <- do.call(stanControl, c(dots, list(algorithm = .stanSugarAlgorithm(algorithm, est))))
   class(.ctl) <- paste0(est, "Control")
   .ctl
 }
@@ -73,7 +92,9 @@
 #' @noRd
 .stanSugarAsControl <- function(control, est) {
   .cls <- paste0(est, "Control")
-  if (inherits(control, .cls)) return(control)
+  if (inherits(control, .cls)) {
+    return(control)
+  }
   control$algorithm <- .stanSugarAlgorithm(control$algorithm, est)
   class(control) <- .cls
   control
@@ -96,10 +117,13 @@
 .stanSugarValidCtl <- function(control, est) {
   .ctl <- control[[1]]
   .cls <- paste0(est, "Control")
-  .fn <- switch(est, nuts = nutsControl, advi = adviControl,
-                pathfinder = pathfinderControl)
-  if (is.null(.ctl)) return(.fn())
-  if (inherits(.ctl, .cls)) return(do.call(.fn, .ctl))
+  .fn <- switch(est, nuts = nutsControl, advi = adviControl, pathfinder = pathfinderControl)
+  if (is.null(.ctl)) {
+    return(.fn())
+  }
+  if (inherits(.ctl, .cls)) {
+    return(do.call(.fn, .ctl))
+  }
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
     return(do.call(.fn, .ctl))
   }
@@ -149,8 +173,7 @@
 .stanSugarPrepEnv <- function(env, est) {
   .control <- env$control
   if (!inherits(.control, c(paste0(est, "Control"), "stanControl"))) {
-    .control <- switch(est, nuts = nutsControl(), advi = adviControl(),
-                       pathfinder = pathfinderControl()) # nocov
+    .control <- switch(est, nuts = nutsControl(), advi = adviControl(), pathfinder = pathfinderControl()) # nocov
   }
   .control <- .stanSugarAsControl(.control, est)
   assign(paste0(est, "Control"), .control, envir = env)
@@ -207,7 +230,9 @@ nutsControl <- function(..., algorithm = "NUTS") {
 #' @export
 #' @author Matthew L Fidler
 adviControl <- function(..., algorithm = c("meanfield", "fullrank")) {
-  if (length(algorithm) > 1L) algorithm <- match.arg(algorithm)
+  if (length(algorithm) > 1L) {
+    algorithm <- match.arg(algorithm)
+  }
   .stanSugarControl("advi", algorithm, list(...))
 }
 
@@ -232,7 +257,9 @@ adviControl <- function(..., algorithm = c("meanfield", "fullrank")) {
 #' @export
 #' @author Matthew L Fidler
 pathfinderControl <- function(..., algorithm = c("pathfinder", "NUTS")) {
-  if (length(algorithm) > 1L) algorithm <- match.arg(algorithm)
+  if (length(algorithm) > 1L) {
+    algorithm <- match.arg(algorithm)
+  }
   .stanSugarControl("pathfinder", algorithm, list(...))
 }
 

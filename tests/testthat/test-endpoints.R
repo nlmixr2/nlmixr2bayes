@@ -55,14 +55,19 @@ parentMetab <- function() {
 }
 
 epData <- function(eps, nsub = 4L, times = c(1, 4, 8, 12, 24), seed = 3) {
-  d <- do.call(rbind, lapply(seq_len(nsub), function(i) {
-    e <- rxode2::et(amt = 100, cmt = "depot")
-    for (ep in eps) e <- rxode2::et(e, times, cmt = ep)
-    x <- as.data.frame(e)
-    x$id <- i
-    x$dv <- 1
-    x
-  }))
+  d <- do.call(
+    rbind,
+    lapply(seq_len(nsub), function(i) {
+      e <- rxode2::et(amt = 100, cmt = "depot")
+      for (ep in eps) {
+        e <- rxode2::et(e, times, cmt = ep)
+      }
+      x <- as.data.frame(e)
+      x$id <- i
+      x$dv <- 1
+      x
+    })
+  )
   set.seed(seed)
   d
 }
@@ -76,23 +81,18 @@ test_that("two endpoints each get their own prediction and error model", {
   ## Every observation row is assigned an endpoint, alternating here.
   expect_equal(length(g$standata$dvid), g$standata$nObs)
   expect_setequal(unique(g$standata$dvid), 1:2)
-  expect_true(grepl("array[nObs] int<lower=1, upper=2> dvid;", g$code,
-                    fixed = TRUE))
+  expect_true(grepl("array[nObs] int<lower=1, upper=2> dvid;", g$code, fixed = TRUE))
 
   ## Each endpoint scored with its own sd.
   expect_true(grepl("if (dvid[i] == 1) pred[i] = cp;", g$code, fixed = TRUE))
-  expect_true(grepl("else if (dvid[i] == 2) pred[i] = resp;", g$code,
-                    fixed = TRUE))
-  expect_true(grepl("normal_lpdf(dv[i] | pred[i], add_pk)", g$code,
-                    fixed = TRUE))
-  expect_true(grepl("normal_lpdf(dv[i] | pred[i], add_pd)", g$code,
-                    fixed = TRUE))
+  expect_true(grepl("else if (dvid[i] == 2) pred[i] = resp;", g$code, fixed = TRUE))
+  expect_true(grepl("normal_lpdf(dv[i] | pred[i], add_pk)", g$code, fixed = TRUE))
+  expect_true(grepl("normal_lpdf(dv[i] | pred[i], add_pd)", g$code, fixed = TRUE))
 
   ## log_lik must branch identically to the model block: each density appears
   ## exactly twice, once in each.
   for (sd in c("add_pk", "add_pd")) {
-    hits <- gregexpr(sprintf("normal_lpdf(dv[i] | pred[i], %s)", sd), g$code,
-                     fixed = TRUE)[[1]]
+    hits <- gregexpr(sprintf("normal_lpdf(dv[i] | pred[i], %s)", sd), g$code, fixed = TRUE)[[1]]
     expect_length(hits, 2L)
   }
 })
@@ -104,10 +104,8 @@ test_that("a parent/metabolite model reads the states it should", {
   on.exit(rxsRelease(g$handle))
 
   expect_equal(g$states, c("depot", "center", "metab"))
-  expect_true(grepl("if (dvid[i] == 1) pred[i] = parent;", g$code,
-                    fixed = TRUE))
-  expect_true(grepl("else if (dvid[i] == 2) pred[i] = meta;", g$code,
-                    fixed = TRUE))
+  expect_true(grepl("if (dvid[i] == 1) pred[i] = parent;", g$code, fixed = TRUE))
+  expect_true(grepl("else if (dvid[i] == 2) pred[i] = meta;", g$code, fixed = TRUE))
 })
 
 test_that("a single endpoint still emits the unbranched program", {
@@ -124,7 +122,9 @@ test_that("a single endpoint still emits the unbranched program", {
   }
   e <- rxode2::et(amt = 100, cmt = "depot")
   e <- rxode2::et(e, c(1, 4, 8, 12))
-  d <- as.data.frame(e); d$id <- 1L; d$dv <- 1
+  d <- as.data.frame(e)
+  d$id <- 1L
+  d$dv <- 1
 
   g <- rxsStanFromUi(one, d)
   on.exit(rxsRelease(g$handle))
@@ -167,9 +167,13 @@ eff(0) <- 1
 cp <- center / v
 resp <- eff
 ")
-  s <- rxode2::rxSolve(sim, params = c(tka = 0.5, tcl = 1.0, tv = 3.4,
-                                       tec50 = 1.0),
-                       events = d, returnType = "data.frame", cores = 1L)
+  s <- rxode2::rxSolve(
+    sim,
+    params = c(tka = 0.5, tcl = 1.0, tv = 3.4, tec50 = 1.0),
+    events = d,
+    returnType = "data.frame",
+    cores = 1L
+  )
   isObs <- d$evid == 0
   isPk <- isObs & d$cmt == "cp"
   set.seed(9)
@@ -190,16 +194,21 @@ resp <- eff
   fit <- rstan::sampling(sm, data = g$standata, chains = 0)
   set.seed(4)
   chk <- rxsCheckGradient(fit, stats::rnorm(rstan::get_num_upars(fit), 0, 0.2))
-  expect_true(all(chk$relDiff < 1e-6),
-              info = paste(utils::capture.output(print(chk)), collapse = "\n"))
+  expect_true(all(chk$relDiff < 1e-6), info = paste(utils::capture.output(print(chk)), collapse = "\n"))
 
-  s2 <- rstan::sampling(sm, data = g$standata, chains = 2, iter = 700,
-                        warmup = 350, seed = 11, refresh = 0,
-                        init = rxsInit(g, jitter = 0.1))
+  s2 <- rstan::sampling(
+    sm,
+    data = g$standata,
+    chains = 2,
+    iter = 700,
+    warmup = 350,
+    seed = 11,
+    refresh = 0,
+    init = rxsInit(g, jitter = 0.1)
+  )
   post <- as.matrix(s2, pars = c("add_pk", "add_pd"))
   m <- colMeans(post)
-  cat("\n  add_pk (0.2):", round(m[["add_pk"]], 3),
-      " add_pd (0.1):", round(m[["add_pd"]], 3), "\n")
+  cat("\n  add_pk (0.2):", round(m[["add_pk"]], 3), " add_pd (0.1):", round(m[["add_pd"]], 3), "\n")
 
   ## The point of separate endpoints: the two error terms are distinguished
   ## rather than pooled into one.

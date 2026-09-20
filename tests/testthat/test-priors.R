@@ -2,14 +2,17 @@
 
 .priorMod <- function(priors) {
   # a small ui with configurable prior lines
-  .body <- paste0("function() {
+  .body <- paste0(
+    "function() {
   ini({
     tka <- 0.45
     tcl <- 1
     tv <- 3.45
     add.sd <- c(0, 0.7)
     eta.ka ~ 0.6
-    ", paste(priors, collapse = "\n    "), "
+    ",
+    paste(priors, collapse = "\n    "),
+    "
   })
   model({
     ka <- exp(tka + eta.ka)
@@ -20,13 +23,13 @@
     cp <- center / v
     cp ~ add(add.sd)
   })
-}")
+}"
+  )
   suppressMessages(rxode2::rxode2(eval(str2lang(.body))))
 }
 
 test_that("half-Cauchy: bound from the parameter, no T[,] for literal args", {
-  .ui <- .priorMod(c("prior(tka) ~ dnorm(0, 10)",
-                     "prior(add.sd) ~ dcauchy(0, 5)"))
+  .ui <- .priorMod(c("prior(tka) ~ dnorm(0, 10)", "prior(add.sd) ~ dcauchy(0, 5)"))
   .p <- stanPriors(.ui)
   expect_equal(nrow(.p$pop), 2L)
   .tka <- .p$pop[.p$pop$name == "tka", ]
@@ -83,8 +86,7 @@ test_that("multivariate priors dedupe to one statement (rule 3)", {
   .mv <- .p$pop[.p$pop$kind == "multivariate", ]
   expect_equal(.mv$members, "tcl,tv")
   expect_match(.mv$statement, "target \\+= multi_normal_lpdf", fixed = FALSE)
-  expect_match(.mv$statement,
-               "to_vector\\(\\{tcl, tv\\}\\) \\| \\[1, 3.45\\]'")
+  expect_match(.mv$statement, "to_vector\\(\\{tcl, tv\\}\\) \\| \\[1, 3.45\\]'")
   expect_match(.mv$statement, "\\[\\[1, 0.01\\], \\[0.01, 1\\]\\]\\);")
 })
 
@@ -117,7 +119,6 @@ test_that("every non-discrete univariate distribution in the catalog parses", {
 })
 
 test_that("name mangling maps nlmixr2 names onto Stan identifiers", {
-  expect_equal(.stanParName(c("add.sd", "eta.ka", "tka")),
-               c("add_sd", "eta_ka", "tka"))
+  expect_equal(.stanParName(c("add.sd", "eta.ka", "tka")), c("add_sd", "eta_ka", "tka"))
   expect_equal(.stanParName("2fast"), "p_2fast")
 })

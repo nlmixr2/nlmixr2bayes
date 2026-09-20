@@ -33,8 +33,8 @@ test_that("half-Cauchy branch (b): explicit T[0,] shifts the target by exactly a
   skip_if_not_installed("rstan")
   skip_on_cran()
   .code <- suppressMessages(
-    nlmixr2est::nlmixr2(.g7Mod, .linkData(), est = "stan",
-                        control = stanControl(run = FALSE)))
+    nlmixr2est::nlmixr2(.g7Mod, .linkData(), est = "stan", control = stanControl(run = FALSE))
+  )
   .lines <- strsplit(.code$code, "\n")[[1]]
   # golden: the constraint is declared and no truncation is emitted
   expect_true(any(grepl("real<lower=0> add_sd;", .lines, fixed = TRUE)))
@@ -46,26 +46,47 @@ test_that("half-Cauchy branch (b): explicit T[0,] shifts the target by exactly a
   .smA <- stanCompile(paste(.lines, collapse = "\n"))
   .smB <- stanCompile(paste(.linesT, collapse = "\n"))
   h <- stanLinkSetup(.g7Mod, .linkData(), thetaSens = TRUE, cores = 1L)
-  on.exit({
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
-    stanLinkFree()
-  }, add = TRUE)
+  on.exit(
+    {
+      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      stanLinkFree()
+    },
+    add = TRUE
+  )
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
-  .sfA <- rstan::sampling(.smA, data = .code$data, chains = 1, iter = 2,
-                          warmup = 1, refresh = 0, cores = 1,
-                          show_messages = FALSE)
-  .sfB <- rstan::sampling(.smB, data = .code$data, chains = 1, iter = 2,
-                          warmup = 1, refresh = 0, cores = 1,
-                          show_messages = FALSE)
+  .sfA <- rstan::sampling(
+    .smA,
+    data = .code$data,
+    chains = 1,
+    iter = 2,
+    warmup = 1,
+    refresh = 0,
+    cores = 1,
+    show_messages = FALSE
+  )
+  .sfB <- rstan::sampling(
+    .smB,
+    data = .code$data,
+    chains = 1,
+    iter = 2,
+    warmup = 1,
+    refresh = 0,
+    cores = 1,
+    show_messages = FALSE
+  )
   .n <- rstan::get_num_upars(.sfA)
   expect_equal(rstan::get_num_upars(.sfB), .n)
   set.seed(31)
-  .diff <- vapply(1:200, function(i) {
-    .u <- stats::rnorm(.n, 0, 0.5)
-    rstan::log_prob(.sfA, .u, adjust_transform = FALSE) -
-      rstan::log_prob(.sfB, .u, adjust_transform = FALSE)
-  }, numeric(1))
+  .diff <- vapply(
+    1:200,
+    function(i) {
+      .u <- stats::rnorm(.n, 0, 0.5)
+      rstan::log_prob(.sfA, .u, adjust_transform = FALSE) -
+        rstan::log_prob(.sfB, .u, adjust_transform = FALSE)
+    },
+    numeric(1)
+  )
   expect_lt(stats::sd(.diff), 1e-10)
   # and the constant is the half-Cauchy normalizer: T[0,] subtracts
   # log P(X > 0) = log(1/2), so shipped - truncated = -log(2)
@@ -76,22 +97,34 @@ test_that("fixed seed: bitwise-identical draws within a session (G9)", {
   skip_if_not_installed("rstan")
   skip_on_cran()
   .code <- suppressMessages(
-    nlmixr2est::nlmixr2(.g7Mod, .linkData(), est = "stan",
-                        control = stanControl(run = FALSE)))
+    nlmixr2est::nlmixr2(.g7Mod, .linkData(), est = "stan", control = stanControl(run = FALSE))
+  )
   .sm <- stanCompile(.code$code)
   h <- stanLinkSetup(.g7Mod, .linkData(), thetaSens = TRUE, cores = 1L)
-  on.exit({
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
-    stanLinkFree()
-  }, add = TRUE)
+  on.exit(
+    {
+      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      stanLinkFree()
+    },
+    add = TRUE
+  )
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
   .run <- function() {
     rstan::extract(
-      rstan::sampling(.sm, data = .code$data, chains = 1L, iter = 300L,
-                      warmup = 150L, seed = 7L, refresh = 0, cores = 1,
-                      show_messages = FALSE),
-      permuted = FALSE)
+      rstan::sampling(
+        .sm,
+        data = .code$data,
+        chains = 1L,
+        iter = 300L,
+        warmup = 150L,
+        seed = 7L,
+        refresh = 0,
+        cores = 1,
+        show_messages = FALSE
+      ),
+      permuted = FALSE
+    )
   }
   expect_identical(.run(), .run())
 })
@@ -100,8 +133,8 @@ test_that("compile cache: content-keyed hit; code-changing knobs re-key (G9d)", 
   skip_if_not_installed("rstan")
   skip_on_cran()
   .code <- suppressMessages(
-    nlmixr2est::nlmixr2(.g7Mod, .linkData(), est = "stan",
-                        control = stanControl(run = FALSE)))
+    nlmixr2est::nlmixr2(.g7Mod, .linkData(), est = "stan", control = stanControl(run = FALSE))
+  )
   .dir <- file.path(tempdir(), "nlmixr2bayes-cache-test")
   unlink(.dir, recursive = TRUE)
   .t1 <- system.time(stanCompile(.code$code, cacheDir = .dir))[["elapsed"]]
@@ -131,12 +164,11 @@ test_that("compile cache: content-keyed hit; code-changing knobs re-key (G9d)", 
     })
   }
   .cA <- suppressMessages(
-    nlmixr2est::nlmixr2(.mod2, .linkData(), est = "stan",
-                        control = stanControl(run = FALSE)))
+    nlmixr2est::nlmixr2(.mod2, .linkData(), est = "stan", control = stanControl(run = FALSE))
+  )
   .cB <- suppressMessages(
-    nlmixr2est::nlmixr2(.mod2, .linkData(), est = "stan",
-                        control = stanControl(run = FALSE, lkjEta = 4)))
+    nlmixr2est::nlmixr2(.mod2, .linkData(), est = "stan", control = stanControl(run = FALSE, lkjEta = 4))
+  )
   expect_false(identical(.cA$code, .cB$code))
-  expect_true(any(grepl("lkj_corr_cholesky(4)",
-                        strsplit(.cB$code, "\n")[[1]], fixed = TRUE)))
+  expect_true(any(grepl("lkj_corr_cholesky(4)", strsplit(.cB$code, "\n")[[1]], fixed = TRUE)))
 })

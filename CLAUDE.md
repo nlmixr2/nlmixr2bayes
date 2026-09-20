@@ -59,6 +59,9 @@ Other test-gating env vars:
 - `NLMIXR2STAN_SLOW=TRUE` — nightly-scale gates (G5 simulation-based
   calibration in `test-sbc.R`, G6 FOCEi-agreement in `test-focei-agree.R`).
   `NLMIXR2STAN_SBC_N` overrides the SBC replicate count (default 40).
+- `NLMIXR2BAYES_TEST_CRAN_ONLY=true` / `NLMIXR2BAYES_TEST_SHARD="i/n"` —
+  read by `tests/testthat.R` and set only by CI (see below); locally both
+  are unset and the whole suite runs.
 
 Most `est="stan"`/`est="nuts"` tests do a **real Stan compile** the first
 time a given generated-program shape is seen (~1-2 min), then hit an
@@ -70,12 +73,53 @@ the full suite while iterating; check `uptime`/`ps` before kicking off a
 full run or a benchmark, since a concurrent heavy compile will both slow
 down and invalidate the other.
 
+Format with [air](https://posit-dev.github.io/air/) before committing —
+`format-check.yaml` fails the build otherwise, and `.lintr` is written
+assuming air owns spacing and indentation:
+
+```bash
+air format .
+```
+
+`air.toml` skips the rxode2 modelling DSL calls (`ini`, `model`, `rxode2`,
+`quote`, ...) so `d/dt(central)` and the `lcl <- 1; label("...")` idiom stay
+as written.
+
 Lint (`.lintr`: camelCase, internal functions `^\.[a-z][a-zA-Z0-9]*$`, S3
-methods `name.class`, 120-col lines, cyclomatic complexity ≤ 50):
+methods `generic.class` with a camelCase generic, 120-col lines, cyclomatic
+complexity ≤ 50). `lint_package()` is clean and CI runs it with
+`LINTR_ERROR_ON_LINT=true`, so any new lint is a build failure:
 
 ```r
 lintr::lint_package()
 ```
+
+`object_usage_linter` is off (every `model({})` variable reads as an
+undefined global under NSE), as are `indentation_linter` and
+`commented_code_linter`; `inst/`, `vignettes/` and `src/` are excluded,
+and `tests/` keeps only the linters that survive rxode2 model syntax.
+Prefer a targeted `# nolint: <linter>.` over widening the config — but
+note air moves a trailing comment off a line ending in `{`, so use
+`# nolint start` / `# nolint end` there.
+
+## CI
+
+`.github/workflows/` mirrors nlmixr2est's set: `R-CMD-check`, `lint`,
+`format-check`, `test-coverage` and `pkgdown` on push/PR, `rhub` and
+`runtime-benchmarks` on demand, and `slow-tests` weekly.
+
+Compiling, not solving, is what costs here, so the test matrix is split two
+ways. macOS, Windows, R-devel and oldrel-1 set
+`NLMIXR2BAYES_TEST_CRAN_ONLY=true` — they exist to prove the package
+*builds and checks* (install, examples, Rd, vignettes, compiled code), and
+run only the CRAN-visible subset, since most files here are behind
+`skip_on_cran()`. ubuntu-release carries the test signal, sharded four ways
+by `NLMIXR2BAYES_TEST_SHARD="i/n"` (a sorted file list dealt out
+round-robin, so the split is exact and needs no hand-maintained batch list)
+and with `RXSTAN_STAN_TESTS=1` on. `slow-tests.yaml` is the only place
+`NLMIXR2STAN_SLOW` is set. Every job caches
+`tools::R_user_dir("nlmixr2bayes", "cache")`, where `stanCompile()` keeps
+compiled models.
 
 Regenerate docs after adding/changing a roxygen-tagged export:
 

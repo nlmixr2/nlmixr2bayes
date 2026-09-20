@@ -49,27 +49,36 @@ test_that("G6: posterior means agree with est='focei' on theo_sd", {
   skip_on_cran()
   skip_if_not_installed("rstan")
   skip_if_not_installed("nlmixr2data")
-  skip_if_not(nzchar(Sys.getenv("NLMIXR2STAN_SLOW")),
-              "set NLMIXR2STAN_SLOW=TRUE for the G6 agreement gate")
+  skip_if_not(nzchar(Sys.getenv("NLMIXR2STAN_SLOW")), "set NLMIXR2STAN_SLOW=TRUE for the G6 agreement gate")
   .d <- nlmixr2data::theo_sd
   .focei <- suppressWarnings(suppressMessages(
-                                              nlmixr2est::nlmixr2(.theoFocei, .d, est = "focei",
-                                                                  control = nlmixr2est::foceiControl(print = 0L,
-                                                                                                     covMethod = ""))))
+    nlmixr2est::nlmixr2(.theoFocei, .d, est = "focei", control = nlmixr2est::foceiControl(print = 0L, covMethod = ""))
+  ))
   .fit <- suppressWarnings(suppressMessages(
-                                            nlmixr2est::nlmixr2(.theoStan, .d, est = "stan",
-                                                                control = stanControl(chains = 2L, iter = 1500L,
-                                                                                      warmup = 500L, seed = 7L,
-                                                                                      adapt_delta = 0.95,
-                                                                                      onDiagnostic = "none"))))
+    nlmixr2est::nlmixr2(
+      .theoStan,
+      .d,
+      est = "stan",
+      control = stanControl(
+        chains = 2L,
+        iter = 1500L,
+        warmup = 500L,
+        seed = 7L,
+        adapt_delta = 0.95,
+        onDiagnostic = "none"
+      )
+    )
+  ))
   .thF <- .focei$ui$theta
   .thS <- .fit$ui$theta
   .sd <- sqrt(diag(.fit$cov))
   for (.p in c("tka", "tcl", "tv")) {
     # weak priors: the posterior should cover the MLE
-    expect_lt(abs(.thS[[.p]] - .thF[[.p]]), max(2 * .sd[[.p]], 0.1),
-              label = paste0(.p, " (stan=", signif(.thS[[.p]], 4),
-                             " focei=", signif(.thF[[.p]], 4), ")"))
+    expect_lt(
+      abs(.thS[[.p]] - .thF[[.p]]),
+      max(2 * .sd[[.p]], 0.1),
+      label = paste0(.p, " (stan=", signif(.thS[[.p]], 4), " focei=", signif(.thF[[.p]], 4), ")")
+    )
     # log-scale thetas within ~15% on the natural scale
     expect_lt(abs(.thS[[.p]] - .thF[[.p]]), 0.15, label = paste0(.p, " log"))
   }
@@ -78,8 +87,10 @@ test_that("G6: posterior means agree with est='focei' on theo_sd", {
   .omF <- sqrt(diag(.focei$omega))
   .omS <- sqrt(diag(.fit$omega))
   for (.e in names(.omF)) {
-    expect_lt(abs(.omS[[.e]] - .omF[[.e]]) / .omF[[.e]], 0.4,
-              label = paste0("omega SD ", .e, " (stan=", signif(.omS[[.e]], 4),
-                             " focei=", signif(.omF[[.e]], 4), ")"))
+    expect_lt(
+      abs(.omS[[.e]] - .omF[[.e]]) / .omF[[.e]],
+      0.4,
+      label = paste0("omega SD ", .e, " (stan=", signif(.omS[[.e]], 4), " focei=", signif(.omF[[.e]], 4), ")")
+    )
   }
 })

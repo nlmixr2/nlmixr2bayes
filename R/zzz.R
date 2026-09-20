@@ -48,15 +48,20 @@ rxsProbeRxode2 <- function() {
 #' returns FALSE (tier 0 unavailable) on an older nlmixr2est
 #' @noRd
 .iniNlmPtrs <- function() {
-  .fun <- tryCatch(getExportedValue("nlmixr2est", ".nlmixr2estNlmPtrs"),
-                   error = function(e) NULL)
-  if (is.null(.fun)) return(invisible(FALSE))
+  .fun <- tryCatch(getExportedValue("nlmixr2est", ".nlmixr2estNlmPtrs"), error = function(e) NULL)
+  if (is.null(.fun)) {
+    return(invisible(FALSE))
+  }
   .Call(`_nlmixr2bayes_iniNlmPtrs`, .fun())
   .v <- .Call(`_nlmixr2bayes_nlmApiVersion`)
   if (!identical(.v, 1L)) {
-    stop("nlmixr2bayes was built against nlm C API version 1, but the loaded ",
-         "nlmixr2est provides version ", .v,
-         "; reinstall nlmixr2bayes against this nlmixr2est", call. = FALSE)
+    stop(
+      "nlmixr2bayes was built against nlm C API version 1, but the loaded ",
+      "nlmixr2est provides version ",
+      .v,
+      "; reinstall nlmixr2bayes against this nlmixr2est",
+      call. = FALSE
+    )
   }
   invisible(TRUE)
 }
@@ -80,22 +85,26 @@ rxsProbeRxode2 <- function() {
 #' @return invisibly, the API version
 #' @noRd
 .iniFoceiPtrs <- function() {
-  .fun <- tryCatch(getExportedValue("nlmixr2est", ".nlmixr2estFoceiPtrs"),
-                   error = function(e) NULL)
+  .fun <- tryCatch(getExportedValue("nlmixr2est", ".nlmixr2estFoceiPtrs"), error = function(e) NULL)
   if (is.null(.fun)) {
-    warning("this nlmixr2est does not provide the FOCEi conditional-likelihood ",
-            "C API (nlmixr2est::.nlmixr2estFoceiPtrs); update nlmixr2est ",
-            "(nlmixr2/nlmixr2est#937); Stan-based estimation will not work",
-            call. = FALSE)
+    warning(
+      "this nlmixr2est does not provide the FOCEi conditional-likelihood ",
+      "C API (nlmixr2est::.nlmixr2estFoceiPtrs); update nlmixr2est ",
+      "(nlmixr2/nlmixr2est#937); Stan-based estimation will not work",
+      call. = FALSE
+    )
     return(invisible(FALSE))
   }
   .Call(`_nlmixr2bayes_iniFoceiPtrs`, .fun())
   .v <- .Call(`_nlmixr2bayes_apiVersion`)
   if (!identical(.v, 1L)) {
-    stop("nlmixr2bayes was built against FOCEi C API version 1, but the ",
-         "loaded nlmixr2est provides version ", .v,
-         "; reinstall nlmixr2bayes against this nlmixr2est",
-         call. = FALSE)
+    stop(
+      "nlmixr2bayes was built against FOCEi C API version 1, but the ",
+      "loaded nlmixr2est provides version ",
+      .v,
+      "; reinstall nlmixr2bayes against this nlmixr2est",
+      call. = FALSE
+    )
   }
   invisible(.v)
 }

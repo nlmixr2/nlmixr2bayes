@@ -7,10 +7,13 @@
 test_that("cond_batch_theta: value + both gradients FD-agree", {
   skip_on_cran()
   h <- stanLinkSetup(.linkMod, .linkData(), thetaSens = TRUE, cores = 1L)
-  on.exit({
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
-    stanLinkFree()
-  }, add = TRUE)
+  on.exit(
+    {
+      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      stanLinkFree()
+    },
+    add = TRUE
+  )
   expect_true(h$thetaSens)
   # tcl mu-references eta.cl (theta index 1); tv + add.sd carry sensitivities
   expect_equal(h$thetaSensIdx, c(2L, 3L))
@@ -21,8 +24,7 @@ test_that("cond_batch_theta: value + both gradients FD-agree", {
   eta <- matrix(stats::rnorm(h$nid * h$neta, 0, 0.2), h$nid, h$neta)
   th <- c(1.05, 2.95, 0.55)
   .bt <- function(theta, e) {
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta),
-          as.matrix(e))
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
   }
   got <- .bt(th, eta)
   expect_equal(got$nBad, 0L)
@@ -58,9 +60,9 @@ test_that("cond_batch_theta refuses without the tier-2 state installed", {
   on.exit(stanLinkFree(), add = TRUE)
   .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
   expect_error(
-               .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`,
-                     as.double(c(1, 3, 0.5)), matrix(0, h$nid, h$neta)),
-               "status -101")
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(c(1, 3, 0.5)), matrix(0, h$nid, h$neta)),
+    "status -101"
+  )
 })
 
 test_that("dosed models work; dose-handling theta gradients carry the jump", {
@@ -85,13 +87,21 @@ test_that("dosed models work; dose-handling theta gradients carry the jump", {
     })
   }
   set.seed(42)
-  .d <- do.call(rbind, lapply(1:4, function(id) {
-    rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 100, EVID = 1),
-          data.frame(ID = id, TIME = c(0.5, 1, 2, 4, 8),
-                     DV = 5 * exp(-0.05 * c(0.5, 1, 2, 4, 8)) +
-                       stats::rnorm(5, 0, 0.5),
-                     AMT = 0, EVID = 0))
-  }))
+  .d <- do.call(
+    rbind,
+    lapply(1:4, function(id) {
+      rbind(
+        data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 100, EVID = 1),
+        data.frame(
+          ID = id,
+          TIME = c(0.5, 1, 2, 4, 8),
+          DV = 5 * exp(-0.05 * c(0.5, 1, 2, 4, 8)) + stats::rnorm(5, 0, 0.5),
+          AMT = 0,
+          EVID = 0
+        )
+      )
+    })
+  )
   # the dosing-events claim, at gradient level: bolus events + alag flow
   # through the VALUE and the eta gradient (rxode2 handles the event; the
   # eta enters the ODE, not the event time)
@@ -104,22 +114,23 @@ test_that("dosed models work; dose-handling theta gradients carry the jump", {
   expect_equal(got$nBad, 0L)
   .h <- 1e-5
   fd <- (nlmixr2bayes:::.condBatch(eta + .h)$value -
-           nlmixr2bayes:::.condBatch(eta - .h)$value) / (2 * .h)
+    nlmixr2bayes:::.condBatch(eta - .h)$value) /
+    (2 * .h)
   expect_equal(as.numeric(got$grad), as.numeric(fd), tolerance = 1e-4)
   stanLinkFree()
   # detection of dose-handling thetas is transitive through intermediate
   # assignments
-  expect_equal(nlmixr2bayes:::.stanEventThetas(rxode2::rxode2(.lagMod)),
-               "tlag")
+  expect_equal(nlmixr2bayes:::.stanEventThetas(rxode2::rxode2(.lagMod)), "tlag")
   if (!nlmixr2bayes:::.stanHasEventThetaSens()) {
     # an nlmixr2est without nlmixr2/nlmixr2est#946 advertises the ESTIMATED
     # lag theta in the sensitivity index but leaves its column silently
     # zero; est="stan" refuses rather than samples a value/gradient mismatch
     expect_error(
       suppressMessages(
-        nlmixr2est::nlmixr2(.lagMod, .d, est = "stan",
-                            control = stanControl(run = FALSE))),
-      "dose-handling")
+        nlmixr2est::nlmixr2(.lagMod, .d, est = "stan", control = stanControl(run = FALSE))
+      ),
+      "dose-handling"
+    )
     skip("nlmixr2est lacks the #946 event-jump theta sensitivities")
   }
   # with the #946 fix the derivative through the event is real: the full
@@ -127,17 +138,19 @@ test_that("dosed models work; dose-handling theta gradients carry the jump", {
   # differences, INCLUDING the alag theta whose dependence runs through the
   # event time, not the ODE right-hand side
   h2 <- stanLinkSetup(.lagMod, .d, thetaSens = TRUE, cores = 1L)
-  on.exit({
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
-    stanLinkFree()
-  }, add = TRUE)
+  on.exit(
+    {
+      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      stanLinkFree()
+    },
+    add = TRUE
+  )
   # tcl mu-references eta.cl; tv, tlag, add.sd all carry sensitivities
   expect_equal(h2$thetaSensIdx, c(2L, 3L, 4L))
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h2$initPar))
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
   .bt <- function(theta, e) {
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta),
-          as.matrix(e))
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
   }
   th <- c(1.05, 2.95, -1.05, 0.55)
   got <- .bt(th, eta)
@@ -160,8 +173,8 @@ test_that("dosed models work; dose-handling theta gradients carry the jump", {
   expect_equal(as.numeric(got$gradEta), as.numeric(fdE), tolerance = 1e-4)
   # est="stan" now accepts the model (no dose-handling refusal)
   .code <- suppressMessages(
-    nlmixr2est::nlmixr2(.lagMod, .d, est = "stan",
-                        control = stanControl(run = FALSE)))
+    nlmixr2est::nlmixr2(.lagMod, .d, est = "stan", control = stanControl(run = FALSE))
+  )
   expect_s3_class(.code, "nlmixr2bayesCode")
 })
 
@@ -186,12 +199,19 @@ test_that("mu-referenced covariate coefficient gradients FD-agree", {
   }
   set.seed(7)
   .wt <- c(0.15, -0.1, 0.05, -0.2) # already centered/log-scaled
-  .d <- do.call(rbind, lapply(1:4, function(id) {
-    data.frame(ID = id, TIME = c(0.5, 1, 2, 4, 8),
-               DV = 5 * exp(-0.05 * c(0.5, 1, 2, 4, 8)) +
-                 stats::rnorm(5, 0, 0.5),
-               WT = .wt[id], AMT = 0, EVID = 0)
-  }))
+  .d <- do.call(
+    rbind,
+    lapply(1:4, function(id) {
+      data.frame(
+        ID = id,
+        TIME = c(0.5, 1, 2, 4, 8),
+        DV = 5 * exp(-0.05 * c(0.5, 1, 2, 4, 8)) + stats::rnorm(5, 0, 0.5),
+        WT = .wt[id],
+        AMT = 0,
+        EVID = 0
+      )
+    })
+  )
   # the map resolves the coefficient to its (theta, eta) pair, and the
   # per-subject values come out in id order (the EVID=9 NA rows ignored)
   .ui <- rxode2::rxode2(.covMod)
@@ -219,18 +239,20 @@ test_that("mu-referenced covariate coefficient gradients FD-agree", {
   # upstream classifies wt.cl as a plain structural theta, so it gets an
   # exact forward sensitivity; est="stan" must NOT also scatter (2x bug)
   h <- stanLinkSetup(.covMod, .d, thetaSens = TRUE, cores = 1L)
-  on.exit({
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
-    stanLinkFree()
-  }, add = TRUE)
+  on.exit(
+    {
+      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      stanLinkFree()
+    },
+    add = TRUE
+  )
   expect_true(3L %in% h$thetaSensIdx)
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
   # the est-side rule: no scatter for sensitivity-covered coefficients
   expect_length(which(!(.map$muRefCov$thetaIdx %in% h$thetaSensIdx)), 0L)
   .bt <- function(theta, e) {
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta),
-          as.matrix(e))
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
   }
   set.seed(11)
   eta <- matrix(stats::rnorm(4, 0, 0.2), 4, 1)
@@ -257,19 +279,20 @@ test_that("mu-referenced covariate coefficient gradients FD-agree", {
   h2 <- stanLinkSetup(.covMod, .d, thetaSens = FALSE, cores = 1L)
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h2$initPar))
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRefCov`,
-        as.integer(.map$muRefCov$thetaIdx),
-        as.integer(.map$muRefCov$etaIdx - 1L), .cv$val)
+  .Call(
+    nlmixr2bayes:::`_nlmixr2bayes_setMuRefCov`,
+    as.integer(.map$muRefCov$thetaIdx),
+    as.integer(.map$muRefCov$etaIdx - 1L),
+    .cv$val
+  )
   got2 <- .bt(th, eta)
   expect_equal(got2$nBad, 0L)
   # tcl (mu-ref) and wt.cl (scatter) columns match regime 1's; tv/add.sd
   # are zero here (no sensitivity model), which is why est="stan" loads one
   # whenever such thetas are estimated
   expect_equal(got2$gradTheta[, 1], got$gradTheta[, 1], tolerance = 1e-8)
-  expect_equal(got2$gradTheta[, 3], .wt * got2$gradEta[, 1],
-               tolerance = 1e-12)
-  expect_equal(as.numeric(got2$gradTheta[, 3]), as.numeric(fdT[, 3]),
-               tolerance = 1e-3)
+  expect_equal(got2$gradTheta[, 3], .wt * got2$gradEta[, 1], tolerance = 1e-12)
+  expect_equal(as.numeric(got2$gradTheta[, 3]), as.numeric(fdT[, 3]), tolerance = 1e-3)
   stanLinkFree()
   .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
   # --- time-varying covariate: the forward-sensitivity route --------------
@@ -285,11 +308,10 @@ test_that("mu-referenced covariate coefficient gradients FD-agree", {
   dn <- th
   dn[3] <- dn[3] - .h
   fdTv <- (.bt(up, eta)$value - .bt(dn, eta)$value) / (2 * .h)
-  expect_equal(as.numeric(got3$gradTheta[, 3]), as.numeric(fdTv),
-               tolerance = 1e-3)
+  expect_equal(as.numeric(got3$gradTheta[, 3]), as.numeric(fdTv), tolerance = 1e-3)
   # est="stan" accepts the model end-to-end (codegen path)
   .code <- suppressMessages(
-    nlmixr2est::nlmixr2(.covMod, .d, est = "stan",
-                        control = stanControl(run = FALSE)))
+    nlmixr2est::nlmixr2(.covMod, .d, est = "stan", control = stanControl(run = FALSE))
+  )
   expect_s3_class(.code, "nlmixr2bayesCode")
 })

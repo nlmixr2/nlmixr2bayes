@@ -5,11 +5,13 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
   skip_on_cran()
   skip_if_not_installed("rstan")
   .fit <- suppressWarnings(suppressMessages(
-                                            nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan",
-                                                                control = stanControl(chains = 2L, iter = 400L,
-                                                                                      warmup = 200L, seed = 42L,
-                                                                                      cores = 1L,
-                                                                                      onDiagnostic = "none"))))
+    nlmixr2est::nlmixr2(
+      .estMod,
+      .linkData(),
+      est = "stan",
+      control = stanControl(chains = 2L, iter = 400L, warmup = 200L, seed = 42L, cores = 1L, onDiagnostic = "none")
+    )
+  ))
   expect_true(inherits(.fit, "nlmixr2FitData"))
   .env <- .fit$env
   # point estimates pushed back into the ui (the env's fullTheta/theta are
@@ -48,9 +50,9 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
   .psRn <- rownames(.env$posteriorSummary)
   expect_true(all(c("tcl", "tv", "add.sd", "om.eta.cl") %in% .psRn))
   expect_false(any(grepl("^theta\\[", .psRn)))
-  expect_false(any(.psRn %in% c("add_sd", "sd_eta_cl", "Lcorr_eta_cl",
-                                "omega_eta_cl", "L_eta_cl", "z_eta_cl",
-                                "etaP_eta_cl")))
+  expect_false(any(
+    .psRn %in% c("add_sd", "sd_eta_cl", "Lcorr_eta_cl", "omega_eta_cl", "L_eta_cl", "z_eta_cl", "etaP_eta_cl")
+  ))
   expect_true(grepl("sd_eta_cl", .fit$stanCode, fixed = TRUE))
   expect_false(grepl("_b1", .fit$stanCode, fixed = TRUE))
   expect_true(is.list(.env$stanDiagnostics))
@@ -83,9 +85,11 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
     expect_true(any(grepl("^WAIC", rownames(.fit$objDf))))
     expect_true(any(grepl("^LOO", rownames(.fit$objDf))))
     # deviance-scale OBJF = -2 * elpd
-    expect_equal(.fit$objDf[grep("^LOO", rownames(.fit$objDf)), "OBJF"],
-                 -2 * .fit$env$loo$estimates["elpd_loo", "Estimate"],
-                 tolerance = 1e-8)
+    expect_equal(
+      .fit$objDf[grep("^LOO", rownames(.fit$objDf)), "OBJF"],
+      -2 * .fit$env$loo$estimates["elpd_loo", "Estimate"],
+      tolerance = 1e-8
+    )
   }
 })
 
@@ -98,13 +102,23 @@ test_that("iteration print + parameter history over the sampler", {
   .out <- utils::capture.output(type = "output", {
     .msg <- utils::capture.output(type = "message", {
       .fit <- suppressWarnings(
-        nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan",
-                            control = stanControl(chains = 1L, iter = 200L,
-                                                  warmup = 100L, seed = 42L,
-                                                  cores = 1L, print = 100L,
-                                                  calcTables = FALSE,
-                                                  ofv = "none",
-                                                  onDiagnostic = "none")))
+        nlmixr2est::nlmixr2(
+          .estMod,
+          .linkData(),
+          est = "stan",
+          control = stanControl(
+            chains = 1L,
+            iter = 200L,
+            warmup = 100L,
+            seed = 42L,
+            cores = 1L,
+            print = 100L,
+            calcTables = FALSE,
+            ofv = "none",
+            onDiagnostic = "none"
+          )
+        )
+      )
     })
   })
   # the familiar scale.h iteration table printed during sampling
@@ -114,8 +128,7 @@ test_that("iteration print + parameter history over the sampler", {
   .ph <- .fit$parHistData
   expect_true(is.data.frame(.ph))
   expect_true(nrow(.ph) > 0L)
-  expect_true(all(c("iter", "type", "objf", "tcl", "tv", "add.sd",
-                    "om.eta.cl", "nEval") %in% names(.ph)))
+  expect_true(all(c("iter", "type", "objf", "tcl", "tv", "add.sd", "om.eta.cl", "nEval") %in% names(.ph)))
   expect_true(all(is.finite(.ph$objf[.ph$type == "Scaled"])))
   # #1: nlmixr2est's own "iter"/"#" column counts PRINTED rows, not raw
   # evaluations, so it always steps by 1 regardless of the print cadence --
@@ -127,15 +140,27 @@ test_that("iteration print + parameter history over the sampler", {
   expect_true(median(diff(.nEval)) > 10)
   # print = 0 turns the machinery off entirely
   .fit0 <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan",
-                        control = stanControl(chains = 1L, iter = 200L,
-                                              warmup = 100L, seed = 42L,
-                                              cores = 1L, print = 0L,
-                                              calcTables = FALSE,
-                                              ofv = "none",
-                                              onDiagnostic = "none"))))
-  expect_true(is.null(.fit0$parHistData) ||
-                nrow(.fit0$parHistData) == 0L)
+    nlmixr2est::nlmixr2(
+      .estMod,
+      .linkData(),
+      est = "stan",
+      control = stanControl(
+        chains = 1L,
+        iter = 200L,
+        warmup = 100L,
+        seed = 42L,
+        cores = 1L,
+        print = 0L,
+        calcTables = FALSE,
+        ofv = "none",
+        onDiagnostic = "none"
+      )
+    )
+  ))
+  expect_true(
+    is.null(.fit0$parHistData) ||
+      nrow(.fit0$parHistData) == 0L
+  )
 })
 
 test_that("Windows PSOCK chain parallelization runs", {
@@ -143,13 +168,24 @@ test_that("Windows PSOCK chain parallelization runs", {
   skip_if_not_installed("rstan")
   skip_if_not(identical(.Platform$OS.type, "windows"))
   .fit <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan",
-                        control = stanControl(chains = 2L, chainCores = 2L,
-                                              cores = 2L, iter = 100L,
-                                              warmup = 50L, seed = 42L,
-                                              print = 0L, calcTables = FALSE,
-                                              ofv = "none",
-                                              onDiagnostic = "none"))))
+    nlmixr2est::nlmixr2(
+      .estMod,
+      .linkData(),
+      est = "stan",
+      control = stanControl(
+        chains = 2L,
+        chainCores = 2L,
+        cores = 2L,
+        iter = 100L,
+        warmup = 50L,
+        seed = 42L,
+        print = 0L,
+        calcTables = FALSE,
+        ofv = "none",
+        onDiagnostic = "none"
+      )
+    )
+  ))
   expect_s4_class(.fit$stanfit, "stanfit")
   expect_equal(.fit$stanfit@sim$chains, 2L)
   expect_equal(length(.fit$stanfit@sim$samples), 2L)

@@ -60,47 +60,67 @@
 #' @return an integer handle, with attributes describing the layout
 #' @author Lukas A. Widmer
 #' @export
-rxsRegister <- function(model, events, sens, output,
-                        params = numeric(0),
-                        atol = 1e-8, rtol = 1e-8,
-                        method = "liblsoda",
-                        eventSens = NULL,
-                        perSubject = FALSE,
-                        quiet = TRUE,
-                        fast = TRUE,
-                        ...) {
+rxsRegister <- function(
+  model,
+  events,
+  sens,
+  output,
+  params = numeric(0),
+  atol = 1e-8,
+  rtol = 1e-8,
+  method = "liblsoda",
+  eventSens = NULL,
+  perSubject = FALSE,
+  quiet = TRUE,
+  fast = TRUE,
+  ...
+) {
   stopifnot(is.character(sens), length(sens) > 0, !anyDuplicated(sens))
   stopifnot(is.character(output), length(output) > 0)
 
   args <- list(model, calcSens = sens)
-  if (!is.null(eventSens)) args$eventSens <- eventSens
+  if (!is.null(eventSens)) {
+    args$eventSens <- eventSens
+  }
   m <- do.call(rxode2::rxode2, args)
 
   states <- rxode2::rxState(m)
   missingOut <- setdiff(output, states)
   if (length(missingOut)) {
-    stop("rxsRegister(): output state(s) not in the model: ",
-         paste(missingOut, collapse = ", "),
-         "\n  available states: ", paste(states, collapse = ", "),
-         call. = FALSE)
+    stop(
+      "rxsRegister(): output state(s) not in the model: ",
+      paste(missingOut, collapse = ", "),
+      "\n  available states: ",
+      paste(states, collapse = ", "),
+      call. = FALSE
+    )
   }
 
   ## Column names rxode2 will produce, laid out state-major so that the
   ## flattened Jacobian is contiguous per parameter.
-  sensCols <- outer(output, sens,
-                    function(s, p) paste0("rx__sens_", s, "_BY_", p, "__"))
+  sensCols <- outer(output, sens, function(s, p) paste0("rx__sens_", s, "_BY_", p, "__"))
   dim(sensCols) <- c(length(output), length(sens))
 
-  h <- list(model = m, events = events, sens = sens, output = output,
-            params = params, atol = atol, rtol = rtol, method = method,
-            sensCols = sensCols, perSubject = isTRUE(perSubject),
-            quiet = isTRUE(quiet), fast = isTRUE(fast), dots = list(...))
+  h <- list(
+    model = m,
+    events = events,
+    sens = sens,
+    output = output,
+    params = params,
+    atol = atol,
+    rtol = rtol,
+    method = method,
+    sensCols = sensCols,
+    perSubject = isTRUE(perSubject),
+    quiet = isTRUE(quiet),
+    fast = isTRUE(fast),
+    dots = list(...)
+  )
 
   h$ids <- .rxsEventIds(events)
   h$nsub <- length(h$ids)
   if (h$perSubject && h$nsub < 1L) {
-    stop("rxsRegister(): perSubject = TRUE needs an `id` column in `events`",
-         call. = FALSE)
+    stop("rxsRegister(): perSubject = TRUE needs an `id` column in `events`", call. = FALSE)
   }
   nBlock <- length(sens)
   nBlocks <- if (h$perSubject) h$nsub else 1L
@@ -110,8 +130,11 @@ rxsRegister <- function(model, events, sens, output,
   probe <- .rxsRawSolve(h, rep(0.1, nBlock * nBlocks))
   missingCols <- setdiff(c(output, as.vector(sensCols)), names(probe))
   if (length(missingCols)) {
-    stop("rxsRegister(): rxode2 did not return expected column(s): ",
-         paste(missingCols, collapse = ", "), call. = FALSE)
+    stop(
+      "rxsRegister(): rxode2 did not return expected column(s): ",
+      paste(missingCols, collapse = ", "),
+      call. = FALSE
+    )
   }
 
   h$nobs <- nrow(probe)
@@ -127,8 +150,7 @@ rxsRegister <- function(model, events, sens, output,
     rep(0L, h$nobs)
   }
   if (length(rowBlock) != h$nobs || anyNA(rowBlock)) {
-    stop("rxsRegister(): could not map solved rows back to subject ids",
-         call. = FALSE)
+    stop("rxsRegister(): could not map solved rows back to subject ids", call. = FALSE)
   }
   outBlock <- rep(rowBlock, times = length(output))
 
@@ -136,8 +158,7 @@ rxsRegister <- function(model, events, sens, output,
   states <- rxode2::rxState(m)
   h$sensIdx <- match(sens, rxode2::rxModelVars(m)$params) - 1L
   h$outIdx <- match(output, states) - 1L
-  h$sensState <- as.integer(t(matrix(match(as.vector(sensCols), states) - 1L,
-                                     nrow = length(output))))
+  h$sensState <- as.integer(t(matrix(match(as.vector(sensCols), states) - 1L, nrow = length(output))))
   h$blockOf <- if (h$perSubject) seq_len(h$nsub) - 1L else rep(0L, h$nsub)
   if (anyNA(c(h$sensIdx, h$outIdx, h$sensState))) {
     h$fast <- FALSE
@@ -157,11 +178,13 @@ rxsRegister <- function(model, events, sens, output,
   ## nothing.
   needSort <- as.integer(rxode2::rxModelVars(m)$needSort)[1]
   fastOff <- NULL
-  if (isTRUE(h$fast) && !is.na(needSort) && needSort != 0L &&
-      .rxsHasDoses(events)) {
+  if (isTRUE(h$fast) && !is.na(needSort) && needSort != 0L && .rxsHasDoses(events)) {
     h$fast <- FALSE
-    fastOff <- paste0("model has modeled dosing quantities (needSort = ",
-                      needSort, "), whose event ordering Path A cannot refresh")
+    fastOff <- paste0(
+      "model has modeled dosing quantities (needSort = ",
+      needSort,
+      "), whose event ordering Path A cannot refresh"
+    )
   }
 
   handle <- .rxsEnv$nextHandle
@@ -170,12 +193,20 @@ rxsRegister <- function(model, events, sens, output,
   .Call(C_rxstanSetDims, handle, ny, nBlock, nBlocks, as.integer(outBlock))
   .rxsArmFast(handle, h)
 
-  structure(handle,
-            class = "rxsHandle",
-            ny = ny, np = nBlock * nBlocks, nBlock = nBlock, nBlocks = nBlocks,
-            nobs = h$nobs, nsub = h$nsub, perSubject = h$perSubject,
-            fastDisabled = fastOff,
-            sens = sens, output = output)
+  structure(
+    handle,
+    class = "rxsHandle",
+    ny = ny,
+    np = nBlock * nBlocks,
+    nBlock = nBlock,
+    nBlocks = nBlocks,
+    nobs = h$nobs,
+    nsub = h$nsub,
+    perSubject = h$perSubject,
+    fastDisabled = fastOff,
+    sens = sens,
+    output = output
+  )
 }
 
 ## Does the event table contain anything other than observations?  Answering
@@ -183,25 +214,37 @@ rxsRegister <- function(model, events, sens, output,
 ## dose would make Path A silently wrong, a missed speedup only costs time.
 .rxsHasDoses <- function(events) {
   d <- try(as.data.frame(events), silent = TRUE)
-  if (inherits(d, "try-error") || is.null(d$evid)) return(TRUE)
+  if (inherits(d, "try-error") || is.null(d$evid)) {
+    return(TRUE)
+  }
   any(as.integer(d$evid) != 0L, na.rm = TRUE)
 }
 
 ## Subject ids in the order rxode2 will solve and return them.
 .rxsEventIds <- function(events) {
   d <- as.data.frame(events)
-  if (!"id" %in% names(d)) return(1L)
+  if (!"id" %in% names(d)) {
+    return(1L)
+  }
   unique(d$id)
 }
 
 ## Hands the live rx_solve structure to the C fast path.  Must be called while
 ## the solve that just ran is still the one rxode2 holds.
 .rxsArmFast <- function(handle, h) {
-  if (!isTRUE(h$fast)) return(invisible(FALSE))
-  ok <- .Call(C_rxstanFastSetup, as.integer(handle),
-              as.integer(h$sensIdx), as.integer(h$outIdx),
-              as.integer(h$sensState), as.integer(h$nobs),
-              as.integer(h$blockOf), isTRUE(h$quiet))
+  if (!isTRUE(h$fast)) {
+    return(invisible(FALSE))
+  }
+  ok <- .Call(
+    C_rxstanFastSetup,
+    as.integer(handle),
+    as.integer(h$sensIdx),
+    as.integer(h$outIdx),
+    as.integer(h$sensState),
+    as.integer(h$nobs),
+    as.integer(h$blockOf),
+    isTRUE(h$quiet)
+  )
   invisible(isTRUE(ok))
 }
 
@@ -251,14 +294,17 @@ rxsFastAvailable <- function(handle) {
 #' @export
 print.rxsHandle <- function(x, ...) {
   cat("<rxstan handle ", unclass(x), ">\n", sep = "")
-  cat("  parameters (", attr(x, "np"), "): ",
-      paste(attr(x, "sens"), collapse = ", "),
-      if (attr(x, "perSubject")) paste0(" x ", attr(x, "nBlocks"), " subjects") else "",
-      "\n", sep = "")
-  cat("  states     (", length(attr(x, "output")), "): ",
-      paste(attr(x, "output"), collapse = ", "), "\n", sep = "")
-  cat("  rows       : ", attr(x, "nobs"), " obs -> ", attr(x, "ny"),
-      " outputs\n", sep = "")
+  cat(
+    "  parameters (",
+    attr(x, "np"),
+    "): ",
+    paste(attr(x, "sens"), collapse = ", "),
+    if (attr(x, "perSubject")) paste0(" x ", attr(x, "nBlocks"), " subjects") else "",
+    "\n",
+    sep = ""
+  )
+  cat("  states     (", length(attr(x, "output")), "): ", paste(attr(x, "output"), collapse = ", "), "\n", sep = "")
+  cat("  rows       : ", attr(x, "nobs"), " obs -> ", attr(x, "ny"), " outputs\n", sep = "")
   if (!is.null(attr(x, "fastDisabled"))) {
     cat("  fast path  : off (", attr(x, "fastDisabled"), ")\n", sep = "")
   }
@@ -280,7 +326,9 @@ rxsRelease <- function(handle) {
 #' @author Lukas A. Widmer
 #' @export
 rxsReleaseAll <- function() {
-  for (key in names(.rxsEnv$handles)) rxsRelease(as.integer(key))
+  for (key in names(.rxsEnv$handles)) {
+    rxsRelease(as.integer(key))
+  }
   invisible(NULL)
 }
 
@@ -292,11 +340,9 @@ rxsHandles <- function() as.integer(names(.rxsEnv$handles))
 .rxsRawSolve <- function(h, p) {
   pars <- if (h$perSubject) {
     ## rxode2 takes one row per subject; Stan hands us the blocks end to end.
-    pm <- matrix(as.numeric(p), nrow = h$nsub, ncol = length(h$sens),
-                 byrow = TRUE, dimnames = list(NULL, h$sens))
+    pm <- matrix(as.numeric(p), nrow = h$nsub, ncol = length(h$sens), byrow = TRUE, dimnames = list(NULL, h$sens))
     if (length(h$params)) {
-      fixed <- matrix(rep(h$params, each = h$nsub), nrow = h$nsub,
-                      dimnames = list(NULL, names(h$params)))
+      fixed <- matrix(rep(h$params, each = h$nsub), nrow = h$nsub, dimnames = list(NULL, names(h$params)))
       pm <- cbind(pm, fixed)
     }
     pm
@@ -305,11 +351,22 @@ rxsHandles <- function() as.integer(names(.rxsEnv$handles))
     x[h$sens] <- as.numeric(p)
     x
   }
-  call <- c(list(object = h$model, params = pars, events = h$events,
-                 returnType = "data.frame", atol = h$atol, rtol = h$rtol,
-                 method = h$method, cores = 1L),
-            h$dots)
-  if (!isTRUE(h$quiet)) return(do.call(rxode2::rxSolve, call))
+  call <- c(
+    list(
+      object = h$model,
+      params = pars,
+      events = h$events,
+      returnType = "data.frame",
+      atol = h$atol,
+      rtol = h$rtol,
+      method = h$method,
+      cores = 1L
+    ),
+    h$dots
+  )
+  if (!isTRUE(h$quiet)) {
+    return(do.call(rxode2::rxSolve, call))
+  }
 
   .Call(C_rxstanSetSilent, TRUE)
   on.exit(.Call(C_rxstanSetSilent, FALSE), add = TRUE)
@@ -322,7 +379,9 @@ rxsHandles <- function() as.integer(names(.rxsEnv$handles))
 ## rather than silently reinterpreted.
 .rxsSolveOne <- function(handle, p) {
   h <- .rxsEnv$handles[[as.character(handle)]]
-  if (is.null(h)) stop("unknown rxstan handle ", handle)
+  if (is.null(h)) {
+    stop("unknown rxstan handle ", handle)
+  }
 
   s <- .rxsRawSolve(h, p)
 
@@ -334,8 +393,7 @@ rxsHandles <- function() as.integer(names(.rxsEnv$handles))
   out <- matrix(0, nrow = ny, ncol = length(h$sens) + 1L)
   out[, 1L] <- unlist(s[, h$output, drop = FALSE], use.names = FALSE)
   for (j in seq_along(h$sens)) {
-    out[, j + 1L] <- unlist(s[, h$sensCols[, j], drop = FALSE],
-                            use.names = FALSE)
+    out[, j + 1L] <- unlist(s[, h$sensCols[, j], drop = FALSE], use.names = FALSE)
   }
 
   ## The solve just built is the one rxode2 now holds, so this is the moment to

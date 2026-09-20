@@ -15,9 +15,17 @@
 .rxsName <- function(x) gsub("[^A-Za-z0-9_]", "_", x)
 
 .rxsBinary <- c("+", "-", "*", "/")
-.rxsFuns <- c(exp = "exp", log = "log", sqrt = "sqrt", abs = "abs",
-              sin = "sin", cos = "cos", tan = "tan", logit = "logit",
-              expit = "inv_logit")
+.rxsFuns <- c(
+  exp = "exp",
+  log = "log",
+  sqrt = "sqrt",
+  abs = "abs",
+  sin = "sin",
+  cos = "cos",
+  tan = "tan",
+  logit = "logit",
+  expit = "inv_logit"
+)
 
 ## R expression -> Stan expression.  Deliberately narrow: anything outside this
 ## set is rejected rather than mistranslated.
@@ -34,24 +42,28 @@
 
   op <- as.character(e[[1]])
 
-  if (op == "(") return(paste0("(", .rxsExprToStan(e[[2]]), ")"))
+  if (op == "(") {
+    return(paste0("(", .rxsExprToStan(e[[2]]), ")"))
+  }
 
   if (op %in% .rxsBinary) {
-    if (length(e) == 2L) return(paste0("(", op, .rxsExprToStan(e[[2]]), ")"))
-    return(paste0("(", .rxsExprToStan(e[[2]]), " ", op, " ",
-                  .rxsExprToStan(e[[3]]), ")"))
+    if (length(e) == 2L) {
+      return(paste0("(", op, .rxsExprToStan(e[[2]]), ")"))
+    }
+    return(paste0("(", .rxsExprToStan(e[[2]]), " ", op, " ", .rxsExprToStan(e[[3]]), ")"))
   }
   if (op == "^") {
-    return(paste0("pow(", .rxsExprToStan(e[[2]]), ", ",
-                  .rxsExprToStan(e[[3]]), ")"))
+    return(paste0("pow(", .rxsExprToStan(e[[2]]), ", ", .rxsExprToStan(e[[3]]), ")"))
   }
   if (op %in% names(.rxsFuns)) {
-    return(paste0(.rxsFuns[[op]], "(",
-                  paste(vapply(as.list(e)[-1], .rxsExprToStan, character(1)),
-                        collapse = ", "), ")"))
+    return(paste0(
+      .rxsFuns[[op]],
+      "(",
+      paste(vapply(as.list(e)[-1], .rxsExprToStan, character(1)), collapse = ", "),
+      ")"
+    ))
   }
-  stop("rxstan codegen: unsupported function `", op, "` in ", deparse(e),
-       call. = FALSE)
+  stop("rxstan codegen: unsupported function `", op, "` in ", deparse(e), call. = FALSE)
 }
 
 ## Splits the model into parameter transformations, ODEs, prediction
@@ -73,10 +85,11 @@
       next
     }
     lhs <- e[[2]]
-    if (is.call(lhs)) next  # d/dt(...) and alag()/f()/dur()/rate() are rxode2's
+    if (is.call(lhs)) {
+      next
+    } # d/dt(...) and alag()/f()/dur()/rate() are rxode2's
 
-    if (!is.null(linCmtRepl) && is.call(e[[3]]) &&
-        identical(as.character(e[[3]][[1]]), "linCmt")) {
+    if (!is.null(linCmtRepl) && is.call(e[[3]]) && identical(as.character(e[[3]][[1]]), "linCmt")) {
       e[[3]] <- linCmtRepl
     }
 
@@ -109,19 +122,27 @@
   lnorm <- NULL
   powPar <- NULL
   for (t in terms) {
-    if (!is.call(t)) stop("rxstan codegen: cannot read error model ",
-                          deparse(rhs), call. = FALSE)
+    if (!is.call(t)) {
+      stop("rxstan codegen: cannot read error model ", deparse(rhs), call. = FALSE)
+    }
     fn <- as.character(t[[1]])
     par <- as.character(t[[2]])
-    if (fn == "add") add <- par
-    else if (fn == "prop") prop <- par
-    else if (fn == "lnorm") lnorm <- par
-    else if (fn == "pow") {
+    if (fn == "add") {
+      add <- par
+    } else if (fn == "prop") {
+      prop <- par
+    } else if (fn == "lnorm") {
+      lnorm <- par
+    } else if (fn == "pow") {
       powPar <- c(par, as.character(t[[3]]))
     } else {
-      stop("rxstan codegen: unsupported residual error '", fn, "'. ",
-           "add(), prop(), add() + prop(), lnorm() and pow() are handled.",
-           call. = FALSE)
+      stop(
+        "rxstan codegen: unsupported residual error '",
+        fn,
+        "'. ",
+        "add(), prop(), add() + prop(), lnorm() and pow() are handled.",
+        call. = FALSE
+      )
     }
   }
 
@@ -129,37 +150,42 @@
   ## into the error parameters -- that would silently reshape the theta block,
   ## so only the standalone form is accepted.
   if (!is.null(powPar) && (!is.null(add) || !is.null(prop) || !is.null(lnorm))) {
-    stop("rxstan codegen: pow() combined with another error term is not ",
-         "supported; use pow() on its own", call. = FALSE)
+    stop(
+      "rxstan codegen: pow() combined with another error term is not ",
+      "supported; use pow() on its own",
+      call. = FALSE
+    )
   }
   if (!is.null(lnorm) && (!is.null(add) || !is.null(prop))) {
-    stop("rxstan codegen: lnorm() combined with another error term is not ",
-         "supported", call. = FALSE)
+    stop("rxstan codegen: lnorm() combined with another error term is not ", "supported", call. = FALSE)
   }
 
   if (!is.null(lnorm)) {
     ## Additive on the log scale.  lognormal_lpdf is the density of dv itself,
     ## so log_lik stays on the observation scale and loo() remains valid.
-    return(list(pars = lnorm, dist = "lognormal",
-                loc = "log(pred[i])", sd = .rxsName(lnorm)))
+    return(list(pars = lnorm, dist = "lognormal", loc = "log(pred[i])", sd = .rxsName(lnorm)))
   }
   if (!is.null(powPar)) {
-    return(list(pars = powPar, dist = "normal", loc = "pred[i]",
-                sd = sprintf("%s * pow(pred[i], %s)",
-                             .rxsName(powPar[1]), .rxsName(powPar[2]))))
+    return(list(
+      pars = powPar,
+      dist = "normal",
+      loc = "pred[i]",
+      sd = sprintf("%s * pow(pred[i], %s)", .rxsName(powPar[1]), .rxsName(powPar[2]))
+    ))
   }
   if (!is.null(add) && !is.null(prop)) {
-    list(pars = c(add, prop), dist = "normal", loc = "pred[i]",
-         sd = sprintf("sqrt(square(%s) + square(%s * pred[i]))",
-                      .rxsName(add), .rxsName(prop)))
+    list(
+      pars = c(add, prop),
+      dist = "normal",
+      loc = "pred[i]",
+      sd = sprintf("sqrt(square(%s) + square(%s * pred[i]))", .rxsName(add), .rxsName(prop))
+    )
   } else if (!is.null(add)) {
     list(pars = add, dist = "normal", loc = "pred[i]", sd = .rxsName(add))
   } else if (!is.null(prop)) {
-    list(pars = prop, dist = "normal", loc = "pred[i]",
-         sd = sprintf("%s * pred[i]", .rxsName(prop)))
+    list(pars = prop, dist = "normal", loc = "pred[i]", sd = sprintf("%s * pred[i]", .rxsName(prop)))
   } else {
-    stop("rxstan codegen: no residual error found in ", deparse(rhs),
-         call. = FALSE)
+    stop("rxstan codegen: no residual error found in ", deparse(rhs), call. = FALSE)
   }
 }
 
@@ -168,8 +194,7 @@
 ## Uses target += rather than ~ because loo needs the normalizing constant.
 .rxsLogLik <- function(errSpec, cens = FALSE) {
   if (cens) {
-    sprintf("rxs_obs_ll_%s(dv[i], %s, %s, cens[i], hasLimit[i], limit[i])",
-            errSpec$dist, errSpec$loc, errSpec$sd)
+    sprintf("rxs_obs_ll_%s(dv[i], %s, %s, cens[i], hasLimit[i], limit[i])", errSpec$dist, errSpec$loc, errSpec$sd)
   } else {
     sprintf("%s_lpdf(dv[i] | %s, %s)", errSpec$dist, errSpec$loc, errSpec$sd)
   }
@@ -183,11 +208,14 @@
   if (length(errSpecs) == 1L) {
     return(paste0(indent, sprintf(assign, .rxsLogLik(errSpecs[[1L]], cens))))
   }
-  vapply(seq_along(errSpecs), function(k) {
-    kw <- if (k == 1L) "if" else "else if"
-    paste0(indent, sprintf("%s (dvid[i] == %d) ", kw, k),
-           sprintf(assign, .rxsLogLik(errSpecs[[k]], cens)))
-  }, character(1))
+  vapply(
+    seq_along(errSpecs),
+    function(k) {
+      kw <- if (k == 1L) "if" else "else if"
+      paste0(indent, sprintf("%s (dvid[i] == %d) ", kw, k), sprintf(assign, .rxsLogLik(errSpecs[[k]], cens)))
+    },
+    character(1)
+  )
 }
 
 ## Which endpoint's prediction each observation row takes.
@@ -195,11 +223,14 @@
   if (length(predVars) == 1L) {
     return(paste0(indent, sprintf("pred[i] = %s;", predVars)))
   }
-  vapply(seq_along(predVars), function(k) {
-    kw <- if (k == 1L) "if" else "else if"
-    paste0(indent, sprintf("%s (dvid[i] == %d) pred[i] = %s;", kw, k,
-                           predVars[k]))
-  }, character(1))
+  vapply(
+    seq_along(predVars),
+    function(k) {
+      kw <- if (k == 1L) "if" else "else if"
+      paste0(indent, sprintf("%s (dvid[i] == %d) pred[i] = %s;", kw, k, predVars[k]))
+    },
+    character(1)
+  )
 }
 
 ## The censored likelihood, emitted as a Stan function so the model block and
@@ -209,18 +240,30 @@
 ## One function per distinct family, since endpoints need not share one.
 .rxsCensFun <- function(errSpecs) {
   dists <- unique(vapply(errSpecs, `[[`, character(1), "dist"))
-  unlist(lapply(dists, function(d) {
-    c(
-      sprintf("  real rxs_obs_ll_%s(real y, real mu, real sigma, int cens, int hasLimit, real limit) {", d),
-      sprintf("    if (cens == 0) return %s_lpdf(y | mu, sigma);", d),
-      "    if (cens == 1) {  // below the limit of quantification",
-      sprintf("      if (hasLimit == 1) return log_diff_exp(%s_lcdf(y | mu, sigma), %s_lcdf(limit | mu, sigma));", d, d),
-      sprintf("      return %s_lcdf(y | mu, sigma);", d),
-      "    }",
-      sprintf("    if (hasLimit == 1) return log_diff_exp(%s_lcdf(limit | mu, sigma), %s_lcdf(y | mu, sigma));", d, d),
-      sprintf("    return %s_lccdf(y | mu, sigma);", d),
-      "  }")
-  }), use.names = FALSE)
+  unlist(
+    lapply(dists, function(d) {
+      c(
+        sprintf("  real rxs_obs_ll_%s(real y, real mu, real sigma, int cens, int hasLimit, real limit) {", d),
+        sprintf("    if (cens == 0) return %s_lpdf(y | mu, sigma);", d),
+        "    if (cens == 1) {  // below the limit of quantification",
+        sprintf(
+          "      if (hasLimit == 1) return log_diff_exp(%s_lcdf(y | mu, sigma), %s_lcdf(limit | mu, sigma));",
+          d,
+          d
+        ),
+        sprintf("      return %s_lcdf(y | mu, sigma);", d),
+        "    }",
+        sprintf(
+          "    if (hasLimit == 1) return log_diff_exp(%s_lcdf(limit | mu, sigma), %s_lcdf(y | mu, sigma));",
+          d,
+          d
+        ),
+        sprintf("    return %s_lccdf(y | mu, sigma);", d),
+        "  }"
+      )
+    }),
+    use.names = FALSE
+  )
 }
 
 ## nlmixr2 puts censoring in the DATA, not the model: CENS is 0 observed,
@@ -231,12 +274,16 @@
   cens <- if ("cens" %in% tolower(nm)) obs[[nm[match("cens", tolower(nm))]]] else NULL
   limit <- if ("limit" %in% tolower(nm)) obs[[nm[match("limit", tolower(nm))]]] else NULL
 
-  if (is.null(cens)) return(NULL)
+  if (is.null(cens)) {
+    return(NULL)
+  }
   ## Values are not validated here: rxsRegister()'s probe solve has already run
   ## and rxode2 rejects anything outside -1/0/1, naming the offending row.
   cens <- as.integer(cens)
   cens[is.na(cens)] <- 0L
-  if (all(cens == 0L)) return(NULL)
+  if (all(cens == 0L)) {
+    return(NULL)
+  }
 
   lim <- if (is.null(limit)) rep(NA_real_, length(cens)) else as.numeric(limit)
   hasLimit <- as.integer(!is.na(lim) & is.finite(lim) & cens != 0L)
@@ -247,9 +294,15 @@
 ## `<lower=,upper=>` for one ini() row, omitting infinite ends.
 .rxsBound <- function(lower, upper) {
   parts <- character(0)
-  if (is.finite(lower)) parts <- c(parts, sprintf("lower=%.17g", lower))
-  if (is.finite(upper)) parts <- c(parts, sprintf("upper=%.17g", upper))
-  if (!length(parts)) return("")
+  if (is.finite(lower)) {
+    parts <- c(parts, sprintf("lower=%.17g", lower))
+  }
+  if (is.finite(upper)) {
+    parts <- c(parts, sprintf("upper=%.17g", upper))
+  }
+  if (!length(parts)) {
+    return("")
+  }
   paste0("<", paste(parts, collapse = ", "), ">")
 }
 
@@ -277,7 +330,8 @@
   vp = c("vp", "vp1", "v2", "Vp", "Vp1", "V2"),
   q2 = c("q2", "Q2"),
   vp2 = c("vp2", "v3", "Vp2", "V3"),
-  ka = c("ka", "Ka", "KA"))
+  ka = c("ka", "Ka", "KA")
+)
 
 .rxsPick <- function(candidates, lhs) {
   hit <- candidates[candidates %in% lhs]
@@ -291,12 +345,12 @@
 .rxsLinCmtInfo <- function(ui) {
   m <- rxode2::rxode2(rxode2::rxNorm(ui))
   mv <- rxode2::rxModelVars(m)
-  if (as.integer(mv$flags[["linCmt"]]) <= 0L) return(NULL)
+  if (as.integer(mv$flags[["linCmt"]]) <= 0L) {
+    return(NULL)
+  }
 
   lhs <- mv$lhs
-  info <- list(ncmt = as.integer(mv$flags[["ncmt"]]),
-               hasKa = as.integer(mv$flags[["ka"]]) == 1L,
-               states = mv$state)
+  info <- list(ncmt = as.integer(mv$flags[["ncmt"]]), hasKa = as.integer(mv$flags[["ka"]]) == 1L, states = mv$state)
   for (nm in names(.rxsLinCmtNames)) {
     info[[nm]] <- .rxsPick(.rxsLinCmtNames[[nm]], lhs)
   }
@@ -305,13 +359,16 @@
 
 ## The ODE system equivalent to linCmt(), in the clearance parameterization.
 .rxsLinCmtOdes <- function(info) {
-  need <- c("cl", "v", if (info$ncmt >= 2L) c("q", "vp"),
-            if (info$ncmt >= 3L) c("q2", "vp2"), if (info$hasKa) "ka")
+  need <- c("cl", "v", if (info$ncmt >= 2L) c("q", "vp"), if (info$ncmt >= 3L) c("q2", "vp2"), if (info$hasKa) "ka")
   missing <- need[is.na(unlist(info[need]))]
   if (length(missing)) {
-    stop("rxstan codegen: linCmt() expansion needs the clearance ",
-         "parameterization; could not find ", paste(missing, collapse = ", "),
-         " among the model's assignments", call. = FALSE)
+    stop(
+      "rxstan codegen: linCmt() expansion needs the clearance ",
+      "parameterization; could not find ",
+      paste(missing, collapse = ", "),
+      " among the model's assignments",
+      call. = FALSE
+    )
   }
 
   el <- sprintf("(%s / %s)", info$cl, info$v)
@@ -327,21 +384,16 @@
     k12 <- sprintf("(%s / %s)", info$q, info$v)
     k21 <- sprintf("(%s / %s)", info$q, info$vp)
     toC <- c(toC, sprintf("- %s * central + %s * peripheral1", k12, k21))
-    periph <- c(periph,
-                sprintf("d/dt(peripheral1) = %s * central - %s * peripheral1;",
-                        k12, k21))
+    periph <- c(periph, sprintf("d/dt(peripheral1) = %s * central - %s * peripheral1;", k12, k21))
   }
   if (info$ncmt >= 3L) {
     k13 <- sprintf("(%s / %s)", info$q2, info$v)
     k31 <- sprintf("(%s / %s)", info$q2, info$vp2)
     toC <- c(toC, sprintf("- %s * central + %s * peripheral2", k13, k31))
-    periph <- c(periph,
-                sprintf("d/dt(peripheral2) = %s * central - %s * peripheral2;",
-                        k13, k31))
+    periph <- c(periph, sprintf("d/dt(peripheral2) = %s * central - %s * peripheral2;", k13, k31))
   }
 
-  central <- sprintf("d/dt(central) = %s - %s * central;",
-                     paste(c("0", toC), collapse = " "), el)
+  central <- sprintf("d/dt(central) = %s - %s * central;", paste(c("0", toC), collapse = " "), el)
 
   # Compartment order must match linCmt's, or dosing by cmt number would shift.
   c(depot, central, periph)
@@ -352,8 +404,7 @@
 ## parameterization into an error instead of plausible-looking wrong numbers.
 .rxsCheckLinCmt <- function(ui, modelText, info, tol = 1e-6) {
   ini <- ui$iniDf
-  pars <- stats::setNames(ini$est[!is.na(ini$ntheta) & is.na(ini$err)],
-                          ini$name[!is.na(ini$ntheta) & is.na(ini$err)])
+  pars <- stats::setNames(ini$est[!is.na(ini$ntheta) & is.na(ini$err)], ini$name[!is.na(ini$ntheta) & is.na(ini$err)])
   etas <- ini$name[!is.na(ini$neta1) & ini$neta1 == ini$neta2]
   pars <- c(pars, stats::setNames(rep(0, length(etas)), etas))
 
@@ -361,23 +412,26 @@
   ev <- rxode2::et(ev, c(0.25, 1, 4, 12, 24))
 
   solve1 <- function(m) {
-    rxode2::rxSolve(m, params = pars, events = ev, returnType = "data.frame",
-                    cores = 1L, atol = 1e-10, rtol = 1e-10)
+    rxode2::rxSolve(m, params = pars, events = ev, returnType = "data.frame", cores = 1L, atol = 1e-10, rtol = 1e-10)
   }
   closed <- try(solve1(rxode2::rxode2(rxode2::rxNorm(ui))), silent = TRUE)
   expanded <- try(solve1(rxode2::rxode2(modelText)), silent = TRUE)
   if (inherits(closed, "try-error") || inherits(expanded, "try-error")) {
-    stop("rxstan codegen: could not verify the linCmt() expansion against the ",
-         "closed form", call. = FALSE)
+    stop("rxstan codegen: could not verify the linCmt() expansion against the ", "closed form", call. = FALSE)
   }
 
   v <- as.character(ui$predDf$var)
   d <- max(abs(closed[[v]] - expanded[[v]])) / max(1, max(abs(closed[[v]])))
   if (!is.finite(d) || d > tol) {
-    stop("rxstan codegen: the linCmt() ODE expansion disagrees with linCmt() ",
-         "itself (relative difference ", signif(d, 3), "). The model is ",
-         "probably using a parameterization the expansion does not cover; ",
-         "write it with explicit ODEs.", call. = FALSE)
+    stop(
+      "rxstan codegen: the linCmt() ODE expansion disagrees with linCmt() ",
+      "itself (relative difference ",
+      signif(d, 3),
+      "). The model is ",
+      "probably using a parameterization the expansion does not cover; ",
+      "write it with explicit ODEs.",
+      call. = FALSE
+    )
   }
   invisible(d)
 }
@@ -386,16 +440,22 @@
 ## correlated block, a lone eta is a block of one.
 .rxsOmegaBlocks <- function(omega) {
   n <- nrow(omega)
-  if (!n) return(list())
+  if (!n) {
+    return(list())
+  }
   seen <- logical(n)
   blocks <- list()
   for (i in seq_len(n)) {
-    if (seen[i]) next
+    if (seen[i]) {
+      next
+    }
     grp <- i
     repeat {
       linked <- which(apply(abs(omega[grp, , drop = FALSE]) > 0, 2, any))
       grp2 <- sort(unique(c(grp, linked)))
-      if (identical(grp2, grp)) break
+      if (identical(grp2, grp)) {
+        break
+      }
       grp <- grp2
     }
     seen[grp] <- TRUE
@@ -491,9 +551,10 @@
 #'   in the generated program, since Stan identifiers cannot contain dots.
 #' @author Lukas A. Widmer
 #' @export
-rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
-                          ...) {
-  if (is.function(ui)) ui <- rxode2::rxode2(ui)
+rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2, ...) {
+  if (is.function(ui)) {
+    ui <- rxode2::rxode2(ui)
+  }
   ini <- ui$iniDf
 
   thetaDf <- ini[!is.na(ini$ntheta) & is.na(ini$err), , drop = FALSE]
@@ -509,27 +570,36 @@ rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
     matrix(numeric(0), 0, 0)
   }
   blocks <- .rxsOmegaBlocks(omegaMat)
-  if (any(etaDf$fix & vapply(seq_len(nrow(etaDf)), function(i) {
-        any(lengths(Filter(function(b) i %in% b, blocks)) > 1L)
-      }, logical(1)))) {
-    stop("rxstan codegen: fixing an eta inside a correlated block is not ",
-         "supported", call. = FALSE)
+  if (
+    any(
+      etaDf$fix & # nolint: vector_logic_linter.
+        vapply(
+          seq_len(nrow(etaDf)),
+          function(i) {
+            any(lengths(Filter(function(b) i %in% b, blocks)) > 1L)
+          },
+          logical(1)
+        )
+    )
+  ) {
+    stop("rxstan codegen: fixing an eta inside a correlated block is not ", "supported", call. = FALSE)
   }
   if (isTRUE(ui$predDf$linCmt)) {
-    stop("rxstan codegen: linCmt() models are not supported yet. rxode2 does ",
-         "emit sensitivities for them, but against linCmt's own parameters ",
-         "(p1, v1, ka) and under a different column naming convention, so the ",
-         "bridge needs a separate path. Write the model with explicit ODEs ",
-         "for now.", call. = FALSE)
+    stop(
+      "rxstan codegen: linCmt() models are not supported yet. rxode2 does ",
+      "emit sensitivities for them, but against linCmt's own parameters ",
+      "(p1, v1, ka) and under a different column naming convention, so the ",
+      "bridge needs a separate path. Write the model with explicit ODEs ",
+      "for now.",
+      call. = FALSE
+    )
   }
   if (any(errDf$fix)) {
-    stop("rxstan codegen: a fixed residual error parameter is not supported ",
-         "yet", call. = FALSE)
+    stop("rxstan codegen: a fixed residual error parameter is not supported ", "yet", call. = FALSE)
   }
   unknown <- setdiff(names(priors), c(thetaDf$name, etaDf$name, errDf$name))
   if (length(unknown)) {
-    stop("rxstan codegen: priors given for unknown parameter(s): ",
-         paste(unknown, collapse = ", "), call. = FALSE)
+    stop("rxstan codegen: priors given for unknown parameter(s): ", paste(unknown, collapse = ", "), call. = FALSE)
   }
 
   ## linCmt() is replaced by its ODE equivalent, because rxode2 gives no
@@ -543,8 +613,7 @@ rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
   epVar <- as.character(ui$predDf$var)
   missingErr <- setdiff(epVar, names(parts$err))
   if (length(missingErr)) {
-    stop("rxstan codegen: no residual error line for endpoint(s): ",
-         paste(missingErr, collapse = ", "), call. = FALSE)
+    stop("rxstan codegen: no residual error line for endpoint(s): ", paste(missingErr, collapse = ", "), call. = FALSE)
   }
   errSpecs <- lapply(epVar, function(v) .rxsErrorSd(ui, parts$err[[v]]))
   names(errSpecs) <- epVar
@@ -560,8 +629,7 @@ rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
   etaNames <- etaDf$name
   block <- c(thetaNames, etaNames)
   if (!length(block)) {
-    stop("rxstan codegen: every parameter is fixed, nothing to estimate",
-         call. = FALSE)
+    stop("rxstan codegen: every parameter is fixed, nothing to estimate", call. = FALSE)
   }
 
   fixedParams <- stats::setNames(thetaFix$est, thetaFix$name)
@@ -570,37 +638,46 @@ rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
   ## states but are columns of `data`.  Checked BEFORE the probe solve,
   ## because rxode2 reports a missing one by dumping the whole expanded
   ## sensitivity system, which buries the single word that matters.
-  defined <- c(vapply(parts$pre, function(e) as.character(e[[2]]), character(1)),
-               vapply(parts$post, function(e) as.character(e[[2]]), character(1)))
-  used <- unique(unlist(lapply(c(parts$pre, parts$post),
-                               function(e) all.vars(e[[3]])), use.names = FALSE))
+  defined <- c(
+    vapply(parts$pre, function(e) as.character(e[[2]]), character(1)),
+    vapply(parts$post, function(e) as.character(e[[2]]), character(1))
+  )
+  used <- unique(unlist(lapply(c(parts$pre, parts$post), function(e) all.vars(e[[3]])), use.names = FALSE))
   known <- c(thetaNames, etaNames, thetaFix$name, parts$states, defined, "pi")
   cand <- setdiff(used, known)
   covNames <- intersect(cand, names(data))
   orphan <- setdiff(cand, names(data))
   if (length(orphan)) {
-    stop("rxstan codegen: the model uses ", paste(orphan, collapse = ", "),
-         ", which is neither an estimated parameter nor a column of `data`",
-         call. = FALSE)
+    stop(
+      "rxstan codegen: the model uses ",
+      paste(orphan, collapse = ", "),
+      ", which is neither an estimated parameter nor a column of `data`",
+      call. = FALSE
+    )
   }
 
   ## The bridge solves with the estimated thetas and etas as rxode2 parameters;
   ## fixed thetas are passed as constants instead.
   modelText <- rxode2::rxNorm(ui)
   if (!is.null(linInfo)) {
-    keep <- grep("linCmt\\(", strsplit(modelText, "\n")[[1]], invert = TRUE,
-                 value = TRUE)
-    modelText <- paste(c(keep, .rxsLinCmtOdes(linInfo),
-                         sprintf("%s = central / %s;", ui$predDf$var,
-                                 linInfo$v)),
-                       collapse = "\n")
+    keep <- grep("linCmt\\(", strsplit(modelText, "\n")[[1]], invert = TRUE, value = TRUE)
+    modelText <- paste(
+      c(keep, .rxsLinCmtOdes(linInfo), sprintf("%s = central / %s;", ui$predDf$var, linInfo$v)),
+      collapse = "\n"
+    )
     .rxsCheckLinCmt(ui, modelText, linInfo)
     parts$states <- rxode2::rxState(rxode2::rxode2(modelText))
   }
   ids <- unique(data$id)
-  handle <- rxsRegister(modelText, events = data, sens = block,
-                        output = parts$states, params = fixedParams,
-                        perSubject = TRUE, ...)
+  handle <- rxsRegister(
+    modelText,
+    events = data,
+    sens = block,
+    output = parts$states,
+    params = fixedParams,
+    perSubject = TRUE,
+    ...
+  )
 
   nSub <- length(ids)
   nTheta <- length(thetaNames)
@@ -611,8 +688,14 @@ rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
   nObs <- nrow(obs)
   if (nObs != attr(handle, "nobs")) {
     rxsRelease(handle)
-    stop("rxstan codegen: ", nObs, " observation rows in `data` but the solve ",
-         "returned ", attr(handle, "nobs"), call. = FALSE)
+    stop(
+      "rxstan codegen: ",
+      nObs,
+      " observation rows in `data` but the solve ",
+      "returned ",
+      attr(handle, "nobs"),
+      call. = FALSE
+    )
   }
 
   ## --- Stan source ---------------------------------------------------------
@@ -623,9 +706,7 @@ rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
   oName <- paste0("omega_", eName)
   ePar <- .rxsName(unlist(lapply(errSpecs, `[[`, "pars"), use.names = FALSE))
 
-  thetaDecl <- sprintf("  real%s %s;",
-                       mapply(.rxsBound, thetaEst$lower, thetaEst$upper),
-                       sName)
+  thetaDecl <- sprintf("  real%s %s;", mapply(.rxsBound, thetaEst$lower, thetaEst$upper), sName)
   etaFixed <- etaDf$fix
 
   ## One correlated block becomes an SD vector plus a Cholesky correlation
@@ -639,57 +720,77 @@ rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
 
   omegaDecl <- c(
     if (length(corr)) {
-      c(sprintf("  vector<lower=0>[%d] omega_%s;", blkSize[corr], blkName[corr]),
-        sprintf("  cholesky_factor_corr[%d] L_%s;", blkSize[corr], blkName[corr]))
+      c(
+        sprintf("  vector<lower=0>[%d] omega_%s;", blkSize[corr], blkName[corr]),
+        sprintf("  cholesky_factor_corr[%d] L_%s;", blkSize[corr], blkName[corr])
+      )
     },
     if (length(soloIdx) && any(!etaFixed[soloIdx])) {
       sprintf("  real<lower=0> %s;", oName[soloIdx][!etaFixed[soloIdx]])
-    })
-
-  etaLines <- unlist(lapply(seq_along(blocks), function(b) {
-    idx <- blocks[[b]]
-    if (length(idx) == 1L) {
-      return(sprintf("    eta[%d, s] = %s * z[%d, s];", idx, oName[idx], idx))
     }
-    zvec <- paste(sprintf("z[%d, s]", idx), collapse = ", ")
-    c(sprintf("    {"),
-      sprintf("      vector[%d] e = diag_pre_multiply(omega_%s, L_%s) * [%s]';",
-              length(idx), blkName[b], blkName[b], zvec),
-      sprintf("      eta[%d, s] = e[%d];", idx, seq_along(idx)),
-      "    }")
-  }), use.names = FALSE)
-  errDecl <- sprintf("  real%s %s;",
-                     mapply(.rxsBound, errDf$lower, errDf$upper), ePar)
+  )
+
+  etaLines <- unlist(
+    lapply(seq_along(blocks), function(b) {
+      idx <- blocks[[b]]
+      if (length(idx) == 1L) {
+        return(sprintf("    eta[%d, s] = %s * z[%d, s];", idx, oName[idx], idx))
+      }
+      zvec <- paste(sprintf("z[%d, s]", idx), collapse = ", ")
+      c(
+        sprintf("    {"),
+        sprintf(
+          "      vector[%d] e = diag_pre_multiply(omega_%s, L_%s) * [%s]';",
+          length(idx),
+          blkName[b],
+          blkName[b],
+          zvec
+        ),
+        sprintf("      eta[%d, s] = e[%d];", idx, seq_along(idx)),
+        "    }"
+      )
+    }),
+    use.names = FALSE
+  )
+  errDecl <- sprintf("  real%s %s;", mapply(.rxsBound, errDf$lower, errDf$upper), ePar)
 
   ## Fixed values live in transformed data: visible in the program, but not
   ## sampled.  nlmixr2 states an eta as a VARIANCE, Stan uses the SD here.
   fixedDecl <- c(
-    if (nrow(thetaFix)) sprintf("  real %s = %.17g;  // fixed by ini()",
-                                .rxsName(thetaFix$name), thetaFix$est),
+    if (nrow(thetaFix)) sprintf("  real %s = %.17g;  // fixed by ini()", .rxsName(thetaFix$name), thetaFix$est),
     if (length(soloIdx) && any(etaFixed[soloIdx])) {
       k <- soloIdx[etaFixed[soloIdx]]
-      sprintf("  real %s = %.17g;  // fixed by ini() (sd of variance %.17g)",
-              oName[k], sqrt(etaDf$est[k]), etaDf$est[k])
-    })
+      sprintf(
+        "  real %s = %.17g;  // fixed by ini() (sd of variance %.17g)",
+        oName[k],
+        sqrt(etaDf$est[k]),
+        etaDf$est[k]
+      )
+    }
+  )
 
   ## Thetas are already in scope under their own names (estimated ones as
   ## parameters, fixed ones as transformed data), so only the per-subject etas
   ## need a local -- redeclaring a theta here would shadow it and Stan refuses.
   decl <- sprintf("        real %s = eta[%d, s];", eName, seq_along(eName))
 
-  preLines <- vapply(parts$pre, function(e) {
-    sprintf("        real %s = %s;", .rxsName(as.character(e[[2]])),
-            .rxsExprToStan(e[[3]]))
-  }, character(1))
+  preLines <- vapply(
+    parts$pre,
+    function(e) {
+      sprintf("        real %s = %s;", .rxsName(as.character(e[[2]])), .rxsExprToStan(e[[3]]))
+    },
+    character(1)
+  )
 
-  stateLines <- sprintf("        real %s = ys[%d * nObs + i];",
-                        .rxsName(parts$states),
-                        seq_along(parts$states) - 1L)
+  stateLines <- sprintf("        real %s = ys[%d * nObs + i];", .rxsName(parts$states), seq_along(parts$states) - 1L)
 
-  postLines <- vapply(parts$post, function(e) {
-    sprintf("        real %s = %s;", .rxsName(as.character(e[[2]])),
-            .rxsExprToStan(e[[3]]))
-  }, character(1))
+  postLines <- vapply(
+    parts$post,
+    function(e) {
+      sprintf("        real %s = %s;", .rxsName(as.character(e[[2]])), .rxsExprToStan(e[[3]]))
+    },
+    character(1)
+  )
 
   predVars <- .rxsName(epVar)
   censCols <- .rxsCensCols(obs)
@@ -707,30 +808,46 @@ rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
   covs <- lapply(covNames, function(cv) {
     v <- obs[[cv]]
     if (anyNA(v)) {
-      stop("rxstan codegen: covariate '", cv, "' has missing values at ",
-           sum(is.na(v)), " observation(s)", call. = FALSE)
+      stop(
+        "rxstan codegen: covariate '",
+        cv,
+        "' has missing values at ",
+        sum(is.na(v)),
+        " observation(s)",
+        call. = FALSE
+      )
     }
     perId <- tapply(v, obs$id, function(x) length(unique(x)))
     baseline <- all(perId == 1L)
-    list(name = cv, stan = .rxsName(cv), baseline = baseline,
-         values = if (baseline) {
-           as.numeric(vapply(split(v, obs$id)[as.character(ids)],
-                             function(x) x[1], numeric(1)))
-         } else {
-           as.numeric(v)
-         })
+    list(
+      name = cv,
+      stan = .rxsName(cv),
+      baseline = baseline,
+      values = if (baseline) {
+        as.numeric(vapply(split(v, obs$id)[as.character(ids)], function(x) x[1], numeric(1)))
+      } else {
+        as.numeric(v)
+      }
+    )
   })
   names(covs) <- covNames
 
-  covDecl <- vapply(covs, function(cv) {
-    sprintf("  vector[%s] cov_%s;", if (cv$baseline) "nSub" else "nObs", cv$stan)
-  }, character(1))
+  covDecl <- vapply(
+    covs,
+    function(cv) {
+      sprintf("  vector[%s] cov_%s;", if (cv$baseline) "nSub" else "nObs", cv$stan)
+    },
+    character(1)
+  )
   ## Aliased to the model's own name so the re-emitted transform needs no
   ## rewriting.
-  covLocal <- vapply(covs, function(cv) {
-    sprintf("        real %s = cov_%s[%s];", cv$stan, cv$stan,
-            if (cv$baseline) "s" else "i")
-  }, character(1))
+  covLocal <- vapply(
+    covs,
+    function(cv) {
+      sprintf("        real %s = cov_%s[%s];", cv$stan, cv$stan, if (cv$baseline) "s" else "i")
+    },
+    character(1)
+  )
 
   ## Which endpoint each observation row belongs to.  nlmixr2 identifies it
   ## with dvid, or with cmt naming the endpoint.
@@ -742,15 +859,24 @@ rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
     } else if ("cmt" %in% nm) {
       as.character(obs[[names(obs)[match("cmt", nm)]]])
     } else {
-      stop("rxstan codegen: ", length(epVar), " endpoints, so `data` needs a ",
-           "`dvid` or `cmt` column saying which endpoint each observation is",
-           call. = FALSE)
+      stop(
+        "rxstan codegen: ",
+        length(epVar),
+        " endpoints, so `data` needs a ",
+        "`dvid` or `cmt` column saying which endpoint each observation is",
+        call. = FALSE
+      )
     }
     dvidVec <- match(key, epVar)
     if (anyNA(dvidVec)) {
-      stop("rxstan codegen: observation(s) name an endpoint the model does ",
-           "not have: ", paste(unique(key[is.na(dvidVec)]), collapse = ", "),
-           ". The model has ", paste(epVar, collapse = ", "), call. = FALSE)
+      stop(
+        "rxstan codegen: observation(s) name an endpoint the model does ",
+        "not have: ",
+        paste(unique(key[is.na(dvidVec)]), collapse = ", "),
+        ". The model has ",
+        paste(epVar, collapse = ", "),
+        call. = FALSE
+      )
     }
   }
 
@@ -759,38 +885,56 @@ rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
   ## "lognormal_lpdf: Random variable is -0.105, but must be nonnegative"
   ## partway through warmup, with nothing pointing at the data.
   for (k in seq_along(errSpecs)) {
-    if (!identical(errSpecs[[k]]$dist, "lognormal")) next
+    if (!identical(errSpecs[[k]]$dist, "lognormal")) {
+      next
+    }
     rows <- if (is.null(dvidVec)) seq_len(nrow(obs)) else which(dvidVec == k)
     bad <- rows[!is.na(obs$dv[rows]) & obs$dv[rows] <= 0]
     if (length(bad)) {
-      stop("rxstan codegen: lnorm() needs positive observations, but dv has ",
-           length(bad), " value(s) <= 0 for endpoint ", epVar[k],
-           " (first at row ", bad[1], ", dv = ",
-           format(obs$dv[bad[1]]), ")", call. = FALSE)
+      stop(
+        "rxstan codegen: lnorm() needs positive observations, but dv has ",
+        length(bad),
+        " value(s) <= 0 for endpoint ",
+        epVar[k],
+        " (first at row ",
+        bad[1],
+        ", dv = ",
+        format(obs$dv[bad[1]]),
+        ")",
+        call. = FALSE
+      )
     }
   }
 
   ## Defaults are weak and centered on the ini() estimates; `priors` overrides
   ## them by the model's own parameter names.
-  thetaPrior <- sprintf("  %s ~ %s;", sName,
-                        mapply(.rxsPrior, thetaNames,
-                               sprintf("normal(%.17g, %.17g)", thetaEst$est,
-                                       priorSd),
-                               MoreArgs = list(priors = priors)))
+  thetaPrior <- sprintf(
+    "  %s ~ %s;",
+    sName,
+    mapply(
+      .rxsPrior,
+      thetaNames,
+      sprintf("normal(%.17g, %.17g)", thetaEst$est, priorSd),
+      MoreArgs = list(priors = priors)
+    )
+  )
   omegaPrior <- c(
     if (length(soloIdx) && any(!etaFixed[soloIdx])) {
       k <- soloIdx[!etaFixed[soloIdx]]
-      sprintf("  %s ~ %s;", oName[k],
-              mapply(.rxsPrior, etaNames[k], "normal(0, 1)",
-                     MoreArgs = list(priors = priors)))
+      sprintf("  %s ~ %s;", oName[k], mapply(.rxsPrior, etaNames[k], "normal(0, 1)", MoreArgs = list(priors = priors)))
     },
     if (length(corr)) {
-      c(sprintf("  omega_%s ~ normal(0, 1);", blkName[corr]),
-        sprintf("  L_%s ~ lkj_corr_cholesky(%.17g);", blkName[corr], lkjEta))
-    })
-  errPrior <- sprintf("  %s ~ %s;", ePar,
-                      mapply(.rxsPrior, errDf$name, "normal(0, 10)",
-                             MoreArgs = list(priors = priors)))
+      c(
+        sprintf("  omega_%s ~ normal(0, 1);", blkName[corr]),
+        sprintf("  L_%s ~ lkj_corr_cholesky(%.17g);", blkName[corr], lkjEta)
+      )
+    }
+  )
+  errPrior <- sprintf(
+    "  %s ~ %s;",
+    ePar,
+    mapply(.rxsPrior, errDf$name, "normal(0, 10)", MoreArgs = list(priors = priors))
+  )
 
   code <- c(
     "// Generated by rxstan::rxsStanFromUi() -- do not edit by hand.",
@@ -809,8 +953,7 @@ rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
     "  int<lower=1> handle;",
     "  vector[nObs] dv;",
     "  array[nObs] int<lower=1, upper=nSub> subj;",
-    if (length(epVar) > 1L) sprintf("  array[nObs] int<lower=1, upper=%d> dvid;",
-                                    length(epVar)),
+    if (length(epVar) > 1L) sprintf("  array[nObs] int<lower=1, upper=%d> dvid;", length(epVar)),
     if (length(covDecl)) covDecl,
     if (!is.null(censCols)) "  array[nObs] int<lower=-1, upper=1> cens;",
     if (!is.null(censCols)) "  array[nObs] int<lower=0, upper=1> hasLimit;",
@@ -838,10 +981,8 @@ rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
     "  {",
     sprintf("    vector[%d * nSub] p;", nTheta + nEta),
     "    for (s in 1 : nSub) {",
-    sprintf("      p[(s - 1) * %d + 1 : (s - 1) * %d + %d] = theta;",
-            nTheta + nEta, nTheta + nEta, nTheta),
-    if (nEta) sprintf("      p[(s - 1) * %d + %d : s * %d] = eta[ : , s];",
-                      nTheta + nEta, nTheta + 1L, nTheta + nEta),
+    sprintf("      p[(s - 1) * %d + 1 : (s - 1) * %d + %d] = theta;", nTheta + nEta, nTheta + nEta, nTheta),
+    if (nEta) sprintf("      p[(s - 1) * %d + %d : s * %d] = eta[ : , s];", nTheta + nEta, nTheta + 1L, nTheta + nEta),
     "    }",
     sprintf("    vector[%d * nObs] ys = rx_solve(handle, p);", nState),
     "    for (i in 1 : nObs) {",
@@ -869,20 +1010,33 @@ rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
     "generated quantities {",
     "  vector[nObs] log_lik;",
     if (length(corr)) {
-      sprintf("  matrix[%d, %d] corr_%s = multiply_lower_tri_self_transpose(L_%s);",
-              blkSize[corr], blkSize[corr], blkName[corr], blkName[corr])
+      sprintf(
+        "  matrix[%d, %d] corr_%s = multiply_lower_tri_self_transpose(L_%s);",
+        blkSize[corr],
+        blkSize[corr],
+        blkName[corr],
+        blkName[corr]
+      )
     },
     "  for (i in 1 : nObs) {",
     .rxsLikLines(errSpecs, hasCens, "log_lik[i] = %s;"),
     "  }",
-    "}")
+    "}"
+  )
 
-  standata <- list(nSub = nSub, nObs = nObs,
-                   handle = as.integer(unclass(handle)),
-                   dv = as.numeric(obs$dv),
-                   subj = match(obs$id, ids))
-  if (!is.null(dvidVec)) standata$dvid <- dvidVec
-  for (cv in covs) standata[[paste0("cov_", cv$stan)]] <- cv$values
+  standata <- list(
+    nSub = nSub,
+    nObs = nObs,
+    handle = as.integer(unclass(handle)),
+    dv = as.numeric(obs$dv),
+    subj = match(obs$id, ids)
+  )
+  if (!is.null(dvidVec)) {
+    standata$dvid <- dvidVec
+  }
+  for (cv in covs) {
+    standata[[paste0("cov_", cv$stan)]] <- cv$values
+  }
   if (!is.null(censCols)) {
     standata$cens <- censCols$cens
     standata$hasLimit <- censCols$hasLimit
@@ -894,7 +1048,9 @@ rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
   ## diffuse inits routinely send chains to different modes; starting from
   ## ini() is what prevents it.  See [rxsInit()] for jittered multi-chain use.
   inits <- list()
-  if (nrow(thetaEst)) inits[sName] <- as.list(thetaEst$est)
+  if (nrow(thetaEst)) {
+    inits[sName] <- as.list(thetaEst$est)
+  }
   if (length(soloIdx)) {
     k <- soloIdx[!etaFixed[soloIdx]]
     if (length(k)) inits[oName[k]] <- as.list(sqrt(etaDf$est[k]))
@@ -904,14 +1060,22 @@ rxsStanFromUi <- function(ui, data, priors = list(), priorSd = 10, lkjEta = 2,
     inits[[paste0("omega_", blkName[b])]] <- sqrt(etaDf$est[idx])
     inits[[paste0("L_", blkName[b])]] <- diag(length(idx))
   }
-  if (nEta) inits$z <- matrix(0, nrow = nEta, ncol = nSub)
-  if (length(ePar)) inits[ePar] <- as.list(errDf$est)
+  if (nEta) {
+    inits$z <- matrix(0, nrow = nEta, ncol = nSub)
+  }
+  if (length(ePar)) {
+    inits[ePar] <- as.list(errDf$est)
+  }
 
-  list(code = paste(code[!vapply(code, is.null, logical(1))], collapse = "\n"),
-       handle = handle, standata = standata, inits = inits,
-       thetaNames = thetaNames, etaNames = etaNames,
-       errNames = unlist(lapply(errSpecs, `[[`, "pars"), use.names = FALSE),
-       states = parts$states,
-       stanNames = list(theta = sName, eta = eName, err = ePar,
-                        theta0 = thetaEst$est))
+  list(
+    code = paste(code[!vapply(code, is.null, logical(1))], collapse = "\n"),
+    handle = handle,
+    standata = standata,
+    inits = inits,
+    thetaNames = thetaNames,
+    etaNames = etaNames,
+    errNames = unlist(lapply(errSpecs, `[[`, "pars"), use.names = FALSE),
+    states = parts$states,
+    stanNames = list(theta = sName, eta = eName, err = ePar, theta0 = thetaEst$est)
+  )
 }

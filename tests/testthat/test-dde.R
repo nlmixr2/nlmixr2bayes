@@ -14,18 +14,26 @@ d/dt(R) <- kin - kout * delay(R, tau)
 test_that("a delay differential equation solves with delayed sensitivities", {
   m <- rxode2::rxode2(ddeModel, calcSens = c("lkin", "lkout"))
   expect_equal(unname(rxode2::rxModelVars(m)$flags[["hasDelay"]]), 1L)
-  expect_true(all(c("rx__sens_R_BY_lkin__", "rx__sens_R_BY_lkout__") %in%
-                    rxode2::rxState(m)))
+  expect_true(all(
+    c("rx__sens_R_BY_lkin__", "rx__sens_R_BY_lkout__") %in%
+      rxode2::rxState(m)
+  ))
 })
 
 test_that("the bridge returns analytic DDE sensitivities", {
   tau <- 1.5
   tms <- seq(0.5, 20, by = 1)
   ev <- rxode2::et(tms)
-  h <- rxsRegister(ddeModel, events = ev,
-                   sens = c("lkin", "lkout"), output = "R",
-                   params = c(ltau = log(tau)),
-                   atol = 1e-10, rtol = 1e-10, method = "dop853")
+  h <- rxsRegister(
+    ddeModel,
+    events = ev,
+    sens = c("lkin", "lkout"),
+    output = "R",
+    params = c(ltau = log(tau)),
+    atol = 1e-10,
+    rtol = 1e-10,
+    method = "dop853"
+  )
   on.exit(rxsRelease(h))
 
   kin <- 0.7
@@ -45,12 +53,18 @@ test_that("the bridge returns analytic DDE sensitivities", {
   ## central differences.  The step has to stay well above the solver noise
   ## floor: differencing a solve accurate to ~1e-9 with a 1e-6 step amplifies
   ## that noise to ~1e-3.
-  fd <- vapply(seq_along(p), function(j) {
-    step <- 1e-4
-    pp <- p; pp[j] <- pp[j] + step
-    pm <- p; pm[j] <- pm[j] - step
-    (rxsSolve(h, pp)[, 1L] - rxsSolve(h, pm)[, 1L]) / (2 * step)
-  }, numeric(attr(h, "ny")))
+  fd <- vapply(
+    seq_along(p),
+    function(j) {
+      step <- 1e-4
+      pp <- p
+      pp[j] <- pp[j] + step
+      pm <- p
+      pm[j] <- pm[j] - step
+      (rxsSolve(h, pp)[, 1L] - rxsSolve(h, pm)[, 1L]) / (2 * step)
+    },
+    numeric(attr(h, "ny"))
+  )
 
   ## Not identically zero, i.e. the delay really is being differentiated.
   expect_gt(max(abs(got[, -1L])), 1e-3)

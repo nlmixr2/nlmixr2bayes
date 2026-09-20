@@ -24,15 +24,20 @@ ids <- unique(d$ID)
 N <- length(ids)
 obs <- d[d$EVID == 0, ]
 dose <- vapply(ids, function(i) d$AMT[d$ID == i & d$EVID != 0][1], numeric(1))
-s <- integer(N); e <- integer(N); k <- 0L
-tm <- numeric(0); dv <- numeric(0)
+s <- integer(N)
+e <- integer(N)
+k <- 0L
+tm <- numeric(0)
+dv <- numeric(0)
 for (i in seq_len(N)) {
   di <- obs[obs$ID == ids[i], ]
-  s[i] <- k + 1L; k <- k + nrow(di); e[i] <- k
-  tm <- c(tm, di$TIME); dv <- c(dv, di$DV)
+  s[i] <- k + 1L
+  k <- k + nrow(di)
+  e[i] <- k
+  tm <- c(tm, di$TIME)
+  dv <- c(dv, di$DV)
 }
-stanData <- list(N = N, nObs = length(dv), time = tm, dv = dv,
-                 dose = dose, s = s, e = e)
+stanData <- list(N = N, nObs = length(dv), time = tm, dv = dv, dose = dose, s = s, e = e)
 
 nativeCode <- "
 functions {
@@ -115,8 +120,7 @@ report <- function(tag, sf, wall) {
   su <- rstan::summary(sf)$summary
   keep <- grepl("^(tka|tcl|tv|add_sd|sd_)", rownames(su))
   worst <- min(su[keep, "n_eff"])
-  cat(sprintf("%-14s wall %7.1f s | worst bulk ESS %6.0f | ESS/s %7.3f\n",
-              tag, wall, worst, worst / wall))
+  cat(sprintf("%-14s wall %7.1f s | worst bulk ESS %6.0f | ESS/s %7.3f\n", tag, wall, worst, worst / wall))
 }
 
 ## ---- native Stan ---------------------------------------------------------
@@ -128,55 +132,88 @@ cat("compiling native model...\n")
 .old <- Sys.getenv(.leak, unset = NA_character_)
 smN <- rstan::stan_model(model_code = nativeCode)
 for (.v in .leak) {
-  if (is.na(.old[[.v]])) Sys.unsetenv(.v) else
+  if (is.na(.old[[.v]])) {
+    Sys.unsetenv(.v)
+  } else {
     do.call(Sys.setenv, stats::setNames(list(.old[[.v]]), .v))
+  }
 }
 iniN <- function() {
-  list(tka = 0.45, tcl = 1, tv = 3.45, add_sd = 0.7,
-       sd_ka = sqrt(0.6), sd_cl = sqrt(0.3), sd_v = sqrt(0.1),
-       z = matrix(0, N, 3))
+  list(
+    tka = 0.45,
+    tcl = 1,
+    tv = 3.45,
+    add_sd = 0.7,
+    sd_ka = sqrt(0.6),
+    sd_cl = sqrt(0.3),
+    sd_v = sqrt(0.1),
+    z = matrix(0, N, 3)
+  )
 }
 t0 <- proc.time()[["elapsed"]]
-sfN <- rstan::sampling(smN, data = stanData, chains = 2, iter = 1000,
-                       warmup = 500, seed = 42, refresh = 0,
-                       cores = min(2L, BENCH_CORES),
-                       init = list(iniN(), iniN()))
+sfN <- rstan::sampling(
+  smN,
+  data = stanData,
+  chains = 2,
+  iter = 1000,
+  warmup = 500,
+  seed = 42,
+  refresh = 0,
+  cores = min(2L, BENCH_CORES),
+  init = list(iniN(), iniN())
+)
 wallN <- proc.time()[["elapsed"]] - t0
 report("native ode_rk45", sfN, wallN)
 
 ## ---- nlmixr2bayes (warm compile: run twice, report the second) -----------
 cat("nlmixr2bayes cold run (compiles + caches)...\n")
 fit1 <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
-  odeMod, d, est = "stan",
-  control = stanControl(chains = 2L, iter = 1000L, warmup = 500L,
-                        seed = 42L, cores = BENCH_CORES, calcTables = FALSE,
-                        adapt_delta = 0.8, max_treedepth = 10L,
-                        print = 0L,
-                        # matched solver FAMILY + mode: Stan's ode_rk45
-                        # is non-stiff Dormand-Prince WITH dense output;
-                        # rxode2's twin is dop853 + dense=TRUE (large
-                        # internal steps, interpolation at observations)
-                        rxControl = rxode2::rxControl(method = "dop853",
-                                                      dense = TRUE,
-                                                      atol = 1e-8,
-                                                      rtol = 1e-8),
-                        ofv = "none", onDiagnostic = "none"))))
+  odeMod,
+  d,
+  est = "stan",
+  control = stanControl(
+    chains = 2L,
+    iter = 1000L,
+    warmup = 500L,
+    seed = 42L,
+    cores = BENCH_CORES,
+    calcTables = FALSE,
+    adapt_delta = 0.8,
+    max_treedepth = 10L,
+    print = 0L,
+    # matched solver FAMILY + mode: Stan's ode_rk45
+    # is non-stiff Dormand-Prince WITH dense output;
+    # rxode2's twin is dop853 + dense=TRUE (large
+    # internal steps, interpolation at observations)
+    rxControl = rxode2::rxControl(method = "dop853", dense = TRUE, atol = 1e-8, rtol = 1e-8),
+    ofv = "none",
+    onDiagnostic = "none"
+  )
+)))
 t0 <- proc.time()[["elapsed"]]
 fit2 <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
-  odeMod, d, est = "stan",
-  control = stanControl(chains = 2L, iter = 1000L, warmup = 500L,
-                        seed = 42L, cores = BENCH_CORES, calcTables = FALSE,
-                        adapt_delta = 0.8, max_treedepth = 10L,
-                        print = 0L,
-                        # matched solver FAMILY + mode: Stan's ode_rk45
-                        # is non-stiff Dormand-Prince WITH dense output;
-                        # rxode2's twin is dop853 + dense=TRUE (large
-                        # internal steps, interpolation at observations)
-                        rxControl = rxode2::rxControl(method = "dop853",
-                                                      dense = TRUE,
-                                                      atol = 1e-8,
-                                                      rtol = 1e-8),
-                        ofv = "none", onDiagnostic = "none"))))
+  odeMod,
+  d,
+  est = "stan",
+  control = stanControl(
+    chains = 2L,
+    iter = 1000L,
+    warmup = 500L,
+    seed = 42L,
+    cores = BENCH_CORES,
+    calcTables = FALSE,
+    adapt_delta = 0.8,
+    max_treedepth = 10L,
+    print = 0L,
+    # matched solver FAMILY + mode: Stan's ode_rk45
+    # is non-stiff Dormand-Prince WITH dense output;
+    # rxode2's twin is dop853 + dense=TRUE (large
+    # internal steps, interpolation at observations)
+    rxControl = rxode2::rxControl(method = "dop853", dense = TRUE, atol = 1e-8, rtol = 1e-8),
+    ofv = "none",
+    onDiagnostic = "none"
+  )
+)))
 wallL <- proc.time()[["elapsed"]] - t0
 report("nlmixr2bayes", fit2$env$stanfit, wallL)
 
@@ -185,37 +222,67 @@ report("nlmixr2bayes", fit2$env$stanfit, wallL)
 # with -Inf instead of relaxing tolerances / retrying with FD gradients
 t0 <- proc.time()[["elapsed"]]
 fit3 <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
-  odeMod, d, est = "stan",
-  control = stanControl(chains = 2L, iter = 1000L, warmup = 500L,
-                        seed = 42L, cores = BENCH_CORES, calcTables = FALSE,
-                        adapt_delta = 0.8, max_treedepth = 10L,
-                        print = 0L,
-                        maxOdeRecalc = 0L, fallbackFD = FALSE,
-                        rxControl = rxode2::rxControl(method = "dop853",
-                                                      dense = TRUE,
-                                                      atol = 1e-8,
-                                                      rtol = 1e-8),
-                        ofv = "none", onDiagnostic = "none"))))
+  odeMod,
+  d,
+  est = "stan",
+  control = stanControl(
+    chains = 2L,
+    iter = 1000L,
+    warmup = 500L,
+    seed = 42L,
+    cores = BENCH_CORES,
+    calcTables = FALSE,
+    adapt_delta = 0.8,
+    max_treedepth = 10L,
+    print = 0L,
+    maxOdeRecalc = 0L,
+    fallbackFD = FALSE,
+    rxControl = rxode2::rxControl(method = "dop853", dense = TRUE, atol = 1e-8, rtol = 1e-8),
+    ofv = "none",
+    onDiagnostic = "none"
+  )
+)))
 wallN0 <- proc.time()[["elapsed"]] - t0
 report("linked no-retry", fit3$env$stanfit, wallN0)
 
 ## ---- per-gradient-evaluation microbenchmark ------------------------------
-upN <- rstan::unconstrain_pars(sfN, list(
-  tka = 0.45, tcl = 1, tv = 3.45, add_sd = 0.7, sd_ka = sqrt(0.6),
-  sd_cl = sqrt(0.3), sd_v = sqrt(0.1), z = matrix(0, N, 3)))
-tN <- system.time(for (i in 1:50) rstan::grad_log_prob(sfN, upN))[["elapsed"]]
+upN <- rstan::unconstrain_pars(
+  sfN,
+  list(
+    tka = 0.45,
+    tcl = 1,
+    tv = 3.45,
+    add_sd = 0.7,
+    sd_ka = sqrt(0.6),
+    sd_cl = sqrt(0.3),
+    sd_v = sqrt(0.1),
+    z = matrix(0, N, 3)
+  )
+)
+tN <- system.time(
+  for (i in 1:50) {
+    rstan::grad_log_prob(sfN, upN)
+  }
+)[["elapsed"]]
 cat(sprintf("native  grad eval: %6.2f ms\n", 1000 * tN / 50))
 sfL <- fit2$env$stanfit
 npar <- rstan::get_num_upars(sfL)
-h <- stanLinkSetup(odeMod, d, thetaSens = TRUE, cores = BENCH_CORES,
-                   rxControl = rxode2::rxControl(method = "dop853",
-                                                 dense = TRUE,
-                                                 atol = 1e-8, rtol = 1e-8))
+h <- stanLinkSetup(
+  odeMod,
+  d,
+  thetaSens = TRUE,
+  cores = BENCH_CORES,
+  rxControl = rxode2::rxControl(method = "dop853", dense = TRUE, atol = 1e-8, rtol = 1e-8)
+)
 .map <- nlmixr2bayes:::.stanMap(rxode2::rxode2(odeMod))
 .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
 .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
 upL <- rep(0.1, npar)
-tL <- system.time(for (i in 1:50) rstan::grad_log_prob(sfL, upL))[["elapsed"]]
+tL <- system.time(
+  for (i in 1:50) {
+    rstan::grad_log_prob(sfL, upL)
+  }
+)[["elapsed"]]
 cat(sprintf("linked  grad eval: %6.2f ms\n", 1000 * tL / 50))
 .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
 stanLinkFree()

@@ -30,47 +30,62 @@ test_that("centered == non-centered posterior (G13)", {
   }
   .tt <- c(0.5, 1, 2, 4, 8)
   .d <- rxode2::rxWithSeed(11, {
-    do.call(rbind, lapply(1:8, function(id) {
-      .cl <- exp(1 + stats::rnorm(1, 0, 0.3))
-      .f <- 100 / exp(3) * exp(-.cl / exp(3) * .tt)
-      data.frame(ID = id, TIME = .tt,
-                 DV = .f + stats::rnorm(length(.tt), 0, 0.5),
-                 AMT = 0, EVID = 0)
-    }))
+    do.call(
+      rbind,
+      lapply(1:8, function(id) {
+        .cl <- exp(1 + stats::rnorm(1, 0, 0.3))
+        .f <- 100 / exp(3) * exp(-.cl / exp(3) * .tt)
+        data.frame(ID = id, TIME = .tt, DV = .f + stats::rnorm(length(.tt), 0, 0.5), AMT = 0, EVID = 0)
+      })
+    )
   })
   .fitWith <- function(etaParam) {
     suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
-      .mod, .d, est = "stan",
-      control = stanControl(chains = 2L, iter = 4000L, warmup = 1000L,
-                            seed = 73L, etaParam = etaParam,
-                            adapt_delta = 0.95, cores = 1L,
-                            calcTables = FALSE, onDiagnostic = "none"))))
+      .mod,
+      .d,
+      est = "stan",
+      control = stanControl(
+        chains = 2L,
+        iter = 4000L,
+        warmup = 1000L,
+        seed = 73L,
+        etaParam = etaParam,
+        adapt_delta = 0.95,
+        cores = 1L,
+        calcTables = FALSE,
+        onDiagnostic = "none"
+      )
+    )))
   }
   .nc <- .fitWith("noncentered")
   .ce <- .fitWith("centered")
   # the centered program really is centered (samples eta directly)
   expect_true(any(grepl("etaP_eta_cl", .ce$env$stanCode, fixed = TRUE)))
   expect_false(any(grepl("etaP_eta_cl", .nc$env$stanCode, fixed = TRUE)))
-  .sN <- rstan::summary(.nc$env$stanfit,
-                        pars = c("tcl", "tv", "add_sd"))$summary
-  .sC <- rstan::summary(.ce$env$stanfit,
-                        pars = c("tcl", "tv", "add_sd"))$summary
+  .sN <- rstan::summary(.nc$env$stanfit, pars = c("tcl", "tv", "add_sd"))$summary
+  .sC <- rstan::summary(.ce$env$stanfit, pars = c("tcl", "tv", "add_sd"))$summary
   for (.p in c("tcl", "tv", "add_sd")) {
     .tol <- 3 * sqrt(.sN[.p, "se_mean"]^2 + .sC[.p, "se_mean"]^2)
-    expect_lt(abs(.sN[.p, "mean"] - .sC[.p, "mean"]), .tol,
-              label = paste0(.p, " mean |", signif(.sN[.p, "mean"], 4), " - ",
-                             signif(.sC[.p, "mean"], 4), "|"))
-    expect_lt(abs(.sN[.p, "sd"] - .sC[.p, "sd"]) / .sN[.p, "sd"], 0.1,
-              label = paste0(.p, " sd rel diff"))
+    expect_lt(
+      abs(.sN[.p, "mean"] - .sC[.p, "mean"]),
+      .tol,
+      label = paste0(.p, " mean |", signif(.sN[.p, "mean"], 4), " - ", signif(.sC[.p, "mean"], 4), "|")
+    )
+    expect_lt(abs(.sN[.p, "sd"] - .sC[.p, "sd"]) / .sN[.p, "sd"], 0.1, label = paste0(.p, " sd rel diff"))
   }
   # omega: quantile agreement on the SD scale (robust to the prior tail)
   .omN <- sqrt(rstan::extract(.nc$env$stanfit, pars = "omegaOut")$omegaOut[, 1, 1])
   .omC <- sqrt(rstan::extract(.ce$env$stanfit, pars = "omegaOut")$omegaOut[, 1, 1])
   .qN <- stats::quantile(.omN, c(0.25, 0.5, 0.75))
   .qC <- stats::quantile(.omC, c(0.25, 0.5, 0.75))
-  expect_true(all(abs(.qN - .qC) / .qN < 0.15),
-              label = paste0("omega sd quartiles nc(",
-                             paste(signif(.qN, 3), collapse = ", "),
-                             ") vs c(",
-                             paste(signif(.qC, 3), collapse = ", "), ")"))
+  expect_true(
+    all(abs(.qN - .qC) / .qN < 0.15),
+    label = paste0(
+      "omega sd quartiles nc(",
+      paste(signif(.qN, 3), collapse = ", "),
+      ") vs c(",
+      paste(signif(.qC, 3), collapse = ", "),
+      ")"
+    )
+  )
 })

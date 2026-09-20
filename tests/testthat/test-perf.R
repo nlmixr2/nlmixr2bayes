@@ -16,8 +16,7 @@ test_that("theo_sd linCmt() performance tripwire (G12)", {
   skip_on_cran()
   skip_if_not_installed("rstan")
   skip_if_not_installed("nlmixr2data")
-  skip_if_not(nzchar(Sys.getenv("NLMIXR2STAN_SLOW")),
-              "set NLMIXR2STAN_SLOW=TRUE for the performance gate")
+  skip_if_not(nzchar(Sys.getenv("NLMIXR2STAN_SLOW")), "set NLMIXR2STAN_SLOW=TRUE for the performance gate")
   .mod <- function() {
     ini({
       tka <- 0.45
@@ -41,17 +40,29 @@ test_that("theo_sd linCmt() performance tripwire (G12)", {
   }
   .t0 <- proc.time()[["elapsed"]]
   .fit <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
-    .mod, nlmixr2data::theo_sd, est = "stan",
-    control = stanControl(chains = 2L, iter = 1000L, warmup = 500L,
-                          seed = 42L, cores = 2L, calcTables = FALSE,
-                          onDiagnostic = "none"))))
+    .mod,
+    nlmixr2data::theo_sd,
+    est = "stan",
+    control = stanControl(
+      chains = 2L,
+      iter = 1000L,
+      warmup = 500L,
+      seed = 42L,
+      cores = 2L,
+      calcTables = FALSE,
+      onDiagnostic = "none"
+    )
+  )))
   .wall <- proc.time()[["elapsed"]] - .t0
-  .sum <- rstan::summary(.fit$env$stanfit,
-                         pars = c("tka", "tcl", "tv", "add_sd"))$summary
+  .sum <- rstan::summary(.fit$env$stanfit, pars = c("tka", "tcl", "tv", "add_sd"))$summary
   .worstEss <- min(.sum[, "n_eff"])
   .essPerSec <- .worstEss / .wall
-  cat(sprintf("\nG12 baseline: wall %.1f s (2x1000, warm compile), worst bulk ESS %.0f, ESS/s %.3f\n",
-              .wall, .worstEss, .essPerSec))
+  cat(sprintf(
+    "\nG12 baseline: wall %.1f s (2x1000, warm compile), worst bulk ESS %.0f, ESS/s %.3f\n",
+    .wall,
+    .worstEss,
+    .essPerSec
+  ))
   # tripwires (generous: 3x the plan budget scaled to this run size)
   expect_lt(.wall, 45 * 60)
   expect_gt(.essPerSec, 0.05)

@@ -20,10 +20,7 @@ cp <- center / v
 pkHandle <- function(...) {
   ev <- rxode2::et(amt = 100, cmt = "depot")
   ev <- rxode2::et(ev, seq(0.5, 24, by = 1.5))
-  rxsRegister(pkModel, events = ev,
-              sens = c("lka", "lcl", "lv"),
-              output = "center",
-              atol = 1e-10, rtol = 1e-10, ...)
+  rxsRegister(pkModel, events = ev, sens = c("lka", "lcl", "lv"), output = "center", atol = 1e-10, rtol = 1e-10, ...)
 }
 
 test_that("a handle reports the layout it was registered with", {
@@ -45,12 +42,18 @@ test_that("the C ABI returns rxode2's analytic sensitivities", {
   expect_equal(dim(got), c(attr(h, "ny"), 4L))
 
   ## Independent oracle: central differences over whole solves.
-  fd <- vapply(seq_along(p), function(j) {
-    hh <- 1e-6 * max(1, abs(p[j]))
-    pp <- p; pp[j] <- pp[j] + hh
-    pm <- p; pm[j] <- pm[j] - hh
-    (rxsSolve(h, pp)[, 1L] - rxsSolve(h, pm)[, 1L]) / (2 * hh)
-  }, numeric(attr(h, "ny")))
+  fd <- vapply(
+    seq_along(p),
+    function(j) {
+      hh <- 1e-6 * max(1, abs(p[j]))
+      pp <- p
+      pp[j] <- pp[j] + hh
+      pm <- p
+      pm[j] <- pm[j] - hh
+      (rxsSolve(h, pp)[, 1L] - rxsSolve(h, pm)[, 1L]) / (2 * hh)
+    },
+    numeric(attr(h, "ny"))
+  )
 
   expect_equal(got[, -1L], fd, tolerance = 1e-6, ignore_attr = TRUE)
 })

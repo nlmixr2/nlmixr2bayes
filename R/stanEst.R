@@ -6,21 +6,29 @@
 .stanSuggestPriors <- function(ui) {
   .iniDf <- ui$iniDf
   .th <- .iniDf[!is.na(.iniDf$ntheta) & !.iniDf$fix, , drop = FALSE]
-  .lines <- vapply(seq_len(nrow(.th)), function(.i) {
-    .r <- .th[.i, ]
-    if (!is.na(.r$err) && is.finite(.r$lower) && .r$lower >= 0) {
-      paste0("prior(", .r$name, ") ~ dcauchy(0, ",
-             .stanNum(signif(5 * max(abs(.r$est), 0.1), 3)), ")")
-    } else {
-      paste0("prior(", .r$name, ") ~ dnorm(", .stanNum(signif(.r$est, 3)),
-             ", ", .stanNum(signif(10 * max(1, abs(.r$est)), 3)), ")")
-    }
-  }, character(1))
-  .et <- .iniDf[!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2 &
-                  !.iniDf$fix, , drop = FALSE]
+  .lines <- vapply(
+    seq_len(nrow(.th)),
+    function(.i) {
+      .r <- .th[.i, ]
+      if (!is.na(.r$err) && is.finite(.r$lower) && .r$lower >= 0) {
+        paste0("prior(", .r$name, ") ~ dcauchy(0, ", .stanNum(signif(5 * max(abs(.r$est), 0.1), 3)), ")")
+      } else {
+        paste0(
+          "prior(",
+          .r$name,
+          ") ~ dnorm(",
+          .stanNum(signif(.r$est, 3)),
+          ", ",
+          .stanNum(signif(10 * max(1, abs(.r$est)), 3)),
+          ")"
+        )
+      }
+    },
+    character(1)
+  )
+  .et <- .iniDf[!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2 & !.iniDf$fix, , drop = FALSE]
   if (nrow(.et) > 0L) {
-    .lines <- c(.lines, paste0("prior(", .et$name[1], ") ~ invWishart(",
-                               nrow(.et) + 3L, ")"))
+    .lines <- c(.lines, paste0("prior(", .et$name[1], ") ~ invWishart(", nrow(.et) + 3L, ")"))
   }
   .lines
 }
@@ -45,8 +53,7 @@
 #' @noRd
 .stanHasTbsLambdaSens <- function() {
   .f <- get0("rxUiGet.impmapThetaSens", envir = asNamespace("nlmixr2est"))
-  is.function(.f) && any(grepl("rx__sens_rx_lambda__BY_THETA",
-                               deparse(body(.f)), fixed = TRUE))
+  is.function(.f) && any(grepl("rx__sens_rx_lambda__BY_THETA", deparse(body(.f)), fixed = TRUE))
 }
 
 #' Per-endpoint DV-transform Jacobian statistics for estimated
@@ -64,7 +71,9 @@
 #' has several endpoints.
 #' @noRd
 .stanTbsJacValues <- function(gen, ui, dataSav) {
-  if (length(gen$tbsJac) == 0L) return(gen)
+  if (length(gen$tbsJac) == 0L) {
+    return(gen)
+  }
   .obs <- dataSav[dataSav$EVID == 0 & !is.na(dataSav$DV), , drop = FALSE]
   .pd <- ui$predDf
   for (.j in gen$tbsJac) {
@@ -82,23 +91,48 @@
       .lo <- .pd$trLow[.pw]
       .hi <- .pd$trHi[.pw]
       if (any(.dv <= .lo | .dv >= .hi)) {
-        stop("endpoint '", .j$condition, "' (", .tr, ") needs DV strictly ",
-             "inside (", .lo, ", ", .hi, ") and has ",
-             sum(.dv <= .lo | .dv >= .hi), " observation(s) outside",
-             call. = FALSE)
+        stop(
+          "endpoint '",
+          .j$condition,
+          "' (",
+          .tr,
+          ") needs DV strictly ",
+          "inside (",
+          .lo,
+          ", ",
+          .hi,
+          ") and has ",
+          sum(.dv <= .lo | .dv >= .hi),
+          " observation(s) outside",
+          call. = FALSE
+        )
       }
       .u <- (.dv - .lo) / (.hi - .lo)
       if (startsWith(.tr, "logit")) stats::qlogis(.u) else stats::qnorm(.u)
     } else {
-      stop("estimated transform-both-sides lambda on endpoint '",
-           .j$condition, "' with transform '", .tr, "' is not supported ",
-           "by est=\"stan\" yet; fix() the lambda", call. = FALSE)
+      stop(
+        "estimated transform-both-sides lambda on endpoint '",
+        .j$condition,
+        "' with transform '",
+        .tr,
+        "' is not supported ",
+        "by est=\"stan\" yet; fix() the lambda",
+        call. = FALSE
+      )
     }
     if (identical(.j$transform, "boxCox")) {
       if (any(.t <= 0)) {
-        stop("boxCox(", .j$theta, ") needs strictly positive DV and ",
-             "endpoint '", .j$condition, "' has ", sum(.t <= 0),
-             " non-positive observation(s)", call. = FALSE)
+        stop(
+          "boxCox(",
+          .j$theta,
+          ") needs strictly positive DV and ",
+          "endpoint '",
+          .j$condition,
+          "' has ",
+          sum(.t <= 0),
+          " non-positive observation(s)",
+          call. = FALSE
+        )
       }
       .s <- sum(log(.t))
     } else {
@@ -114,11 +148,17 @@
 #' @noRd
 .stanEventThetas <- function(ui) {
   .exprs <- ui$lstExpr
-  .lhs <- vapply(.exprs, function(e) {
-    if (is.call(e) && length(e) >= 3L) deparse1(e[[2]]) else ""
-  }, character(1))
+  .lhs <- vapply(
+    .exprs,
+    function(e) {
+      if (is.call(e) && length(e) >= 3L) deparse1(e[[2]]) else ""
+    },
+    character(1)
+  )
   .isEvent <- grepl("^(alag|lag|f|F|rate|dur)\\(", .lhs)
-  if (!any(.isEvent)) return(character(0))
+  if (!any(.isEvent)) {
+    return(character(0))
+  }
   .need <- unique(unlist(lapply(.exprs[.isEvent], function(e) all.vars(e[[3]]))))
   repeat {
     .add <- character(0)
@@ -126,7 +166,9 @@
       if (.lhs[.i] %in% .need) .add <- c(.add, all.vars(.exprs[[.i]][[3]]))
     }
     .new <- setdiff(.add, .need)
-    if (length(.new) == 0L) break
+    if (length(.new) == 0L) {
+      break
+    }
     .need <- c(.need, .new)
   }
   .iniDf <- ui$iniDf
@@ -150,7 +192,9 @@
 .stanDispInit <- function(map, gen) {
   .v <- map$theta$est
   for (.sp in gen$blockSpecs) {
-    if (identical(.sp$type, "fixed")) next
+    if (identical(.sp$type, "fixed")) {
+      next
+    }
     .m <- .sp$block$init
     for (.i in seq_len(nrow(.m))) {
       for (.j in seq_len(.i)) {
@@ -169,9 +213,12 @@
   # loaded nlmixr2est provides it (nlmixr2/nlmixr2est#953)
   .noEta <- !any(!is.na(ui$iniDf$neta1))
   if (.noEta && !.stanHasNlmApi()) {
-    stop("est=\"stan\" needs a mixed model with this nlmixr2est ",
-         "(population-only models use the nlm C API; update nlmixr2est, ",
-         "nlmixr2/nlmixr2est#953)", call. = FALSE)
+    stop(
+      "est=\"stan\" needs a mixed model with this nlmixr2est ",
+      "(population-only models use the nlm C API; update nlmixr2est, ",
+      "nlmixr2/nlmixr2est#953)",
+      call. = FALSE
+    )
   }
   rxode2::assertRxUiRandomOnIdOnly(ui, " for est=\"stan\"", .var.name = ui$modelName)
   # finite mixtures (nlmixr2/nlmixr2est#955): supported for K = 2 when the
@@ -182,13 +229,21 @@
   .nMixUi <- length(.mixP) + 1L
   if (.nMixUi > 1L) {
     if (identical(.Call(`_nlmixr2bayes_nMix`), -2L)) {
-      stop("est=\"stan\" mixture support needs an nlmixr2est whose FOCEi C ",
-           "API blesses the component-major layout ",
-           "(nlmixr2/nlmixr2est#955); update nlmixr2est", call. = FALSE)
+      stop(
+        "est=\"stan\" mixture support needs an nlmixr2est whose FOCEi C ",
+        "API blesses the component-major layout ",
+        "(nlmixr2/nlmixr2est#955); update nlmixr2est",
+        call. = FALSE
+      )
     }
     if (.nMixUi > 2L) {
-      stop("est=\"stan\" supports 2-component mixtures for now (this ",
-           "model has ", .nMixUi, " components)", call. = FALSE)
+      stop(
+        "est=\"stan\" supports 2-component mixtures for now (this ",
+        "model has ",
+        .nMixUi,
+        " components)",
+        call. = FALSE
+      )
     }
   }
   if (!.noEta) {
@@ -207,13 +262,15 @@
   .iniDf <- ui$iniDf
   .tbs <- which(.iniDf$err %in% c("boxCox", "yeoJohnson") & !.iniDf$fix)
   if (length(.tbs) > 0L && !.stanHasTbsLambdaSens()) {
-    stop("est=\"stan\" cannot estimate the transform-both-sides ",
-         "parameter(s) ",
-         paste0("'", .iniDf$name[.tbs], "'", collapse = ", "),
-         " with this nlmixr2est: the linked conditional's d/dlambda ",
-         "sensitivity column is silently zero; fix() the lambda or ",
-         "update nlmixr2est (>= the nlmixr2/nlmixr2est#949 fix)",
-         call. = FALSE)
+    stop(
+      "est=\"stan\" cannot estimate the transform-both-sides ",
+      "parameter(s) ",
+      paste0("'", .iniDf$name[.tbs], "'", collapse = ", "),
+      " with this nlmixr2est: the linked conditional's d/dlambda ",
+      "sensitivity column is silently zero; fix() the lambda or ",
+      "update nlmixr2est (>= the nlmixr2/nlmixr2est#949 fix)",
+      call. = FALSE
+    )
   }
   # estimated dose-handling parameters: the derivative through the event
   # needs a jump condition.  nlmixr2est with nlmixr2/nlmixr2est#946 compiles
@@ -224,22 +281,26 @@
   # value/gradient mismatch -- refused rather than sampled wrong.
   .evTh <- .stanEventThetas(ui)
   if (length(.evTh) > 0L && !.stanHasEventThetaSens()) {
-    stop("est=\"stan\" cannot estimate dose-handling parameter(s) ",
-         paste0("'", .evTh, "'", collapse = ", "),
-         " (alag/f/dur/rate) with this nlmixr2est: the linked theta ",
-         "sensitivities do not propagate through the event jump; fix() ",
-         "them or update nlmixr2est (>= the nlmixr2/nlmixr2est#946 fix)",
-         call. = FALSE)
+    stop(
+      "est=\"stan\" cannot estimate dose-handling parameter(s) ",
+      paste0("'", .evTh, "'", collapse = ", "),
+      " (alag/f/dur/rate) with this nlmixr2est: the linked theta ",
+      "sensitivities do not propagate through the event jump; fix() ",
+      "them or update nlmixr2est (>= the nlmixr2/nlmixr2est#946 fix)",
+      call. = FALSE
+    )
   }
   # D10: no priors at all is an error, with the exact lines to add --
   # Bayesian inference with silently-invented priors produces a
   # publishable-looking wrong answer
   .pri <- .stanUiPriors(ui)
   if (nrow(.pri) == 0L) {
-    stop("est=\"stan\" needs prior distributions in the ini({}) block and ",
-         "this model declares none; for example:\n  ",
-         paste(.stanSuggestPriors(ui), collapse = "\n  "),
-         call. = FALSE)
+    stop(
+      "est=\"stan\" needs prior distributions in the ini({}) block and ",
+      "this model declares none; for example:\n  ",
+      paste(.stanSuggestPriors(ui), collapse = "\n  "),
+      call. = FALSE
+    )
   }
   invisible(TRUE)
 }
@@ -321,7 +382,9 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   # model like any other structural theta (nlmixr2est treats a time-varying
   # regressor the same way)
   .cov <- .stanMuRefCovValues(.map, .ret$dataSav)
-  for (.n in .gen$notes) cli::cli_inform(paste0("est=\"stan\": ", .n))
+  for (.n in .gen$notes) {
+    cli::cli_inform(paste0("est=\"stan\": ", .n))
+  }
   if (!is.null(control$stanFile)) {
     writeLines(.gen$code, control$stanFile)
   }
@@ -331,24 +394,33 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     # returned object's ui) has somewhere to write
     .env <- new.env(parent = emptyenv())
     .env$ui <- ui
-    .out <- list(code = .gen$code, data = .gen$data, map = .map,
-                 priors = .pri, notes = .gen$notes, ui = ui,
-                 control = control, env = .env, dispNames = .gen$dispNames)
+    .out <- list(
+      code = .gen$code,
+      data = .gen$data,
+      map = .map,
+      priors = .pri,
+      notes = .gen$notes,
+      ui = ui,
+      control = control,
+      env = .env,
+      dispNames = .gen$dispNames
+    )
     class(.out) <- "nlmixr2bayesCode"
     return(.out)
   }
   rxode2::rxReq("rstan")
   # ---- compile (cached), then link --------------------------------------
-  .sm <- stanCompile(.gen$code, cache = control$cache,
-                     cacheDir = control$cacheDir, verbose = control$verbose)
+  .sm <- stanCompile(.gen$code, cache = control$cache, cacheDir = control$cacheDir, verbose = control$verbose)
   if (isTRUE(.gen$pop)) {
     # ---- tier 0: population-only (no etas) via the nlm C API ------------
-    .h <- stanPopLinkSetup(ui, env$data, rxControl = control$rxControl,
-                           cores = control$cores, print = control$print)
+    .h <- stanPopLinkSetup(ui, env$data, rxControl = control$rxControl, cores = control$cores, print = control$print)
     on.exit(stanLinkFree(), add = TRUE)
     if (.h$ntheta != sum(!.map$theta$fix)) {
-      stop("the tier-0 problem's parameter count does not match the model ",
-           "map (fix() thetas with literalFix=TRUE)", call. = FALSE)
+      stop(
+        "the tier-0 problem's parameter count does not match the model ",
+        "map (fix() thetas with literalFix=TRUE)",
+        call. = FALSE
+      )
     }
     .sf <- .stanRunInference(.sm, .gen, .map, .nid, control)
     .dx <- .stanDiagnostics(.sf, control)
@@ -356,36 +428,41 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     # evaluated while the link is still up
     .pf <- if (identical(control$point, "median")) stats::median else mean
     .thPt <- apply(.stanExtract(.sf, pars = "theta")$theta, 2, .pf)
-    .popObj <- tryCatch(2 * .popEval(.thPt[!.map$theta$fix])$value,
-                        error = function(e) NA_real_)
+    .popObj <- tryCatch(2 * .popEval(.thPt[!.map$theta$fix])$value, error = function(e) NA_real_)
     if (control$print > 0L) {
-      .ph <- tryCatch(nlmixr2est::nlmGetParHist(TRUE),
-                      error = function(e) NULL)
+      .ph <- tryCatch(nlmixr2est::nlmGetParHist(TRUE), error = function(e) NULL)
       if (is.data.frame(.ph)) .ret$parHistData <- .ph
     }
     stanLinkFree()
-    return(.stanFinalizeEnvPop(.ret, ui, env, .sf, .map, .gen, .dx, control,
-                               popObj = .popObj))
+    return(.stanFinalizeEnvPop(.ret, ui, env, .sf, .map, .gen, .dx, control, popObj = .popObj))
   }
   # covariate coefficients on a subject-CONSTANT covariate can come from the
   # scatter, so only they are excluded from the sensitivity requirement; a
   # time-varying coefficient needs the forward-sensitivity model
   .mrcConst <- .map$muRefCov$thetaIdx[!.cov$timeVarying]
-  .needSens <- any(!.map$theta$fix &
-                     !(seq_len(nrow(.map$theta)) %in%
-                         c(.map$muRefIdx, .mrcConst)))
-  .h <- stanLinkSetup(ui, env$data, likelihood = control$likelihood,
-                      rxControl = control$rxControl,
-                      thetaSens = .needSens, literalFix = control$literalFix,
-                      cores = control$cores,
-                      maxOdeRecalc = control$maxOdeRecalc,
-                      fallbackFD = control$fallbackFD)
+  .needSens <- any(
+    !.map$theta$fix &
+      !(seq_len(nrow(.map$theta)) %in%
+        c(.map$muRefIdx, .mrcConst))
+  )
+  .h <- stanLinkSetup(
+    ui,
+    env$data,
+    likelihood = control$likelihood,
+    rxControl = control$rxControl,
+    thetaSens = .needSens,
+    literalFix = control$literalFix,
+    cores = control$cores,
+    maxOdeRecalc = control$maxOdeRecalc,
+    fallbackFD = control$fallbackFD
+  )
   on.exit(stanLinkFree(), add = TRUE)
   on.exit(.Call(`_nlmixr2bayes_clearThetaBase`), add = TRUE)
-  if (!identical(.h$etaNames, .map$eta$name) ||
-        .h$ntheta != nrow(.map$theta)) {
-    stop("the linked problem's parameters do not match the model map",
-         call. = FALSE) # nocov
+  if (
+    !identical(.h$etaNames, .map$eta$name) ||
+      .h$ntheta != nrow(.map$theta)
+  ) {
+    stop("the linked problem's parameters do not match the model map", call. = FALSE) # nocov
   }
   .stanAssertThetaGradCover(.map, .h$thetaSensIdx)
   # tier-2 state: base parameter vector (omega tail fixed at link values) +
@@ -404,32 +481,41 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   # (a fix()ed coefficient needs no gradient at all -- with literalFix=FALSE
   # it survives into the map, and refusing it would reject a valid model)
   .mrcFree <- !.map$theta$fix[.map$muRefCov$thetaIdx]
-  .mrcTvBad <- which(.cov$timeVarying & .mrcFree &
-                       !(.map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
+  .mrcTvBad <- which(.cov$timeVarying & .mrcFree & !(.map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
   if (length(.mrcTvBad) > 0L) {
-    stop("time-varying mu-referenced covariate coefficient(s) ",
-         paste0("'", .map$muRefCov$name[.mrcTvBad], "'", collapse = ", "),
-         " have no forward sensitivity in the linked model, so their ",
-         "gradient would be silently zero", call. = FALSE)
+    stop(
+      "time-varying mu-referenced covariate coefficient(s) ",
+      paste0("'", .map$muRefCov$name[.mrcTvBad], "'", collapse = ", "),
+      " have no forward sensitivity in the linked model, so their ",
+      "gradient would be silently zero",
+      call. = FALSE
+    )
   }
-  .mrcS <- which(!.cov$timeVarying & .mrcFree &
-                   !(.map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
+  .mrcS <- which(!.cov$timeVarying & .mrcFree & !(.map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
   if (length(.mrcS) > 0L) {
     .cv <- .cov$val[, .mrcS, drop = FALSE]
     if (.map$nMix > 1L) {
       # component-major expanded rows share the physical subject's covariate
       .cv <- do.call(rbind, rep(list(.cv), .map$nMix))
     }
-    .Call(`_nlmixr2bayes_setMuRefCov`,
-          as.integer(.map$muRefCov$thetaIdx[.mrcS]),
-          as.integer(.map$muRefCov$etaIdx[.mrcS] - 1L),
-          .cv)
+    .Call(
+      `_nlmixr2bayes_setMuRefCov`,
+      as.integer(.map$muRefCov$thetaIdx[.mrcS]),
+      as.integer(.map$muRefCov$etaIdx[.mrcS] - 1L),
+      .cv
+    )
   }
   if (.map$nMix > 1L) {
     .nm <- .Call(`_nlmixr2bayes_nMix`)
     if (!identical(.nm, .map$nMix)) {
-      stop("the linked problem reports ", .nm, " mixture component(s) but ",
-           "the model map expects ", .map$nMix, call. = FALSE) # nocov
+      stop(
+        "the linked problem reports ",
+        .nm,
+        " mixture component(s) but ",
+        "the model map expects ",
+        .map$nMix,
+        call. = FALSE
+      ) # nocov
     }
   }
   # gradient conditioning: keep nlmixr2est's Omega^-1 commensurate with the
@@ -442,29 +528,28 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   # (the scale.h residency in nlmixr2est; the compiled model's tick calls
   # entry 8 of the FOCEi C table every log-density evaluation, gated to
   # control$print)
-  .iterOn <- control$print > 0L && .stanHasIterPrint() &&
-    control$chainCores <= 1L
-  if (control$print > 0L && .stanHasIterPrint() &&
-        control$chainCores > 1L) {
+  .iterOn <- control$print > 0L && .stanHasIterPrint() && control$chainCores <= 1L
+  if (control$print > 0L && .stanHasIterPrint() && control$chainCores > 1L) {
     # parallel chains evaluate in child processes; the print ticks happen in
     # worker-local memory and never reach this process's history
-    message("iteration printing needs sequential chains; it is disabled ",
-            "with parallel chains (set chainCores = 1 for the iteration ",
-            "table)")
+    message(
+      "iteration printing needs sequential chains; it is disabled ",
+      "with parallel chains (set chainCores = 1 for the iteration ",
+      "table)"
+    )
   }
   if (control$print > 0L && !.stanHasIterPrint()) {
-    warning("this nlmixr2est does not provide the iteration-print API; ",
-            "update nlmixr2est for the familiar iteration table",
-            call. = FALSE)
+    warning(
+      "this nlmixr2est does not provide the iteration-print API; ",
+      "update nlmixr2est for the familiar iteration table",
+      call. = FALSE
+    )
   }
   .ph <- NULL
   if (.iterOn) {
     .Call(`_nlmixr2bayes_resetEvalCount`)
-    nlmixr2est::foceiLikIterPrintStart(control$print,
-                                       .stanDispInit(.map, .gen),
-                                       .gen$dispNames)
-    on.exit(try(nlmixr2est::foceiLikIterPrintEnd(), silent = TRUE),
-            add = TRUE)
+    nlmixr2est::foceiLikIterPrintStart(control$print, .stanDispInit(.map, .gen), .gen$dispNames)
+    on.exit(try(nlmixr2est::foceiLikIterPrintEnd(), silent = TRUE), add = TRUE)
   }
   # ---- sample -------------------------------------------------------------
   # the init jitter draws come from R's RNG; rxWithSeed scopes the seed and
@@ -478,14 +563,12 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     # parent's preflight link before the workers start.
     .Call(`_nlmixr2bayes_clearThetaBase`)
     stanLinkFree()
-    .sf <- .stanRunInferencePsock(.sm, .gen, .map, .cov, .needSens, .nid,
-                                  control, ui, env$data)
+    .sf <- .stanRunInferencePsock(.sm, .gen, .map, .cov, .needSens, .nid, control, ui, env$data)
   } else {
     .sf <- .stanRunInference(.sm, .gen, .map, .nid, control)
   }
   if (.iterOn) {
-    .ph <- tryCatch(nlmixr2est::foceiLikIterPrintEnd(),
-                    error = function(e) NULL)
+    .ph <- tryCatch(nlmixr2est::foceiLikIterPrintEnd(), error = function(e) NULL)
     if (is.data.frame(.ph)) .ret$parHistData <- .ph
   }
   .dx <- .stanDiagnostics(.sf, control)
@@ -525,51 +608,70 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
 #' Per-chain init payload for one-chain rstan::sampling()
 #' @noRd
 .stanChainInit <- function(init, chainId, chains) {
-  if (!is.list(init) || chains <= 1L) return(init)
-  if (length(init) >= chainId && is.list(init[[chainId]])) return(init[[chainId]])
+  if (!is.list(init) || chains <= 1L) {
+    return(init)
+  }
+  if (length(init) >= chainId && is.list(init[[chainId]])) {
+    return(init[[chainId]])
+  }
   init
 }
 
 #' Build the linked-likelihood state for one process
 #' @noRd
 .stanLinkSetupForRun <- function(ui, data, map, cov, needSens, control) {
-  .h <- stanLinkSetup(ui, data, likelihood = control$likelihood,
-                      rxControl = control$rxControl,
-                      thetaSens = needSens, literalFix = control$literalFix,
-                      cores = control$cores,
-                      maxOdeRecalc = control$maxOdeRecalc,
-                      fallbackFD = control$fallbackFD)
+  .h <- stanLinkSetup(
+    ui,
+    data,
+    likelihood = control$likelihood,
+    rxControl = control$rxControl,
+    thetaSens = needSens,
+    literalFix = control$literalFix,
+    cores = control$cores,
+    maxOdeRecalc = control$maxOdeRecalc,
+    fallbackFD = control$fallbackFD
+  )
   if (!identical(.h$etaNames, map$eta$name) || .h$ntheta != nrow(map$theta)) {
-    stop("the linked problem's parameters do not match the model map",
-         call. = FALSE) # nocov
+    stop("the linked problem's parameters do not match the model map", call. = FALSE) # nocov
   }
   .stanAssertThetaGradCover(map, .h$thetaSensIdx)
   .Call(`_nlmixr2bayes_setThetaBase`, as.double(.h$initPar))
   .Call(`_nlmixr2bayes_setMuRef`, as.integer(map$muRefIdx))
   .mrcFree <- !map$theta$fix[map$muRefCov$thetaIdx]
-  .mrcTvBad <- which(cov$timeVarying & .mrcFree &
-                       !(map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
+  .mrcTvBad <- which(cov$timeVarying & .mrcFree & !(map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
   if (length(.mrcTvBad) > 0L) {
-    stop("time-varying mu-referenced covariate coefficient(s) ",
-         paste0("'", map$muRefCov$name[.mrcTvBad], "'", collapse = ", "),
-         " have no forward sensitivity in the linked model, so their ",
-         "gradient would be silently zero", call. = FALSE)
+    stop(
+      "time-varying mu-referenced covariate coefficient(s) ",
+      paste0("'", map$muRefCov$name[.mrcTvBad], "'", collapse = ", "),
+      " have no forward sensitivity in the linked model, so their ",
+      "gradient would be silently zero",
+      call. = FALSE
+    )
   }
-  .mrcS <- which(!cov$timeVarying & .mrcFree &
-                   !(map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
+  .mrcS <- which(!cov$timeVarying & .mrcFree & !(map$muRefCov$thetaIdx %in% .h$thetaSensIdx))
   if (length(.mrcS) > 0L) {
     .cv <- cov$val[, .mrcS, drop = FALSE]
-    if (map$nMix > 1L) .cv <- do.call(rbind, rep(list(.cv), map$nMix))
-    .Call(`_nlmixr2bayes_setMuRefCov`,
-          as.integer(map$muRefCov$thetaIdx[.mrcS]),
-          as.integer(map$muRefCov$etaIdx[.mrcS] - 1L),
-          .cv)
+    if (map$nMix > 1L) {
+      .cv <- do.call(rbind, rep(list(.cv), map$nMix))
+    }
+    .Call(
+      `_nlmixr2bayes_setMuRefCov`,
+      as.integer(map$muRefCov$thetaIdx[.mrcS]),
+      as.integer(map$muRefCov$etaIdx[.mrcS] - 1L),
+      .cv
+    )
   }
   if (map$nMix > 1L) {
     .nm <- .Call(`_nlmixr2bayes_nMix`)
     if (!identical(.nm, map$nMix)) {
-      stop("the linked problem reports ", .nm, " mixture component(s) but ",
-           "the model map expects ", map$nMix, call. = FALSE) # nocov
+      stop(
+        "the linked problem reports ",
+        .nm,
+        " mixture component(s) but ",
+        "the model map expects ",
+        map$nMix,
+        call. = FALSE
+      ) # nocov
     }
   }
   .omInv <- tryCatch(solve(ui$omega), error = function(e) NULL)
@@ -582,19 +684,16 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
 #' Combine one-chain stanfit objects into a multi-chain stanfit
 #' @noRd
 .stanCombineSflist <- function(sflist) {
-  .sfFun <- get0("sflist2stanfit", envir = asNamespace("rstan"),
-                 inherits = FALSE)
+  .sfFun <- get0("sflist2stanfit", envir = asNamespace("rstan"), inherits = FALSE)
   if (is.null(.sfFun)) {
-    stop("this rstan does not provide sflist2stanfit; update rstan",
-         call. = FALSE)
+    stop("this rstan does not provide sflist2stanfit; update rstan", call. = FALSE)
   }
   .sfFun(sflist)
 }
 
 #' Windows PSOCK chain parallelism for NUTS
 #' @noRd
-.stanRunInferencePsock <- function(sm, gen, map, cov, needSens, nid, control,
-                                   ui, data) {
+.stanRunInferencePsock <- function(sm, gen, map, cov, needSens, nid, control, ui, data) {
   .init <- .stanInitForControl(control, map, gen$blockSpecs, nid)
   .chainIds <- as.list(seq_len(control$chains))
   .cl <- parallel::makePSOCKcluster(control$chainCores)
@@ -617,22 +716,28 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     .init <- .init
     .sm <- sm
     function(.cid) {
-      nlmixr2bayes:::.stanLinkSetupForRun(.ui, .data, .map, .cov,
-                                          .needSens, .control)
+      nlmixr2bayes:::.stanLinkSetupForRun(.ui, .data, .map, .cov, .needSens, .control)
       on.exit(nlmixr2bayes:::stanLinkFree(), add = TRUE)
       on.exit(.Call(`_nlmixr2bayes_clearThetaBase`), add = TRUE)
       .i1 <- nlmixr2bayes:::.stanChainInit(.init, .cid, .control$chains)
-      rstan::sampling(.sm, data = .gen$data, chains = 1L, chain_id = .cid,
-                      iter = .control$iter, warmup = .control$warmup,
-                      thin = .control$thin, seed = .control$seed,
-                      init = list(.i1), cores = 1L,
-                      refresh = if (.control$verbose) {
-                        max(1L, .control$iter %/% 10L)
-                      } else {
-                        0L
-                      },
-                      control = list(adapt_delta = .control$adapt_delta,
-                                     max_treedepth = .control$max_treedepth))
+      rstan::sampling(
+        .sm,
+        data = .gen$data,
+        chains = 1L,
+        chain_id = .cid,
+        iter = .control$iter,
+        warmup = .control$warmup,
+        thin = .control$thin,
+        seed = .control$seed,
+        init = list(.i1),
+        cores = 1L,
+        refresh = if (.control$verbose) {
+          max(1L, .control$iter %/% 10L)
+        } else {
+          0L
+        },
+        control = list(adapt_delta = .control$adapt_delta, max_treedepth = .control$max_treedepth)
+      )
     }
   })
   .sfl <- parallel::parLapply(.cl, .chainIds, .worker)
@@ -645,32 +750,43 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     if (identical(control$algorithm, "pathfinder")) {
       .stanRunPathfinder(sm, gen, map, nid, control, .init)
     } else if (identical(control$algorithm, "NUTS")) {
-      rstan::sampling(sm, data = gen$data, chains = control$chains,
-                      iter = control$iter, warmup = control$warmup,
-                      thin = control$thin, seed = control$seed,
-                      init = .init, cores = control$chainCores,
-                      refresh = if (control$verbose) {
-                        max(1L, control$iter %/% 10L)
-                      } else {
-                        0L
-                      },
-                      control = list(adapt_delta = control$adapt_delta,
-                                     max_treedepth = control$max_treedepth))
+      rstan::sampling(
+        sm,
+        data = gen$data,
+        chains = control$chains,
+        iter = control$iter,
+        warmup = control$warmup,
+        thin = control$thin,
+        seed = control$seed,
+        init = .init,
+        cores = control$chainCores,
+        refresh = if (control$verbose) {
+          max(1L, control$iter %/% 10L)
+        } else {
+          0L
+        },
+        control = list(adapt_delta = control$adapt_delta, max_treedepth = control$max_treedepth)
+      )
     } else {
       # one variational run; init is a single list -- chain 1 of the "ini"
       # scheme (exactly the ini() estimates, no jitter)
-      .i1 <- if (is.list(.init) && length(.init) >= 1L &&
-                   is.list(.init[[1L]])) {
+      .i1 <- if (is.list(.init) && length(.init) >= 1L && is.list(.init[[1L]])) {
         .init[[1L]]
       } else {
         .init
       }
-      rstan::vb(sm, data = gen$data, algorithm = control$algorithm,
-                iter = control$vbIter, tol_rel_obj = control$vbTolRelObj,
-                output_samples = control$vbOutputSamples,
-                seed = control$seed, init = .i1,
-                importance_resampling = TRUE,
-                refresh = if (control$verbose) 100L else 0L)
+      rstan::vb(
+        sm,
+        data = gen$data,
+        algorithm = control$algorithm,
+        iter = control$vbIter,
+        tol_rel_obj = control$vbTolRelObj,
+        output_samples = control$vbOutputSamples,
+        seed = control$seed,
+        init = .i1,
+        importance_resampling = TRUE,
+        refresh = if (control$verbose) 100L else 0L
+      )
     }
   })
 }
@@ -678,10 +794,12 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
 #' Method label for the fit ($method) by algorithm
 #' @noRd
 .stanMethodLabel <- function(control) {
-  switch(control$algorithm,
-         NUTS = "Stan (HMC)",
-         pathfinder = "Stan (Pathfinder)",
-         paste0("Stan (ADVI ", control$algorithm, ")"))
+  switch(
+    control$algorithm,
+    NUTS = "Stan (HMC)",
+    pathfinder = "Stan (Pathfinder)",
+    paste0("Stan (ADVI ", control$algorithm, ")")
+  )
 }
 
 #' Is real Pathfinder available?  rstan does not expose the Pathfinder
@@ -705,44 +823,78 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   }
   .sp <- rstan::get_sampler_params(sf, inc_warmup = FALSE)
   .nDiv <- sum(vapply(.sp, function(x) sum(x[, "divergent__"]), numeric(1)))
-  .nTree <- sum(vapply(.sp, function(x) {
-    sum(x[, "treedepth__"] >= control$max_treedepth)
-  }, numeric(1)))
+  .nTree <- sum(vapply(
+    .sp,
+    function(x) {
+      sum(x[, "treedepth__"] >= control$max_treedepth)
+    },
+    numeric(1)
+  ))
   .sum <- .stanSummaryDf(sf)
-  .keep <- !grepl("^(z_|etaP_|eta\\[|omegaOut|logLikSubj|mixProbOut|lp__)",
-                  rownames(.sum))
+  .keep <- !grepl("^(z_|etaP_|eta\\[|omegaOut|logLikSubj|mixProbOut|lp__)", rownames(.sum))
   .maxRhat <- suppressWarnings(max(.sum[.keep, "Rhat"], na.rm = TRUE))
   .minEss <- suppressWarnings(min(.sum[.keep, "n_eff"], na.rm = TRUE))
   .msg <- character(0)
   if (.nDiv > control$maxDivergent) {
-    .msg <- c(.msg, paste0(.nDiv, " divergent transition(s) after warmup: ",
-                           "the posterior is biased; raise adapt_delta (now ",
-                           control$adapt_delta, ") toward 0.99"))
+    .msg <- c(
+      .msg,
+      paste0(
+        .nDiv,
+        " divergent transition(s) after warmup: ",
+        "the posterior is biased; raise adapt_delta (now ",
+        control$adapt_delta,
+        ") toward 0.99"
+      )
+    )
   }
   if (is.finite(.maxRhat) && .maxRhat > control$rhatMax) {
-    .msg <- c(.msg, paste0("max Rhat ", signif(.maxRhat, 4), " > ",
-                           control$rhatMax,
-                           ": the chains have not mixed; do not use these estimates"))
+    .msg <- c(
+      .msg,
+      paste0(
+        "max Rhat ",
+        signif(.maxRhat, 4),
+        " > ",
+        control$rhatMax,
+        ": the chains have not mixed; do not use these estimates"
+      )
+    )
   }
   if (is.finite(.minEss) && .minEss < control$essBulkMin) {
-    .msg <- c(.msg, paste0("min ESS ", round(.minEss), " < ",
-                           control$essBulkMin,
-                           ": posterior summaries are not resolved; increase iter"))
+    .msg <- c(
+      .msg,
+      paste0(
+        "min ESS ",
+        round(.minEss),
+        " < ",
+        control$essBulkMin,
+        ": posterior summaries are not resolved; increase iter"
+      )
+    )
   }
   if (.nTree > 0) {
-    .msg <- c(.msg, paste0(.nTree, " transition(s) saturated max_treedepth (",
-                           control$max_treedepth, "); efficiency, not validity"))
+    .msg <- c(
+      .msg,
+      paste0(.nTree, " transition(s) saturated max_treedepth (", control$max_treedepth, "); efficiency, not validity")
+    )
   }
   if (length(.msg) > 0L) {
     .txt <- paste(.msg, collapse = "\n")
-    switch(control$onDiagnostic,
-           error = stop(.txt, call. = FALSE),
-           warn = warning(.txt, call. = FALSE),
-           message = message(.txt),
-           none = invisible())
+    switch(
+      control$onDiagnostic,
+      error = stop(.txt, call. = FALSE),
+      warn = warning(.txt, call. = FALSE),
+      message = message(.txt),
+      none = invisible()
+    )
   }
-  list(nDivergent = .nDiv, nMaxTreedepth = .nTree, maxRhat = .maxRhat,
-       minEss = .minEss, khat = NA_real_, messages = .msg)
+  list(
+    nDivergent = .nDiv,
+    nMaxTreedepth = .nTree,
+    maxRhat = .maxRhat,
+    minEss = .minEss,
+    khat = NA_real_,
+    messages = .msg
+  )
 }
 
 #' ADVI diagnostics: the Pareto-k of the importance ratios replaces
@@ -754,37 +906,46 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   # rstan::vb(importance_resampling=TRUE) stores the PSIS result at
   # sim$diagnostics: $psis$pareto_k is the overall khat; the (unnamed)
   # first element holds the raw log_p__/log_g__ draws as a fallback
-  .khat <- tryCatch(as.numeric(sf@sim$diagnostics$psis$pareto_k),
-                    error = function(e) NA_real_)
+  .khat <- tryCatch(as.numeric(sf@sim$diagnostics$psis$pareto_k), error = function(e) NA_real_)
   if (length(.khat) != 1L || !is.finite(.khat)) {
-    .khat <- tryCatch({
-      .d <- sf@sim$diagnostics[[1L]]
-      if (!is.null(.d$log_p__) && !is.null(.d$log_g__) &&
-            requireNamespace("loo", quietly = TRUE)) {
-        .lw <- .d$log_p__ - .d$log_g__
-        .lw <- .lw[is.finite(.lw)]
-        suppressWarnings(loo::psis(.lw, r_eff = NA)$diagnostics$pareto_k)
-      } else {
-        NA_real_
-      }
-    }, error = function(e) NA_real_)
+    .khat <- tryCatch(
+      {
+        .d <- sf@sim$diagnostics[[1L]]
+        if (!is.null(.d$log_p__) && !is.null(.d$log_g__) && requireNamespace("loo", quietly = TRUE)) {
+          .lw <- .d$log_p__ - .d$log_g__
+          .lw <- .lw[is.finite(.lw)]
+          suppressWarnings(loo::psis(.lw, r_eff = NA)$diagnostics$pareto_k)
+        } else {
+          NA_real_
+        }
+      },
+      error = function(e) NA_real_
+    )
   }
   .msg <- character(0)
   if (is.finite(.khat) && .khat > 0.7) {
-    .msg <- c(.msg, paste0("ADVI Pareto khat ", signif(.khat, 3), " > 0.7: ",
-                           "the variational approximation is unreliable; ",
-                           "use algorithm=\"NUTS\""))
+    .msg <- c(
+      .msg,
+      paste0(
+        "ADVI Pareto khat ",
+        signif(.khat, 3),
+        " > 0.7: ",
+        "the variational approximation is unreliable; ",
+        "use algorithm=\"NUTS\""
+      )
+    )
   }
   if (length(.msg) > 0L) {
     .txt <- paste(.msg, collapse = "\n")
-    switch(control$onDiagnostic,
-           error = stop(.txt, call. = FALSE),
-           warn = warning(.txt, call. = FALSE),
-           message = message(.txt),
-           none = invisible())
+    switch(
+      control$onDiagnostic,
+      error = stop(.txt, call. = FALSE),
+      warn = warning(.txt, call. = FALSE),
+      message = message(.txt),
+      none = invisible()
+    )
   }
-  list(nDivergent = 0L, nMaxTreedepth = 0L, maxRhat = NA_real_,
-       minEss = NA_real_, khat = .khat, messages = .msg)
+  list(nDivergent = 0L, nMaxTreedepth = 0L, maxRhat = NA_real_, minEss = NA_real_, khat = .khat, messages = .msg)
 }
 
 #' Pathfinder diagnostics: khat of the pooled importance ratios (same
@@ -795,26 +956,39 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   .khat <- sf$khat
   .msg <- character(0)
   if (is.finite(.khat) && .khat > 0.7) {
-    .msg <- c(.msg, paste0("Pathfinder Pareto khat ", signif(.khat, 3),
-                           " > 0.7: the approximation is unreliable; ",
-                           "use algorithm=\"NUTS\""))
+    .msg <- c(
+      .msg,
+      paste0(
+        "Pathfinder Pareto khat ",
+        signif(.khat, 3),
+        " > 0.7: the approximation is unreliable; ",
+        "use algorithm=\"NUTS\""
+      )
+    )
   }
   if (sf$nPathsOk < control$pathfinderPaths) {
-    .msg <- c(.msg, paste0(control$pathfinderPaths - sf$nPathsOk, " of ",
-                           control$pathfinderPaths,
-                           " Pathfinder path(s) failed to produce a ",
-                           "usable local Gaussian"))
+    .msg <- c(
+      .msg,
+      paste0(
+        control$pathfinderPaths - sf$nPathsOk,
+        " of ",
+        control$pathfinderPaths,
+        " Pathfinder path(s) failed to produce a ",
+        "usable local Gaussian"
+      )
+    )
   }
   if (length(.msg) > 0L) {
     .txt <- paste(.msg, collapse = "\n")
-    switch(control$onDiagnostic,
-           error = stop(.txt, call. = FALSE),
-           warn = warning(.txt, call. = FALSE),
-           message = message(.txt),
-           none = invisible())
+    switch(
+      control$onDiagnostic,
+      error = stop(.txt, call. = FALSE),
+      warn = warning(.txt, call. = FALSE),
+      message = message(.txt),
+      none = invisible()
+    )
   }
-  list(nDivergent = 0L, nMaxTreedepth = 0L, maxRhat = NA_real_,
-       minEss = NA_real_, khat = .khat, messages = .msg)
+  list(nDivergent = 0L, nMaxTreedepth = 0L, maxRhat = NA_real_, minEss = NA_real_, khat = .khat, messages = .msg)
 }
 
 #' Relabel a posterior-summary row-name vector from the Stan-mangled
@@ -844,16 +1018,14 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
       .k <- length(.mem)
       for (.di in seq_len(.k)) {
         for (.dj in seq_len(.di)) {
-          .nm <- paste0("omegaOut[", .blk$start - 1L + .di, ",",
-                        .blk$start - 1L + .dj, "]")
+          .nm <- paste0("omegaOut[", .blk$start - 1L + .di, ",", .blk$start - 1L + .dj, "]")
           .lbl[.nm] <- if (.di == .dj) {
             paste0("om.", .mem[.di])
           } else {
             paste0("cov.", .mem[.di], ".", .mem[.dj])
           }
           # omegaOut is symmetric; the mirrored cell carries the same value
-          .lbl[paste0("omegaOut[", .blk$start - 1L + .dj, ",",
-                     .blk$start - 1L + .di, "]")] <- .lbl[.nm]
+          .lbl[paste0("omegaOut[", .blk$start - 1L + .dj, ",", .blk$start - 1L + .di, "]")] <- .lbl[.nm]
         }
       }
     }
@@ -874,10 +1046,13 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
 #' the same way, e.g. an error parameter named "sd.something").
 #' @noRd
 .stanBlockInternalNames <- function(blocks) {
-  unlist(lapply(blocks, function(.blk) {
-    .id <- .stanBlockId(.blk$members)
-    paste0(c("sd", "Lcorr", "omega", "L", "z", "etaP"), .id)
-  }), use.names = FALSE)
+  unlist(
+    lapply(blocks, function(.blk) {
+      .id <- .stanBlockId(.blk$members)
+      paste0(c("sd", "Lcorr", "omega", "L", "z", "etaP"), .id)
+    }),
+    use.names = FALSE
+  )
 }
 
 #' Put the control(s) on the fit env
@@ -907,8 +1082,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
 
 #' Posterior -> nlmixr2 fit for tier 0 (population-only, no etas)
 #' @noRd
-.stanFinalizeEnvPop <- function(ret, ui, env, sf, map, gen, dx, control,
-                                popObj = NA_real_) {
+.stanFinalizeEnvPop <- function(ret, ui, env, sf, map, gen, dx, control, popObj = NA_real_) {
   # est="nuts"/"advi"/"pathfinder" sugar records its own name on the fit
   .estName <- if (is.null(env$stanEstName)) "stan" else env$stanEstName
   .pointFun <- if (identical(control$point, "median")) stats::median else mean
@@ -923,7 +1097,9 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   .keep <- !grepl("^(lp__|theta\\[)", rownames(.sum))
   .posteriorSummary <- as.data.frame(.sum[.keep, , drop = FALSE])
   rownames(.posteriorSummary) <- .stanPosteriorRowLabels(
-    rownames(.posteriorSummary), map)
+    rownames(.posteriorSummary),
+    map
+  )
   .ui <- rxode2::rxUiDecompress(ui)
   env2 <- ret
   env2$ui <- .ui
@@ -933,18 +1109,37 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   env2$objective <- popObj
   env2$adjObf <- FALSE
   env2$extra <- if (identical(control$algorithm, "NUTS")) {
-    paste0(" (", control$chains, " chains x ",
-           control$iter - control$warmup, " draws; max Rhat ",
-           signif(dx$maxRhat, 4), "; min ESS ", round(dx$minEss),
-           "; population-only tier 0)")
+    paste0(
+      " (",
+      control$chains,
+      " chains x ",
+      control$iter - control$warmup,
+      " draws; max Rhat ",
+      signif(dx$maxRhat, 4),
+      "; min ESS ",
+      round(dx$minEss),
+      "; population-only tier 0)"
+    )
   } else if (identical(control$algorithm, "pathfinder")) {
-    paste0(" (Pathfinder, ", control$pathfinderPaths, " paths, ",
-           control$vbOutputSamples, " draws; Pareto khat ",
-           signif(dx$khat, 3), "; population-only tier 0)")
+    paste0(
+      " (Pathfinder, ",
+      control$pathfinderPaths,
+      " paths, ",
+      control$vbOutputSamples,
+      " draws; Pareto khat ",
+      signif(dx$khat, 3),
+      "; population-only tier 0)"
+    )
   } else {
-    paste0(" (ADVI ", control$algorithm, ", ", control$vbOutputSamples,
-           " draws; Pareto khat ", signif(dx$khat, 3),
-           "; population-only tier 0)")
+    paste0(
+      " (ADVI ",
+      control$algorithm,
+      ", ",
+      control$vbOutputSamples,
+      " draws; Pareto khat ",
+      signif(dx$khat, 3),
+      "; population-only tier 0)"
+    )
   }
   env2$method <- .stanMethodLabel(control)
   env2$est <- .estName
@@ -956,8 +1151,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     ""
   }
   if (map$nMix > 1L) {
-    .mixProb <- apply(.stanExtract(sf, pars = "mixProbOut")$mixProbOut,
-                      c(2, 3), .pointFun)
+    .mixProb <- apply(.stanExtract(sf, pars = "mixProbOut")$mixProbOut, c(2, 3), .pointFun)
     dimnames(.mixProb) <- list(NULL, paste0("mix", seq_len(map$nMix)))
     env2$mixProb <- data.frame(ID = seq_len(nrow(.mixProb)), .mixProb)
   }
@@ -969,10 +1163,14 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   nlmixr2est::.nlmixr2FitUpdateParams(env2)
   .stanHandleControlObjects(env, env2)
   .stanControlToFoceiControl(env2)
-  .fit <- nlmixr2est::nlmixr2CreateOutputFromUi(env2$ui, data = env2$origData,
-                                                control = env2$control,
-                                                table = env2$table,
-                                                env = env2, est = .estName)
+  .fit <- nlmixr2est::nlmixr2CreateOutputFromUi(
+    env2$ui,
+    data = env2$origData,
+    control = env2$control,
+    table = env2$table,
+    env = env2,
+    est = .estName
+  )
   .env <- .fit$env
   .env$method <- .stanMethodLabel(control)
   .fit
@@ -985,7 +1183,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   .estName <- if (is.null(env$stanEstName)) "stan" else env$stanEstName
   .ex <- .stanExtract(sf, pars = c("theta", "eta", "omegaOut", "logLikSubj"))
   .pointFun <- if (identical(control$point, "median")) stats::median else mean
-  .thDraw <- .ex$theta                      # draws x ntheta
+  .thDraw <- .ex$theta # draws x ntheta
   .fullTheta <- apply(.thDraw, 2, .pointFun)
   names(.fullTheta) <- map$theta$name
   .omega <- apply(.ex$omegaOut, c(2, 3), .pointFun)
@@ -993,8 +1191,13 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   if (identical(control$point, "median")) {
     .chol <- tryCatch(chol(.omega), error = function(e) NULL)
     if (is.null(.chol)) {
-      stop("the elementwise posterior-median omega is not positive definite;",
-           " use point=\"mean\"", call. = FALSE) # nocov
+      # nocov start
+      stop(
+        "the elementwise posterior-median omega is not positive definite;",
+        " use point=\"mean\"",
+        call. = FALSE
+      )
+      # nocov end
     }
   }
   if (map$nMix > 1L) {
@@ -1008,7 +1211,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     for (.k in seq_len(map$nMix)) {
       .rows <- seq_len(.nid) + (.k - 1L) * .nid
       for (.j in seq_len(.neta)) {
-        .etaW[, , .j] <- .etaW[, , .j] + .mp[, , .k] * .ex$eta[, .rows, .j]
+        .etaW[,, .j] <- .etaW[,, .j] + .mp[,, .k] * .ex$eta[, .rows, .j]
       }
     }
     .etaMean <- apply(.etaW, c(2, 3), .pointFun)
@@ -1017,7 +1220,9 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     .nid <- nrow(.etaMean)
   }
   .etaObf <- data.frame(ID = seq_len(.nid))
-  for (.k in seq_len(ncol(.etaMean))) .etaObf[[map$eta$name[.k]]] <- .etaMean[, .k]
+  for (.k in seq_len(ncol(.etaMean))) {
+    .etaObf[[map$eta$name[.k]]] <- .etaMean[, .k]
+  }
   .etaObf$OBJI <- -2 * colMeans(.ex$logLikSubj)
   .free <- !map$theta$fix
   .cov <- stats::cov(.thDraw[, .free, drop = FALSE])
@@ -1037,11 +1242,17 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     !grepl("^(eta\\[|logLikSubj|mixProbOut|theta\\[)", .rn)
   .posteriorSummary <- as.data.frame(.sum[.keep, , drop = FALSE])
   rownames(.posteriorSummary) <- .stanPosteriorRowLabels(
-    rownames(.posteriorSummary), map, map$blocks)
+    rownames(.posteriorSummary),
+    map,
+    map$blocks
+  )
   # cross-block omegaOut cells are always exactly 0 (no modeled correlation
   # across blocks) and have no om./cov. label -- drop rather than show noise
   .posteriorSummary <- .posteriorSummary[
-    !grepl("^omegaOut\\[", rownames(.posteriorSummary)), , drop = FALSE]
+    !grepl("^omegaOut\\[", rownames(.posteriorSummary)),
+    ,
+    drop = FALSE
+  ]
 
   # ---- the nlmixr2CreateOutputFromUi env contract -------------------------
   .ui <- rxode2::rxUiDecompress(ui)
@@ -1056,25 +1267,48 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   env2$objective <- NA_real_
   env2$adjObf <- TRUE
   env2$extra <- if (identical(control$algorithm, "NUTS")) {
-    paste0(" (", control$chains, " chains x ",
-           control$iter - control$warmup, " draws; max Rhat ",
-           signif(dx$maxRhat, 4), "; min ESS ", round(dx$minEss),
-           "; Wald CI from posterior cov)")
+    paste0(
+      " (",
+      control$chains,
+      " chains x ",
+      control$iter - control$warmup,
+      " draws; max Rhat ",
+      signif(dx$maxRhat, 4),
+      "; min ESS ",
+      round(dx$minEss),
+      "; Wald CI from posterior cov)"
+    )
   } else if (identical(control$algorithm, "pathfinder")) {
-    paste0(" (Pathfinder, ", control$pathfinderPaths, " paths, ",
-           control$vbOutputSamples, " draws; Pareto khat ",
-           signif(dx$khat, 3), "; Wald CI from posterior cov)")
+    paste0(
+      " (Pathfinder, ",
+      control$pathfinderPaths,
+      " paths, ",
+      control$vbOutputSamples,
+      " draws; Pareto khat ",
+      signif(dx$khat, 3),
+      "; Wald CI from posterior cov)"
+    )
   } else {
-    paste0(" (ADVI ", control$algorithm, ", ", control$vbOutputSamples,
-           " draws; Pareto khat ", signif(dx$khat, 3),
-           "; Wald CI from posterior cov)")
+    paste0(
+      " (ADVI ",
+      control$algorithm,
+      ", ",
+      control$vbOutputSamples,
+      " draws; Pareto khat ",
+      signif(dx$khat, 3),
+      "; Wald CI from posterior cov)"
+    )
   }
   env2$method <- .stanMethodLabel(control)
   env2$est <- .estName
   env2$ofvType <- "stan"
-  env2$theta <- data.frame(lower = map$theta$lower, theta = .fullTheta,
-                           fixed = map$theta$fix, upper = map$theta$upper,
-                           row.names = map$theta$name)
+  env2$theta <- data.frame(
+    lower = map$theta$lower,
+    theta = .fullTheta,
+    fixed = map$theta$fix,
+    upper = map$theta$upper,
+    row.names = map$theta$name
+  )
   env2$model <- .ui$ebe
   env2$message <- if (dx$nDivergent > 0) {
     paste0(dx$nDivergent, " divergent transitions")
@@ -1082,8 +1316,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     ""
   }
   if (map$nMix > 1L) {
-    .mixProb <- apply(.stanExtract(sf, pars = "mixProbOut")$mixProbOut,
-                      c(2, 3), .pointFun)
+    .mixProb <- apply(.stanExtract(sf, pars = "mixProbOut")$mixProbOut, c(2, 3), .pointFun)
     dimnames(.mixProb) <- list(NULL, paste0("mix", seq_len(map$nMix)))
     env2$mixProb <- data.frame(ID = seq_len(nrow(.mixProb)), .mixProb)
   }
@@ -1095,10 +1328,14 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   nlmixr2est::.nlmixr2FitUpdateParams(env2)
   .stanHandleControlObjects(env, env2)
   .stanControlToFoceiControl(env2)
-  .fit <- nlmixr2est::nlmixr2CreateOutputFromUi(env2$ui, data = env2$origData,
-                                                control = env2$control,
-                                                table = env2$table,
-                                                env = env2, est = .estName)
+  .fit <- nlmixr2est::nlmixr2CreateOutputFromUi(
+    env2$ui,
+    data = env2$origData,
+    control = env2$control,
+    table = env2$table,
+    env = env2,
+    est = .estName
+  )
   .env <- .fit$env
   .env$method <- .stanMethodLabel(control)
   # H3: the automatic FOCEi objective row (fired when CWRES exists) runs a
@@ -1113,14 +1350,16 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     # posterior point estimate (runs with nlmixr2est's prior gate bypassed
     # internally).  Its machinery overwrites $etaObf with FOCEi EBEs; stash
     # those and restore the posterior etas (H3).
-    .ok <- tryCatch({
-      nlmixr2est::setOfv(.fit, "FOCEi")
-      TRUE
-    }, error = function(e) {
-      cli::cli_warn(paste0("the FOCEi objective row could not be computed: ",
-                           conditionMessage(e)))
-      FALSE
-    })
+    .ok <- tryCatch(
+      {
+        nlmixr2est::setOfv(.fit, "FOCEi")
+        TRUE
+      },
+      error = function(e) {
+        cli::cli_warn(paste0("the FOCEi objective row could not be computed: ", conditionMessage(e)))
+        FALSE
+      }
+    )
     if (.ok && !identical(.env$etaObf, .etaObf)) {
       assign("etaObfFocei", .env$etaObf, envir = .env)
       assign("etaObf", .etaObf, envir = .env)
@@ -1140,21 +1379,24 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
       .rEff <- NULL
     } else {
       .llArr <- rstan::extract(sf, pars = "logLikSubj", permuted = FALSE)
-      .rEff <- tryCatch(loo::relative_eff(exp(.llArr)),
-                        error = function(e) NULL)
+      .rEff <- tryCatch(loo::relative_eff(exp(.llArr)), error = function(e) NULL)
     }
-    .loo <- tryCatch(suppressWarnings(loo::loo(.llArr, r_eff = .rEff)),
-                     error = function(e) NULL)
-    .waic <- tryCatch(suppressWarnings(loo::waic(.llArr)),
-                      error = function(e) NULL)
-    if (!is.null(.loo)) assign("loo", .loo, envir = .env)
-    if (!is.null(.waic)) assign("waic", .waic, envir = .env)
+    .loo <- tryCatch(suppressWarnings(loo::loo(.llArr, r_eff = .rEff)), error = function(e) NULL)
+    .waic <- tryCatch(suppressWarnings(loo::waic(.llArr)), error = function(e) NULL)
+    if (!is.null(.loo)) {
+      assign("loo", .loo, envir = .env)
+    }
+    if (!is.null(.waic)) {
+      assign("waic", .waic, envir = .env)
+    }
     .odf <- get0("objDf", envir = .env)
     if (is.data.frame(.odf)) {
       .add <- function(odf, nm, elpd) {
         .row <- odf[1, , drop = FALSE]
         .row[1, ] <- NA
-        if ("OBJF" %in% names(.row)) .row[1, "OBJF"] <- -2 * elpd
+        if ("OBJF" %in% names(.row)) {
+          .row[1, "OBJF"] <- -2 * elpd
+        }
         if ("Log-likelihood" %in% names(.row)) {
           .row[1, "Log-likelihood"] <- elpd
         }
@@ -1162,12 +1404,10 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
         rbind(odf, .row)
       }
       if (!is.null(.waic)) {
-        .odf <- .add(.odf, "WAIC (subject-level)",
-                     .waic$estimates["elpd_waic", "Estimate"])
+        .odf <- .add(.odf, "WAIC (subject-level)", .waic$estimates["elpd_waic", "Estimate"])
       }
       if (!is.null(.loo)) {
-        .odf <- .add(.odf, "LOO (leave-one-subject-out)",
-                     .loo$estimates["elpd_loo", "Estimate"])
+        .odf <- .add(.odf, "LOO (leave-one-subject-out)", .loo$estimates["elpd_loo", "Estimate"])
       }
       assign("objDf", .odf, envir = .env)
     }

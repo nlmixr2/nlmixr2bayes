@@ -29,24 +29,33 @@ test_that("prior-only sampling recovers every declared prior (G14)", {
   }
   .d <- .linkData()
   .code <- suppressMessages(
-    nlmixr2est::nlmixr2(.mod, .d, est = "stan",
-                        control = stanControl(run = FALSE)))
+    nlmixr2est::nlmixr2(.mod, .d, est = "stan", control = stanControl(run = FALSE))
+  )
   .lines <- strsplit(.code$code, "\n")[[1]]
   # neutralize the ONE likelihood evaluation (the model block computes
   # llCond once and adds sum(llCond)); everything else stays
   # byte-identical -- the iteration tick's external call is a no-op when
   # printing is not armed, so it can stay
-  .w <- grep("] llCond = nlmixr2_cond_all2(eta, theta);", .lines,
-             fixed = TRUE)
+  .w <- grep("] llCond = nlmixr2_cond_all2(eta, theta);", .lines, fixed = TRUE)
   expect_length(.w, 1L)
-  .lines[.w] <- '    vector[N] llCond = rep_vector(0, N);' 
+  .lines[.w] <- '    vector[N] llCond = rep_vector(0, N);'
   # generated quantities would call the (unlinked) external function
   .w2 <- grep("logLikSubj = nlmixr2_cond_all2", .lines, fixed = TRUE)
-  if (length(.w2) == 1L) .lines[.w2] <- "  logLikSubj = rep_vector(0, N);"
+  if (length(.w2) == 1L) {
+    .lines[.w2] <- "  logLikSubj = rep_vector(0, N);"
+  }
   .sm <- stanCompile(paste(.lines, collapse = "\n"))
   .sf <- rxode2::rxWithSeed(99, {
-    rstan::sampling(.sm, data = .code$data, chains = 2L, iter = 6000L,
-                    warmup = 1000L, thin = 5L, seed = 99L, refresh = 0L)
+    rstan::sampling(
+      .sm,
+      data = .code$data,
+      chains = 2L,
+      iter = 6000L,
+      warmup = 1000L,
+      thin = 5L,
+      seed = 99L,
+      refresh = 0L
+    )
   })
   .alpha <- 0.01 / 6
   .ks <- function(x, F) suppressWarnings(stats::ks.test(x, F))$p.value
@@ -55,8 +64,7 @@ test_that("prior-only sampling recovers every declared prior (G14)", {
   # (b): constraint declared, no T[] -- the dropped normalizer is constant)
   expect_gt(.ks(.ex$tcl, function(q) stats::pnorm(q, 1, 2)), .alpha)
   expect_gt(.ks(.ex$fbio, function(q) stats::pbeta(q, 2, 3)), .alpha)
-  expect_gt(.ks(.ex$add_sd,
-                function(q) 2 * (stats::pcauchy(q, 0, 2.5) - 0.5)), .alpha)
+  expect_gt(.ks(.ex$add_sd, function(q) 2 * (stats::pcauchy(q, 0, 2.5) - 0.5)), .alpha)
   # omega block (default LKJ(2) + half-Cauchy SDs, scale 2.5*sqrt(diag init))
   .om <- .ex$omegaOut
   .s <- 2.5 * sqrt(0.1)

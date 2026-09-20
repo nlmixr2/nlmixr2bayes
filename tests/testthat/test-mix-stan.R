@@ -30,22 +30,22 @@
 .mixData <- function() {
   set.seed(42)
   .tt <- c(0.5, 1, 2, 4, 8)
-  do.call(rbind, lapply(1:4, function(id) {
-    data.frame(ID = id, TIME = .tt,
-               DV = 5 * exp(-0.05 * .tt) + stats::rnorm(5, 0, 0.5),
-               AMT = 0, EVID = 0)
-  }))
+  do.call(
+    rbind,
+    lapply(1:4, function(id) {
+      data.frame(ID = id, TIME = .tt, DV = 5 * exp(-0.05 * .tt) + stats::rnorm(5, 0, 0.5), AMT = 0, EVID = 0)
+    })
+  )
 }
 
 .stanHasMixApi <- function() !identical(.Call(nlmixr2bayes:::`_nlmixr2bayes_nMix`), -2L)
 
 test_that("mixture codegen: component-major etas + log_sum_exp + membership", {
   skip_on_cran()
-  skip_if_not(.stanHasMixApi(),
-              "nlmixr2est lacks the blessed mixture layout (#955)")
+  skip_if_not(.stanHasMixApi(), "nlmixr2est lacks the blessed mixture layout (#955)")
   .code <- suppressMessages(
-    nlmixr2est::nlmixr2(.mixMod, .mixData(), est = "stan",
-                        control = stanControl(run = FALSE)))
+    nlmixr2est::nlmixr2(.mixMod, .mixData(), est = "stan", control = stanControl(run = FALSE))
+  )
   expect_s3_class(.code, "nlmixr2bayesCode")
   .lines <- strsplit(.code$code, "\n")[[1]]
   # the mixing probability is constrained to (0,1) regardless of iniDf
@@ -54,12 +54,10 @@ test_that("mixture codegen: component-major etas + log_sum_exp + membership", {
   expect_true(any(grepl("matrix[2*N, 1] z_eta_cl;", .lines, fixed = TRUE)))
   expect_true(any(grepl("matrix[2*N, 1] eta;", .lines, fixed = TRUE)))
   # the marginalization and the membership posteriors
-  expect_true(any(grepl("log_sum_exp(log(p1) + llCond[i], log1p(-p1) + llCond[N + i])",
-                        .lines, fixed = TRUE)))
+  expect_true(any(grepl("log_sum_exp(log(p1) + llCond[i], log1p(-p1) + llCond[N + i])", .lines, fixed = TRUE)))
   expect_true(any(grepl("matrix[N, 2] mixProbOut;", .lines, fixed = TRUE)))
   if (requireNamespace("rstan", quietly = TRUE)) {
-    expect_silent(rstan::stanc(model_code = .code$code,
-                               allow_undefined = TRUE))
+    expect_silent(rstan::stanc(model_code = .code$code, allow_undefined = TRUE))
   }
   # K > 2 refuses with a clear message
   .mix3 <- function() {
@@ -85,29 +83,31 @@ test_that("mixture codegen: component-major etas + log_sum_exp + membership", {
   }
   expect_error(
     suppressMessages(
-      nlmixr2est::nlmixr2(.mix3, .mixData(), est = "stan",
-                          control = stanControl(run = FALSE))),
-    "2-component")
+      nlmixr2est::nlmixr2(.mix3, .mixData(), est = "stan", control = stanControl(run = FALSE))
+    ),
+    "2-component"
+  )
 })
 
 test_that("mixture tier-2 shim: component-conditional value + gradients FD-agree", {
   skip_on_cran()
-  skip_if_not(.stanHasMixApi(),
-              "nlmixr2est lacks the blessed mixture layout (#955)")
+  skip_if_not(.stanHasMixApi(), "nlmixr2est lacks the blessed mixture layout (#955)")
   .d <- .mixData()
   h <- stanLinkSetup(.mixMod, .d, thetaSens = TRUE, cores = 1L)
-  on.exit({
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
-    stanLinkFree()
-  }, add = TRUE)
+  on.exit(
+    {
+      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      stanLinkFree()
+    },
+    add = TRUE
+  )
   expect_identical(.Call(nlmixr2bayes:::`_nlmixr2bayes_nMix`), 2L)
   .map <- nlmixr2bayes:::.stanMap(rxode2::rxode2(.mixMod))
   expect_equal(.map$nMix, 2L)
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
   .bt <- function(theta, e) {
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta),
-          as.matrix(e))
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
   }
   set.seed(7)
   eta <- matrix(stats::rnorm(8, 0, 0.2), 8, 1) # component-major 2 x 4
@@ -126,8 +126,7 @@ test_that("mixture tier-2 shim: component-conditional value + gradients FD-agree
     dn <- .th
     dn[t] <- dn[t] - .h
     fd <- (.bt(up, eta)$value - .bt(dn, eta)$value) / (2 * .h)
-    expect_equal(as.numeric(got$gradTheta[, t]), as.numeric(fd),
-                 tolerance = 1e-3, info = paste0("theta ", t))
+    expect_equal(as.numeric(got$gradTheta[, t]), as.numeric(fd), tolerance = 1e-3, info = paste0("theta ", t))
   }
   .p1Idx <- .map$mixProbIdx[1]
   expect_true(all(got$gradTheta[, .p1Idx] == 0))
@@ -141,8 +140,7 @@ test_that("mixture tier-2 shim: component-conditional value + gradients FD-agree
 
 test_that("a fix()ed mixing probability inlines as a literal", {
   skip_on_cran()
-  skip_if_not(.stanHasMixApi(),
-              "nlmixr2est lacks the blessed mixture layout (#955)")
+  skip_if_not(.stanHasMixApi(), "nlmixr2est lacks the blessed mixture layout (#955)")
   .fixP <- function() {
     ini({
       tcl1 <- 1
@@ -163,29 +161,36 @@ test_that("a fix()ed mixing probability inlines as a literal", {
   }
   # literalFix would dissolve it entirely; test the kept-in-vector path
   .code <- suppressMessages(
-    nlmixr2est::nlmixr2(.fixP, .mixData(), est = "stan",
-                        control = stanControl(run = FALSE,
-                                              literalFix = FALSE)))
+    nlmixr2est::nlmixr2(.fixP, .mixData(), est = "stan", control = stanControl(run = FALSE, literalFix = FALSE))
+  )
   .lines <- strsplit(.code$code, "\n")[[1]]
   expect_true(any(grepl("log_sum_exp(log(0.3)", .lines, fixed = TRUE)))
   expect_false(any(grepl("real<lower=0,upper=1> p1;", .lines, fixed = TRUE)))
   if (requireNamespace("rstan", quietly = TRUE)) {
-    expect_silent(rstan::stanc(model_code = .code$code,
-                               allow_undefined = TRUE))
+    expect_silent(rstan::stanc(model_code = .code$code, allow_undefined = TRUE))
   }
 })
 
 test_that("mixture end to end: assembled gradient + membership + fit contract", {
   skip_on_cran()
   skip_if_not_installed("rstan")
-  skip_if_not(.stanHasMixApi(),
-              "nlmixr2est lacks the blessed mixture layout (#955)")
+  skip_if_not(.stanHasMixApi(), "nlmixr2est lacks the blessed mixture layout (#955)")
   .d <- .mixData()
   .fit <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
-    .mixMod, .d, est = "stan",
-    control = stanControl(chains = 1L, iter = 500L, warmup = 250L,
-                          seed = 42L, cores = 1L, calcTables = FALSE,
-                          ofv = "none", onDiagnostic = "none"))))
+    .mixMod,
+    .d,
+    est = "stan",
+    control = stanControl(
+      chains = 1L,
+      iter = 500L,
+      warmup = 250L,
+      seed = 42L,
+      cores = 1L,
+      calcTables = FALSE,
+      ofv = "none",
+      onDiagnostic = "none"
+    )
+  )))
   expect_true(inherits(.fit, "nlmixr2FitCore"))
   # membership posteriors: one row per subject, rows sum to 1
   .mp <- .fit$env$mixProb
@@ -199,23 +204,31 @@ test_that("mixture end to end: assembled gradient + membership + fit contract", 
   # log_sum_exp weights)
   if (requireNamespace("numDeriv", quietly = TRUE)) {
     h <- stanLinkSetup(.mixMod, .d, thetaSens = TRUE, cores = 1L)
-    on.exit({
-      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
-      stanLinkFree()
-    }, add = TRUE)
+    on.exit(
+      {
+        .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+        stanLinkFree()
+      },
+      add = TRUE
+    )
     .map <- nlmixr2bayes:::.stanMap(rxode2::rxode2(.mixMod))
     .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
     .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
     .sf <- .fit$env$stanfit
     set.seed(3)
-    .pt <- list(tcl1 = 1.05, tcl2 = 1.95, tv = 2.95, p1 = 0.35,
-                add_sd = 0.55, sd_eta_cl = 0.3,
-                z_eta_cl = matrix(stats::rnorm(8, 0, 0.4), 8, 1))
+    .pt <- list(
+      tcl1 = 1.05,
+      tcl2 = 1.95,
+      tv = 2.95,
+      p1 = 0.35,
+      add_sd = 0.55,
+      sd_eta_cl = 0.3,
+      z_eta_cl = matrix(stats::rnorm(8, 0, 0.4), 8, 1)
+    )
     .up <- rstan::unconstrain_pars(.sf, .pt)
     .gA <- rstan::grad_log_prob(.sf, .up)
     attributes(.gA) <- NULL
-    .gN <- numDeriv::grad(function(u) rstan::log_prob(.sf, u), .up,
-                          method = "Richardson")
+    .gN <- numDeriv::grad(function(u) rstan::log_prob(.sf, u), .up, method = "Richardson")
     expect_equal(.gA, .gN, tolerance = 1e-4)
   }
 })

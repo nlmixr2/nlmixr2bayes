@@ -26,14 +26,17 @@ oneCmt <- function() {
 
 simData <- function(nsub = 5L, seed = 77) {
   times <- c(0.5, 1, 2, 4, 8, 12, 24)
-  dat <- do.call(rbind, lapply(seq_len(nsub), function(i) {
-    e <- rxode2::et(amt = 100, cmt = "depot")
-    e <- rxode2::et(e, times)
-    d <- as.data.frame(e)
-    d$id <- i
-    d$dv <- 0
-    d
-  }))
+  dat <- do.call(
+    rbind,
+    lapply(seq_len(nsub), function(i) {
+      e <- rxode2::et(amt = 100, cmt = "depot")
+      e <- rxode2::et(e, times)
+      d <- as.data.frame(e)
+      d$id <- i
+      d$dv <- 0
+      d
+    })
+  )
 
   set.seed(seed)
   theta <- c(tka = 0.0953, tcl = 1.386, tv = 3.401)
@@ -49,10 +52,15 @@ d/dt(depot)  <- -ka * depot
 d/dt(center) <-  ka * depot - cl / v * center
 cp <- center / v
 ")
-  pm <- cbind(tka = theta[["tka"]], tcl = theta[["tcl"]], tv = theta[["tv"]],
-              eta_ka = eta[, 1], eta_cl = eta[, 2], eta_v = eta[, 3])
-  s <- rxode2::rxSolve(m, params = pm, events = dat, returnType = "data.frame",
-                       cores = 1L, atol = 1e-10, rtol = 1e-10)
+  pm <- cbind(
+    tka = theta[["tka"]],
+    tcl = theta[["tcl"]],
+    tv = theta[["tv"]],
+    eta_ka = eta[, 1],
+    eta_cl = eta[, 2],
+    eta_v = eta[, 3]
+  )
+  s <- rxode2::rxSolve(m, params = pm, events = dat, returnType = "data.frame", cores = 1L, atol = 1e-10, rtol = 1e-10)
   dat$dv[dat$evid == 0] <- s$cp + stats::rnorm(nrow(s), 0, 0.3)
   list(data = dat, theta = theta, omega = omega, eta = eta)
 }
@@ -138,8 +146,7 @@ test_that("fix() removes the parameter from sampling, like a constant() prior", 
 
   ## A fixed eta fixes its between-subject SD at sqrt(variance); z stays free.
   expect_false(any(grepl("omega_eta_ka", parBlock)))
-  expect_match(gen$code, sprintf("real omega_eta_ka = %.17g", sqrt(0.6)),
-               fixed = TRUE)
+  expect_match(gen$code, sprintf("real omega_eta_ka = %.17g", sqrt(0.6)), fixed = TRUE)
   expect_match(gen$code, "eta[1, s] = omega_eta_ka * z[1, s];", fixed = TRUE)
 
   ## And it drops out of the sensitivity system: tka, tcl + 2 etas, not 5.
@@ -149,19 +156,21 @@ test_that("fix() removes the parameter from sampling, like a constant() prior", 
 
 test_that("priors can be overridden by name, and typos are refused", {
   skip_if_not_installed("nlmixr2")
-  gen <- rxsStanFromUi(boundedModel, boundedData(),
-                       priors = list(tka = "normal(0, 2)",
-                                     add.sd = "exponential(1)",
-                                     eta.v = "cauchy(0, 1)"))
+  gen <- rxsStanFromUi(
+    boundedModel,
+    boundedData(),
+    priors = list(tka = "normal(0, 2)", add.sd = "exponential(1)", eta.v = "cauchy(0, 1)")
+  )
   on.exit(rxsRelease(gen$handle))
 
   expect_match(gen$code, "tka ~ normal(0, 2);", fixed = TRUE)
   expect_match(gen$code, "add_sd ~ exponential(1);", fixed = TRUE)
   expect_match(gen$code, "omega_eta_v ~ cauchy(0, 1);", fixed = TRUE)
 
-  expect_error(rxsStanFromUi(boundedModel, boundedData(),
-                             priors = list(nosuchpar = "normal(0, 1)")),
-               "unknown parameter")
+  expect_error(
+    rxsStanFromUi(boundedModel, boundedData(), priors = list(nosuchpar = "normal(0, 1)")),
+    "unknown parameter"
+  )
 })
 
 test_that("priorSd controls the default theta prior", {
@@ -184,8 +193,7 @@ test_that("a model with a fixed parameter still has correct gradients", {
   set.seed(11)
   u <- stats::runif(rstan::get_num_upars(fit), -0.5, 0.5)
   chk <- rxsCheckGradient(fit, u)
-  expect_true(all(chk$relDiff < 1e-4),
-              info = paste(utils::capture.output(print(chk)), collapse = "\n"))
+  expect_true(all(chk$relDiff < 1e-4), info = paste(utils::capture.output(print(chk)), collapse = "\n"))
 })
 
 test_that("the generated program has correct gradients and recovers the truth", {
@@ -204,16 +212,33 @@ test_that("the generated program has correct gradients and recovers the truth", 
   for (trial in 1:3) {
     u <- stats::runif(npar, -0.6, 0.6)
     chk <- rxsCheckGradient(fit, u)
-    expect_true(all(chk$relDiff < 1e-4),
-                info = paste(utils::capture.output(
-                  print(chk[order(-chk$relDiff), ][1:3, ])), collapse = "\n"))
+    expect_true(
+      all(chk$relDiff < 1e-4),
+      info = paste(
+        utils::capture.output(
+          print(chk[order(-chk$relDiff), ][1:3, ])
+        ),
+        collapse = "\n"
+      )
+    )
   }
 
-  init <- list(list(theta = as.numeric(sim$theta), omega = sim$omega,
-                    add_sd = 0.3,
-                    z = t(sweep(sim$eta, 2, sim$omega, "/"))))
-  s <- rstan::sampling(sm, data = gen$standata, chains = 1, iter = 600,
-                       warmup = 300, seed = 8, refresh = 0, init = init)
+  init <- list(list(
+    theta = as.numeric(sim$theta),
+    omega = sim$omega,
+    add_sd = 0.3,
+    z = t(sweep(sim$eta, 2, sim$omega, "/"))
+  ))
+  s <- rstan::sampling(
+    sm,
+    data = gen$standata,
+    chains = 1,
+    iter = 600,
+    warmup = 300,
+    seed = 8,
+    refresh = 0,
+    init = init
+  )
 
   post <- as.matrix(s, pars = "theta")
   ci <- apply(post, 2, stats::quantile, probs = c(0.025, 0.975))

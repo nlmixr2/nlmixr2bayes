@@ -19,10 +19,11 @@
 
 .linkData <- function() {
   set.seed(42)
-  do.call(rbind, lapply(1:4, function(id) {
-    tt <- c(0.5, 1, 2, 4, 8)
-    data.frame(ID = id, TIME = tt,
-               DV = 5 * exp(-0.05 * tt) + stats::rnorm(length(tt), 0, 0.5),
-               AMT = 0, EVID = 0)
-  }))
+  do.call(
+    rbind,
+    lapply(1:4, function(id) {
+      tt <- c(0.5, 1, 2, 4, 8)
+      data.frame(ID = id, TIME = tt, DV = 5 * exp(-0.05 * tt) + stats::rnorm(length(tt), 0, 0.5), AMT = 0, EVID = 0)
+    })
+  )
 }

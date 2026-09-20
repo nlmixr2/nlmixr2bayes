@@ -9,9 +9,15 @@ test_that("pathfinder core recovers an analytic correlated Gaussian", {
   .mu <- c(3, -1)
   .fn <- function(x) -0.5 * as.numeric(t(x - .mu) %*% .si %*% (x - .mu))
   .gr <- function(x) as.numeric(-.si %*% (x - .mu))
-  .r <- nlmixr2bayes:::.pathfinderMulti(.fn, .gr, c(-5, 5), paths = 4L,
-                                       jitterSd = 1, drawsPerPath = 2000L,
-                                       nDraws = 4000L)
+  .r <- nlmixr2bayes:::.pathfinderMulti(
+    .fn,
+    .gr,
+    c(-5, 5),
+    paths = 4L,
+    jitterSd = 1,
+    drawsPerPath = 2000L,
+    nDraws = 4000L
+  )
   expect_equal(.r$nPathsOk, 4L)
   # a Gaussian target is exactly representable: khat must be small
   expect_true(is.finite(.r$khat) && .r$khat < 0.5)
@@ -26,9 +32,7 @@ test_that("pathfinder core survives a -Inf region (half support)", {
   # line-search rejection path
   .fn <- function(x) if (x[1] <= 0) -Inf else -x[1]
   .gr <- function(x) -1
-  .r <- nlmixr2bayes:::.pathfinderMulti(.fn, .gr, 2, paths = 2L,
-                                       jitterSd = 0.5,
-                                       drawsPerPath = 500L, nDraws = 500L)
+  .r <- nlmixr2bayes:::.pathfinderMulti(.fn, .gr, 2, paths = 2L, jitterSd = 0.5, drawsPerPath = 500L, nDraws = 500L)
   # a boundary-running target has no interior optimum; either outcome
   # (NULL or finite draws) is acceptable -- the point is no crash
   expect_true(is.null(.r) || all(is.finite(.r$draws)))
@@ -67,12 +71,20 @@ test_that("est='pathfinder': a complete nlmixr2 fit", {
   skip_if_not_installed("rstan")
   skip_if_not_installed("loo")
   .fit <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.estMod, .linkData(), est = "pathfinder",
-                        control = stanControl(seed = 42L, cores = 1L,
-                                              print = 0L,
-                                              pathfinderPaths = 2L,
-                                              vbOutputSamples = 300L,
-                                              onDiagnostic = "none"))))
+    nlmixr2est::nlmixr2(
+      .estMod,
+      .linkData(),
+      est = "pathfinder",
+      control = stanControl(
+        seed = 42L,
+        cores = 1L,
+        print = 0L,
+        pathfinderPaths = 2L,
+        vbOutputSamples = 300L,
+        onDiagnostic = "none"
+      )
+    )
+  ))
   expect_true(inherits(.fit, "nlmixr2FitCore"))
   .env <- .fit$env
   expect_equal(.env$est, "pathfinder")
@@ -90,12 +102,13 @@ test_that("est='advi': sugar records its own est name", {
   skip_on_cran()
   skip_if_not_installed("rstan")
   .fit <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.estMod, .linkData(), est = "advi",
-                        control = stanControl(seed = 42L, cores = 1L,
-                                              print = 0L,
-                                              calcTables = FALSE,
-                                              ofv = "none",
-                                              onDiagnostic = "none"))))
+    nlmixr2est::nlmixr2(
+      .estMod,
+      .linkData(),
+      est = "advi",
+      control = stanControl(seed = 42L, cores = 1L, print = 0L, calcTables = FALSE, ofv = "none", onDiagnostic = "none")
+    )
+  ))
   expect_equal(.fit$env$est, "advi")
   expect_equal(.fit$env$method, "Stan (ADVI meanfield)")
 })
@@ -104,13 +117,23 @@ test_that("est='nuts': sugar records its own est name, same fit as est='stan'", 
   skip_on_cran()
   skip_if_not_installed("rstan")
   .fit <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.estMod, .linkData(), est = "nuts",
-                        control = stanControl(chains = 1L, iter = 200L,
-                                              warmup = 100L, seed = 42L,
-                                              cores = 1L, print = 0L,
-                                              calcTables = FALSE,
-                                              ofv = "none",
-                                              onDiagnostic = "none"))))
+    nlmixr2est::nlmixr2(
+      .estMod,
+      .linkData(),
+      est = "nuts",
+      control = stanControl(
+        chains = 1L,
+        iter = 200L,
+        warmup = 100L,
+        seed = 42L,
+        cores = 1L,
+        print = 0L,
+        calcTables = FALSE,
+        ofv = "none",
+        onDiagnostic = "none"
+      )
+    )
+  ))
   expect_true(inherits(.fit, "nlmixr2FitCore"))
   expect_equal(.fit$env$est, "nuts")
   expect_equal(.fit$env$method, "Stan (HMC)")
@@ -122,11 +145,22 @@ test_that("nlmixr2(model, data, nutsControl()) infers est= and keeps the control
   skip_if_not_installed("rstan")
   # no est= argument: .nlmixr2inferEst reads it off class(control)[1]
   .fit <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.estMod, .linkData(),
-                        nutsControl(chains = 1L, iter = 200L, warmup = 100L,
-                                    seed = 42L, cores = 1L, print = 0L,
-                                    calcTables = FALSE, ofv = "none",
-                                    onDiagnostic = "none"))))
+    nlmixr2est::nlmixr2(
+      .estMod,
+      .linkData(),
+      nutsControl(
+        chains = 1L,
+        iter = 200L,
+        warmup = 100L,
+        seed = 42L,
+        cores = 1L,
+        print = 0L,
+        calcTables = FALSE,
+        ofv = "none",
+        onDiagnostic = "none"
+      )
+    )
+  ))
   expect_true(inherits(.fit, "nlmixr2FitCore"))
   expect_equal(.fit$env$est, "nuts")
   expect_equal(.fit$env$method, "Stan (HMC)")
@@ -143,10 +177,12 @@ test_that("nlmixr2(model, data, adviControl()) infers est= and keeps the control
   skip_on_cran()
   skip_if_not_installed("rstan")
   .fit <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.estMod, .linkData(),
-                        adviControl(seed = 42L, cores = 1L, print = 0L,
-                                    calcTables = FALSE, ofv = "none",
-                                    onDiagnostic = "none"))))
+    nlmixr2est::nlmixr2(
+      .estMod,
+      .linkData(),
+      adviControl(seed = 42L, cores = 1L, print = 0L, calcTables = FALSE, ofv = "none", onDiagnostic = "none")
+    )
+  ))
   expect_equal(.fit$env$est, "advi")
   expect_equal(.fit$env$method, "Stan (ADVI meanfield)")
   expect_s3_class(.fit$control, "adviControl")
