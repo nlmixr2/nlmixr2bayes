@@ -72,9 +72,11 @@
 #' @noRd
 .stanLpHeader <- function() {
   .h <- system.file("include", "nlmixr2bayes_lp.hpp", package = "nlmixr2bayes")
+  # nocov start
   if (!nzchar(.h)) {
     stop("nlmixr2bayes_lp.hpp not found", call. = FALSE)
-  } # nocov
+  }
+  # nocov end
   # forward slashes: rstan uses includes= as a sub() replacement, where
   # backslashes are escape characters
   normalizePath(.h, winslash = "/")

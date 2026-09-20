@@ -46,7 +46,7 @@ jobs:
       # The two gates the push/PR run never sets.
       NLMIXR2STAN_SLOW: 'TRUE'
       RXSTAN_STAN_TESTS: '1'
-      NLMIXR2STAN_SBC_N: ${{ github.event.inputs.sbcN || '' }}
+      NLMIXR2STAN_SBC_N: ${{ github.event.inputs.sbcN || '40' }}
 
     steps:
       - uses: actions/checkout@v4

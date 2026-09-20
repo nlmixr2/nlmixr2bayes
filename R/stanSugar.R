@@ -69,8 +69,10 @@
       }
       "pathfinder"
     },
+    # nocov start
     stop("unknown stan sugar est \"", est, "\"", call. = FALSE)
-  ) # nocov
+    # nocov end
+  )
 }
 
 #' Build a sugar control from stanControl()

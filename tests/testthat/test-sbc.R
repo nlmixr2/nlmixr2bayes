@@ -15,7 +15,8 @@ test_that("simulation-based calibration: ranks are uniform (G5)", {
   skip_on_cran()
   skip_if_not_installed("rstan")
   skip_if_not(nzchar(Sys.getenv("NLMIXR2STAN_SLOW")), "set NLMIXR2STAN_SLOW=TRUE for the SBC gate")
-  .n <- as.integer(Sys.getenv("NLMIXR2STAN_SBC_N", "40"))
+  .nEnv <- Sys.getenv("NLMIXR2STAN_SBC_N")
+  .n <- if (nzchar(.nEnv)) as.integer(.nEnv) else 40L
   .mod <- function() {
     ini({
       tcl <- 1

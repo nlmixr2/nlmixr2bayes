@@ -96,6 +96,7 @@
       .w <- which(.muRef$theta == .mrc$theta[.i])
       .k <- if (length(.w) == 1L) match(.muRef$eta[.w], .eta$name) else NA_integer_
       if (is.na(.p) || is.na(.k)) {
+        # nocov start
         stop(
           "cannot resolve the mu-referenced covariate coefficient '",
           .mrc$covariateParameter[.i],
@@ -103,7 +104,8 @@
           .mrc$covariate[.i],
           "') to a theta/eta pair",
           call. = FALSE
-        ) # nocov
+        )
+        # nocov end
       }
       .muRefCov <- rbind(
         .muRefCov,

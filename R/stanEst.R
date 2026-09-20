@@ -508,6 +508,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   if (.map$nMix > 1L) {
     .nm <- .Call(`_nlmixr2bayes_nMix`)
     if (!identical(.nm, .map$nMix)) {
+      # nocov start
       stop(
         "the linked problem reports ",
         .nm,
@@ -515,7 +516,8 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
         "the model map expects ",
         .map$nMix,
         call. = FALSE
-      ) # nocov
+      )
+      # nocov end
     }
   }
   # gradient conditioning: keep nlmixr2est's Omega^-1 commensurate with the
@@ -664,6 +666,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   if (map$nMix > 1L) {
     .nm <- .Call(`_nlmixr2bayes_nMix`)
     if (!identical(.nm, map$nMix)) {
+      # nocov start
       stop(
         "the linked problem reports ",
         .nm,
@@ -671,7 +674,8 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
         "the model map expects ",
         map$nMix,
         call. = FALSE
-      ) # nocov
+      )
+      # nocov end
     }
   }
   .omInv <- tryCatch(solve(ui$omega), error = function(e) NULL)

@@ -54,13 +54,17 @@ if (nzchar(.shard)) {
   }
   # Deal the files out round-robin over a SORTED list so the split is stable
   # across jobs and platforms, and every file lands in exactly one shard.
+  # Match testthat's own discovery pattern, not a narrower glob: a
+  # `test_foo.R` or `test-foo.r` that `test-*.R` missed would land in no
+  # shard at all and never run, silently.  `context_name()` strips the same
+  # `^test[-_]` prefix and `[.][Rr]$` suffix that `filter` is matched against.
   .all <- sort(sub(
-    "^test-",
+    "^test[-_]",
     "",
     sub(
-      "\\.R$",
+      "[.][Rr]$",
       "",
-      basename(Sys.glob(file.path("testthat", "test-*.R")))
+      dir("testthat", pattern = "^test.*[.][Rr]$")
     )
   ))
   # An empty list would make every shard match nothing and report a green run

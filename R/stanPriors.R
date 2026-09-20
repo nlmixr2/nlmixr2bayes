@@ -47,9 +47,11 @@
   vapply(
     x,
     function(v) {
+      # nocov start
       if (is.infinite(v)) {
         stop("cannot emit an infinite value into Stan source", call. = FALSE)
-      } # nocov
+      }
+      # nocov end
       format(v, digits = 15, trim = TRUE, scientific = FALSE)
     },
     character(1)

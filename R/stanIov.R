@@ -125,14 +125,18 @@
 .stanIovRegisterHook <- function() {
   .add <- tryCatch(getExportedValue("nlmixr2est", "preProcessHooksAdd"), error = function(e) NULL)
   .lst <- tryCatch(getExportedValue("nlmixr2est", "preProcessHooks"), error = function(e) NULL)
+  # nocov start
   if (is.null(.add) || is.null(.lst)) {
     return(invisible(FALSE))
-  } # nocov
+  }
+  # nocov end
   if (".stanCaptureIovPriors" %in% .lst()) {
     .rm <- tryCatch(getExportedValue("nlmixr2est", "preProcessHooksRm"), error = function(e) NULL)
+    # nocov start
     if (is.null(.rm)) {
       return(invisible(FALSE))
-    } # nocov
+    }
+    # nocov end
     .rm(".stanCaptureIovPriors")
   }
   .add(".stanCaptureIovPriors", .stanCaptureIovPriors)
