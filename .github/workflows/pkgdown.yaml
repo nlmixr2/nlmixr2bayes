@@ -1,0 +1,97 @@
+# Workflow derived from https://github.com/r-lib/actions/tree/v2/examples
+# Need help debugging build failures? Start at https://github.com/r-lib/actions#where-to-find-help
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+name: pkgdown.yaml
+
+# a new commit on a pull request cancels that pull request's earlier run
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions: read-all
+
+jobs:
+  pkgdown:
+    runs-on: ubuntu-latest
+    # Only restrict concurrency for non-PR jobs
+    concurrency:
+      group: pkgdown-${{ github.event_name != 'pull_request' || github.run_id }}
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          cache-version: 1
+          # nlmixr2save is what the vignettes' `:=` cache is built on
+          # (vignettes/cacheSetup.R); without it every article would refit.
+          extra-packages: |
+            any::pkgdown
+            nlmixr2/n1qn1c
+            nlmixr2/lbfgsb3c
+            nlmixr2/dparser-R
+            nlmixr2/lotri
+            nlmixr2/rxode2ll
+            nlmixr2/rxode2lincmt
+            nlmixr2/rxode2
+            nlmixr2/PreciseSums
+            nlmixr2/RcppTrust
+            nlmixr2/nlmixr2data
+            nlmixr2/nlmixr2est
+            nlmixr2/nlmixr2
+            nlmixr2/nlmixr2save
+            qs=?ignore
+            local::.
+          needs: website
+
+      # pkgdown downloads its JS assets (fuse.js, autocomplete.js, headroom, ...)
+      # from cdnjs into R_user_dir("pkgdown", "cache") on every cold run; caching
+      # them keeps a slow CDN from failing the build.
+      - name: Cache pkgdown assets
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/R/pkgdown
+          key: pkgdown-assets-${{ runner.os }}-${{ hashFiles('_pkgdown.yml') }}
+          restore-keys: pkgdown-assets-${{ runner.os }}-
+
+      # The articles render from the committed inst/cache fits (nlmixr2save
+      # `:=`), so nothing here resamples -- but a cache miss on a NEW chunk
+      # falls through to a real fit, and that fit's Stan program still has to
+      # compile.  See R-CMD-check.yaml.
+      - name: Cache compiled Stan models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/R/nlmixr2bayes
+          key: stan-models-${{ runner.os }}-pkgdown-${{ hashFiles('R/**', 'inst/include/**', 'inst/stan/**') }}
+          restore-keys: stan-models-${{ runner.os }}-pkgdown-
+
+      - name: Build site
+        run: |
+          # R's 60s default download timeout is not enough for a slow cdnjs
+          options(timeout = max(600, getOption("timeout")))
+          pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
+        shell: Rscript {0}
+
+      - name: Deploy to GitHub pages 🚀
+        if: github.event_name != 'pull_request'
+        uses: JamesIves/github-pages-deploy-action@v4.5.0
+        with:
+          clean: false
+          branch: gh-pages
+          folder: docs

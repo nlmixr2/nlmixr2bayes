@@ -1,0 +1,71 @@
+# Manual run of inst/bench/native-vs-linked.R: the SAME model written natively
+# in Stan (Stan's own ODE solver) and through est="stan" (the linked
+# rxode2/nlmixr2est likelihood), reported as wall time, worst bulk ESS, ESS/s
+# and a per-gradient microbenchmark.  The README quotes these numbers, so this
+# is how they get re-measured on a known machine.
+on:
+  workflow_dispatch:
+    inputs:
+      threads:
+        description: "rxode2 thread count (the per-method core budget)"
+        required: true
+        default: "2"
+
+name: runtime-benchmarks
+
+permissions: read-all
+
+jobs:
+  runtime-benchmarks:
+    runs-on: ubuntu-latest
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          cache-version: 1
+          extra-packages: |
+            any::rcmdcheck
+            nlmixr2/lbfgsb3c
+            nlmixr2/dparser-R
+            nlmixr2/n1qn1c
+            nlmixr2/lotri
+            nlmixr2/rxode2ll
+            nlmixr2/rxode2lincmt
+            nlmixr2/rxode2
+            nlmixr2/PreciseSums
+            nlmixr2/RcppTrust
+            nlmixr2/nlmixr2data
+            nlmixr2/nlmixr2est
+            nlmixr2/nlmixr2
+            nlmixr2/nlmixr2save
+            qs=?ignore
+          needs: check
+
+      - name: Install package
+        run: R CMD INSTALL .
+
+      # Deliberately NOT cached: the benchmark reports sampling time with warm
+      # compiles, so it must compile both sides on the machine it measures.
+
+      - name: Run native-vs-linked benchmark
+        env:
+          RXODE2_THREADS: ${{ github.event.inputs.threads }}
+        run: |
+          mkdir -p artifacts
+          Rscript -e 'rxode2::setRxThreads(as.integer(Sys.getenv("RXODE2_THREADS"))); source(system.file("bench", "native-vs-linked.R", package = "nlmixr2bayes"), echo = TRUE)' 2>&1 | tee artifacts/native-vs-linked.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-benchmarks
+          path: artifacts/*

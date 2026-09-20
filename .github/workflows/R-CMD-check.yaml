@@ -1,0 +1,131 @@
+# Workflow derived from https://github.com/r-lib/actions/tree/v2/examples
+# Need help debugging build failures? Start at https://github.com/r-lib/actions#where-to-find-help
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+name: R-CMD-check.yaml
+
+permissions: read-all
+
+# Auto-cancel superseded in-progress runs for the same ref so stale runs don't
+# pile up and starve the runner pool.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  R-CMD-check:
+    runs-on: ${{ matrix.config.os }}
+
+    name: ${{ matrix.config.os }} (${{ matrix.config.r }}${{ matrix.config.shard && format(' shard {0}', matrix.config.shard) || '' }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          # ubuntu-release carries the test signal: its shards run the full
+          # NOT_CRAN suite WITH the hand-coded .stan compilation tests enabled
+          # (RXSTAN_STAN_TESTS).  Every other entry sets cranTests, running only
+          # the CRAN-visible subset (see NLMIXR2BAYES_TEST_CRAN_ONLY in
+          # tests/testthat.R -- most of this suite is behind skip_on_cran())
+          # while still doing a complete build + R CMD check: install, examples
+          # with --run-donttest, Rd, vignettes and compiled-code checks all still
+          # run, which is what these entries are actually here to catch.
+          #
+          # They cannot run the full suite.  Every est="stan"/est="nuts" test
+          # does a real Stan compile (~1-2 min) the first time a generated
+          # program shape is seen, and compiling dominates wall time by a wide
+          # margin.  A long job on a hosted runner gets RECLAIMED mid-run, which
+          # surfaces as "exit code 143 / The runner has received a shutdown
+          # signal" or, when the runner is lost outright, as a failure with no
+          # log and no artifact at all -- i.e. no signal whatsoever, which is
+          # strictly worse than a deliberately narrowed subset.
+          - {os: macos-latest,   r: 'release', cranTests: true}
+          - {os: windows-latest, r: 'release', cranTests: true}
+          - {os: ubuntu-latest,  r: 'devel', http-user-agent: 'release', cranTests: true}
+          - {os: ubuntu-latest,  r: 'oldrel-1', cranTests: true}
+          # The full subset is SHARDED across four jobs.  One job is a lottery:
+          # runner speed varies enormously, and Stan compilation is the cost
+          # here.  Every file still runs -- the shards partition the file list
+          # exactly -- but each job stays short enough to finish.  See
+          # NLMIXR2BAYES_TEST_SHARD in tests/testthat.R.
+          - {os: ubuntu-latest,  r: 'release', shard: '1/4', stanTests: true}
+          - {os: ubuntu-latest,  r: 'release', shard: '2/4', stanTests: true}
+          - {os: ubuntu-latest,  r: 'release', shard: '3/4', stanTests: true}
+          - {os: ubuntu-latest,  r: 'release', shard: '4/4', stanTests: true}
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      NLMIXR2BAYES_TEST_CRAN_ONLY: ${{ matrix.config.cranTests && 'true' || 'false' }}
+      NLMIXR2BAYES_TEST_SHARD: ${{ matrix.config.shard || '' }}
+      # The hand-coded .stan bridge tests (skipUnlessStan() in
+      # tests/testthat/helper-rxstan.R) only run where it is set.
+      RXSTAN_STAN_TESTS: ${{ matrix.config.stanTests && '1' || '' }}
+
+    steps:
+      - name: Install deps on MacOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install gettext
+        shell: bash
+
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.config.r }}
+          http-user-agent: ${{ matrix.config.http-user-agent }}
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          cache-version: 1
+          # rstan is a hard Import here (it is what this package links Stan
+          # through), so unlike nlmixr2est it must NOT be ?ignore'd.
+          extra-packages: |
+            any::rcmdcheck
+            nlmixr2/lbfgsb3c
+            nlmixr2/dparser-R
+            nlmixr2/n1qn1c
+            nlmixr2/lotri
+            nlmixr2/rxode2ll
+            nlmixr2/rxode2lincmt
+            nlmixr2/rxode2
+            nlmixr2/PreciseSums
+            nlmixr2/RcppTrust
+            nlmixr2/nlmixr2data
+            nlmixr2/nlmixr2est
+            nlmixr2/nlmixr2
+            nlmixr2/nlmixr2save
+            qs=?ignore
+          needs: check
+
+      # stanCompile() keeps compiled models in
+      # tools::R_user_dir("nlmixr2bayes", "cache"), keyed internally by a hash
+      # of the program, the bridge header and the rstan/nlmixr2bayes versions.
+      # Carrying that between runs is the single biggest wall-time saving
+      # available; a stale entry is detected and recompiled rather than used,
+      # so a loose key is safe.
+      - name: Cache compiled Stan models
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/R/nlmixr2bayes
+          key: stan-models-${{ runner.os }}-${{ matrix.config.r }}-${{ matrix.config.shard }}-${{ hashFiles('R/**', 'inst/include/**', 'inst/stan/**') }}
+          restore-keys: |
+            stan-models-${{ runner.os }}-${{ matrix.config.r }}-${{ matrix.config.shard }}-
+            stan-models-${{ runner.os }}-${{ matrix.config.r }}-
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          upload-snapshots: true
+          # upload-results is left at its default: the action already uploads the
+          # .Rcheck directory on failure ('false' only suppresses it for SUCCESSFUL
+          # runs).  Note neither that nor the console log survives a job that loses
+          # its runner.
+          build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'
