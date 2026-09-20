@@ -28,6 +28,10 @@ Pathfinder needs the `StanEstimators` package installed (rstan does not
 expose Pathfinder yet); see [stanControl()] for `pathfinderPaths` and
 the `khat` diagnostic.
 }
+\examples{
+ct <- pathfinderControl()
+ct$algorithm
+}
 \seealso{
 [stanControl()], [nutsControl()], [adviControl()]
 }

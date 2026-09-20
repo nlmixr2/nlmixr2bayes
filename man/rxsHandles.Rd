@@ -13,6 +13,10 @@ an integer vector of the handles currently registered, empty
 \description{
 List registered handles
 }
+\examples{
+# integer(0) until rxsRegister() has been called
+rxsHandles()
+}
 \author{
 Lukas A. Widmer
 }

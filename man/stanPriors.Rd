@@ -26,6 +26,28 @@ the Stan-side pieces: per-parameter bound declarations (support-promoted)
 and sampling statements for population parameters, and the classified
 omega-block priors for the model generator.
 }
+\examples{
+# priors are read from the model's ini({}) block, and map one-to-one
+# onto Stan's distributions
+mod <- function() {
+  ini({
+    tcl <- 1
+    tv <- 3
+    add.sd <- 0.5
+    prior(tcl) ~ dnorm(0, 10)
+    prior(add.sd) ~ dcauchy(0, 5)
+    eta.cl ~ 0.1
+  })
+  model({
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv)
+    cp <- linCmt()
+    cp ~ add(add.sd)
+  })
+}
+p <- stanPriors(rxode2::rxode2(mod))
+p$pop$statement
+}
 \author{
 Matthew L Fidler
 }

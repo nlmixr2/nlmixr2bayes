@@ -229,6 +229,17 @@ reproduces the same retry ladder and the same value -- the density stays
 a pure function of state, which gate G2 proves bitwise, with the retry
 machinery live.
 }
+\examples{
+# every stanControl() argument has a default, so a bare call is the
+# configuration est = "stan" uses
+ct <- stanControl()
+ct$chains
+ct$algorithm
+
+# a short run, and a different point estimate for the returned fit
+ct <- stanControl(chains = 2L, iter = 500L, point = "median")
+ct$iter
+}
 \author{
 Matthew L Fidler
 }

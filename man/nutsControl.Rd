@@ -28,6 +28,13 @@ with `interaction = FALSE` forced.  Because `class(nutsControl())` is
 naming convenience; asking for a variational algorithm here is an error
 rather than a silent override.
 }
+\examples{
+# nutsControl() is stanControl() with algorithm pinned to NUTS, so
+# nlmixr2(model, data, nutsControl()) needs no est= argument
+ct <- nutsControl(iter = 500L)
+ct$algorithm
+ct$iter
+}
 \seealso{
 [stanControl()], [adviControl()], [pathfinderControl()]
 }

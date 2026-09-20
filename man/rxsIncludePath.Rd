@@ -13,6 +13,10 @@ a single string: the installed `include` directory holding the
 \description{
 Path to the rxstan C++ headers
 }
+\examples{
+# where the rxstan C++ headers a hand-coded .stan program includes live
+rxsIncludePath()
+}
 \author{
 Lukas A. Widmer
 }

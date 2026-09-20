@@ -3,6 +3,9 @@
 #'   rxstan C++ headers
 #' @author Lukas A. Widmer
 #' @export
+#' @examples
+#' # where the rxstan C++ headers a hand-coded .stan program includes live
+#' rxsIncludePath()
 rxsIncludePath <- function() {
   system.file("include", package = "nlmixr2bayes", mustWork = TRUE)
 }
@@ -36,6 +39,10 @@ rxsIncludePath <- function() {
 #' @return a single string
 #' @author Lukas A. Widmer
 #' @export
+#' @examples
+#' # the includes= string rstan::stan_model() needs for a bridge model
+#' inc <- rxsStanIncludes("myModel")
+#' nchar(inc)
 rxsStanIncludes <- function(modelName, tag = NULL, pre = NULL, post = NULL) {
   stopifnot(is.character(modelName), length(modelName) == 1L)
   header <- file.path(rxsIncludePath(), "rxstan", "rxstan.hpp")

@@ -40,6 +40,11 @@ must be declared *before* the header (the primary template is named in
 `solve_policy` specialization for it can only be written *after* the primary
 template exists.
 }
+\examples{
+# the includes= string rstan::stan_model() needs for a bridge model
+inc <- rxsStanIncludes("myModel")
+nchar(inc)
+}
 \author{
 Lukas A. Widmer
 }

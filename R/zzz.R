@@ -39,6 +39,9 @@ NULL
 #' @return named logical vector, one entry per probed rxode2 entry point
 #' @author Lukas A. Widmer
 #' @export
+#' @examples
+#' # which rxode2 entry points this build of the bridge found
+#' rxsProbeRxode2()
 rxsProbeRxode2 <- function() {
   .Call(C_rxstanProbeRxode2)
   invisible()

@@ -343,6 +343,9 @@ rxsReleaseAll <- function() {
 #'   when none are
 #' @author Lukas A. Widmer
 #' @export
+#' @examples
+#' # integer(0) until rxsRegister() has been called
+#' rxsHandles()
 rxsHandles <- function() as.integer(names(.rxsEnv$handles))
 
 .rxsRawSolve <- function(h, p) {

@@ -204,6 +204,12 @@
 #' @seealso [stanControl()], [adviControl()], [pathfinderControl()]
 #' @export
 #' @author Matthew L Fidler
+#' @examples
+#' # nutsControl() is stanControl() with algorithm pinned to NUTS, so
+#' # nlmixr2(model, data, nutsControl()) needs no est= argument
+#' ct <- nutsControl(iter = 500L)
+#' ct$algorithm
+#' ct$iter
 nutsControl <- function(..., algorithm = "NUTS") {
   .stanSugarControl("nuts", algorithm, list(...))
 }
@@ -231,6 +237,13 @@ nutsControl <- function(..., algorithm = "NUTS") {
 #' @seealso [stanControl()], [nutsControl()], [pathfinderControl()]
 #' @export
 #' @author Matthew L Fidler
+#' @examples
+#' # meanfield is the default ADVI variant
+#' ct <- adviControl()
+#' ct$algorithm
+#'
+#' ct <- adviControl(algorithm = "fullrank")
+#' ct$algorithm
 adviControl <- function(..., algorithm = c("meanfield", "fullrank")) {
   if (length(algorithm) > 1L) {
     algorithm <- match.arg(algorithm)
@@ -258,6 +271,9 @@ adviControl <- function(..., algorithm = c("meanfield", "fullrank")) {
 #' @seealso [stanControl()], [nutsControl()], [adviControl()]
 #' @export
 #' @author Matthew L Fidler
+#' @examples
+#' ct <- pathfinderControl()
+#' ct$algorithm
 pathfinderControl <- function(..., algorithm = c("pathfinder", "NUTS")) {
   if (length(algorithm) > 1L) {
     algorithm <- match.arg(algorithm)

@@ -46,6 +46,11 @@
 #'   `rstanVersion`; `ok=NA` when rstan is not installed
 #' @export
 #' @author Matthew L Fidler
+#' @examples
+#' # what this build of nlmixr2bayes can compile against
+#' info <- nlmixr2bayesBuildInfo()
+#' info$ok
+#' info$rstanVersion
 nlmixr2bayesBuildInfo <- function(force = FALSE) {
   if (!force && !is.null(.stanBuildEnv$info)) {
     return(.stanBuildEnv$info)

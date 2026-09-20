@@ -13,6 +13,10 @@ named logical vector, one entry per probed rxode2 entry point
 The bridge cannot work without it, so this is the first thing to check if
 solves fail in a way that looks like rxode2 is not there.
 }
+\examples{
+# which rxode2 entry points this build of the bridge found
+rxsProbeRxode2()
+}
 \author{
 Lukas A. Widmer
 }

@@ -26,6 +26,12 @@ facts about the generated C++ (cached per session):
    `rstan::stan_model(includes=)` splices the header.
 3. `stancVersion`/`rstanVersion` for the record.
 }
+\examples{
+# what this build of nlmixr2bayes can compile against
+info <- nlmixr2bayesBuildInfo()
+info$ok
+info$rstanVersion
+}
 \author{
 Matthew L Fidler
 }

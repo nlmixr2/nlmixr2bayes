@@ -31,6 +31,14 @@ but it is an APPROXIMATION -- it understates tails and correlations;
 the Pareto-k diagnostic (`khat`) replaces Rhat/divergences and
 `khat > 0.7` means NUTS should be used instead.
 }
+\examples{
+# meanfield is the default ADVI variant
+ct <- adviControl()
+ct$algorithm
+
+ct <- adviControl(algorithm = "fullrank")
+ct$algorithm
+}
 \seealso{
 [stanControl()], [nutsControl()], [pathfinderControl()]
 }
