@@ -60,6 +60,14 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
   expect_true("FOCEi" %in% rownames(.fit$objDf))
   # tables were built from the posterior point estimates
   expect_true("IPRED" %in% names(.fit))
+  # ... CWRES with them: the FOCEi row above is one addCwres() could never add
+  # afterwards, so ofv="focei" has to calculate the residuals up front
+  expect_true("CWRES" %in% names(.fit))
+  # and addCwres() is then a no-op rather than an error
+  expect_identical(
+    suppressMessages(nlmixr2est::addCwres(.fit, updateObject = FALSE)),
+    .fit
+  )
   # posterior means should sit near the ini() estimates for this
   # well-behaved fixture (loose sanity bound, not a calibration claim)
   expect_true(abs(.fit$ui$theta[["tv"]] - 3) < 1)

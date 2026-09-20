@@ -166,8 +166,8 @@ correlation block without its own prior}
 
 \item{ofv}{objective row made current on the fit: `"focei"` evaluates the
 FOCEi objective at the posterior point estimate (comparable across
-nlmixr2 methods; a plug-in criterion, not a Bayesian one), `"none"`
-leaves the Bayesian fit without one}
+nlmixr2 methods; a plug-in criterion, not a Bayesian one) and calculates
+CWRES with it, `"none"` leaves the Bayesian fit without one}
 
 \item{rhatMax, essBulkMin, essTailMin, maxDivergent}{diagnostic gates}
 
