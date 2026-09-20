@@ -9,12 +9,13 @@ test_that("fixed seed: bitwise-identical draws across fresh sessions (G9)", {
   skip_on_cran()
   skip_if_not_installed("rstan")
   skip_if_not_installed("callr")
-  skip_if_not(nzchar(Sys.getenv("NLMIXR2STAN_SLOW")),
-              "set NLMIXR2STAN_SLOW=TRUE for the cross-session gate")
+  skip_if_not(nzchar(Sys.getenv("NLMIXR2STAN_SLOW")), "set NLMIXR2STAN_SLOW=TRUE for the cross-session gate")
   # the fresh callr sessions load the INSTALLED nlmixr2bayes (a load_all-only
   # dev tree cannot serve a subprocess)
-  skip_if_not(nzchar(system.file(package = "nlmixr2bayes")),
-              "nlmixr2bayes must be installed for the cross-session gate")
+  skip_if_not(
+    nzchar(system.file(package = "nlmixr2bayes")),
+    "nlmixr2bayes must be installed for the cross-session gate"
+  )
   .run <- function() {
     callr::r(function() {
       .mod <- function() {
@@ -35,18 +36,26 @@ test_that("fixed seed: bitwise-identical draws across fresh sessions (G9)", {
       }
       set.seed(42)
       .tt <- c(0.5, 1, 2, 4, 8)
-      .d <- do.call(rbind, lapply(1:4, function(id) {
-        data.frame(ID = id, TIME = .tt,
-                   DV = 5 * exp(-0.05 * .tt) + stats::rnorm(5, 0, 0.5),
-                   AMT = 0, EVID = 0)
-      }))
+      .d <- do.call(
+        rbind,
+        lapply(1:4, function(id) {
+          data.frame(ID = id, TIME = .tt, DV = 5 * exp(-0.05 * .tt) + stats::rnorm(5, 0, 0.5), AMT = 0, EVID = 0)
+        })
+      )
       .fit <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
-        .mod, .d, est = "stan",
-        control = nlmixr2bayes::stanControl(chains = 1L, iter = 400L,
-                                           warmup = 200L, seed = 42L,
-                                           cores = 1L,
-                                           calcTables = FALSE,
-                                           onDiagnostic = "none"))))
+        .mod,
+        .d,
+        est = "stan",
+        control = nlmixr2bayes::stanControl(
+          chains = 1L,
+          iter = 400L,
+          warmup = 200L,
+          seed = 42L,
+          cores = 1L,
+          calcTables = FALSE,
+          onDiagnostic = "none"
+        )
+      )))
       rstan::extract(.fit$env$stanfit, permuted = FALSE)
     })
   }

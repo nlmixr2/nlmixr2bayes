@@ -41,7 +41,9 @@
     x$fit0 <- .stanTrimStanfit(x$fit0)
     return(x)
   }
-  if (!methods::is(x, "stanfit")) return(x)
+  if (!methods::is(x, "stanfit")) {
+    return(x)
+  }
   .dso <- x@stanmodel@dso
   .dso@.CXXDSOMISC <- new.env(parent = emptyenv())
   # dso_saved = TRUE promises the bytes are there to reload from; they are not
@@ -67,8 +69,7 @@
 #' @noRd
 #' @author Matthew L. Fidler
 saveFitItem.stanfit <- function(item, name, file) {
-  .v <- try(saveRDS(.stanTrimStanfit(item), paste0(file, "-", name, ".rds")),
-            silent = TRUE)
+  .v <- try(saveRDS(.stanTrimStanfit(item), paste0(file, "-", name, ".rds")), silent = TRUE)
   !inherits(.v, "try-error")
 }
 

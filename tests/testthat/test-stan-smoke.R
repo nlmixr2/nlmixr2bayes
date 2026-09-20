@@ -30,8 +30,16 @@ test_that("stage 1+2: the linked model compiles, runs, and its gradient is right
   expect_s4_class(sm, "stanmodel")
 
   .data <- list(N = h$nid, P = h$neta, L = t(chol(.om)))
-  sf <- rstan::sampling(sm, data = .data, chains = 1, iter = 2, warmup = 1,
-                        refresh = 0, cores = 1, show_messages = FALSE)
+  sf <- rstan::sampling(
+    sm,
+    data = .data,
+    chains = 1,
+    iter = 2,
+    warmup = 1,
+    refresh = 0,
+    cores = 1,
+    show_messages = FALSE
+  )
   expect_s4_class(sf, "stanfit")
 
   # ---- stage 2: gradient + decomposition ----------------------------------
@@ -40,8 +48,7 @@ test_that("stage 1+2: the linked model compiles, runs, and its gradient is right
   up <- rstan::unconstrain_pars(sf, list(eta = eta))
   gA <- rstan::grad_log_prob(sf, up)
   attributes(gA) <- NULL
-  gN <- numDeriv::grad(function(u) rstan::log_prob(sf, u), up,
-                       method = "Richardson")
+  gN <- numDeriv::grad(function(u) rstan::log_prob(sf, u), up, method = "Richardson")
   expect_equal(gA, gN, tolerance = 1e-4)
 
   # the target decomposes exactly: differences between two eta points equal
@@ -67,13 +74,11 @@ test_that("stanCompile does not leak rstan's compiler environment (rxode2 C comp
   # -include), PKG_LIBS and USE_CXX17; unrestored, every later rxode2 C
   # model compile in the session dies with "compilation terminated".
   # stanCompile snapshots and restores them.
-  .before <- Sys.getenv(c("PKG_CPPFLAGS", "PKG_LIBS", "USE_CXX17"),
-                        unset = NA_character_)
+  .before <- Sys.getenv(c("PKG_CPPFLAGS", "PKG_LIBS", "USE_CXX17"), unset = NA_character_)
   .sm <- stanCompile(cache = TRUE) # cached: hits the fast path
   # force a REAL compile path once per shape: a trivially different program
   .code <- paste0(.stanPhase0Code(), "\n// leak-check variant")
   .sm2 <- stanCompile(.code, cache = FALSE)
-  .after <- Sys.getenv(c("PKG_CPPFLAGS", "PKG_LIBS", "USE_CXX17"),
-                       unset = NA_character_)
+  .after <- Sys.getenv(c("PKG_CPPFLAGS", "PKG_LIBS", "USE_CXX17"), unset = NA_character_)
   expect_identical(.before, .after)
 })

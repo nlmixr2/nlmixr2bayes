@@ -1,0 +1,95 @@
+# Runs everything push/PR R-CMD-check.yaml deliberately leaves off: the
+# nightly-scale gates behind NLMIXR2STAN_SLOW (G5 simulation-based calibration
+# in test-sbc.R, G6 FOCEi agreement in test-focei-agree.R) together with the
+# full RXSTAN_STAN_TESTS bridge suite.  The file list is sharded the same way
+# the push/PR run is (NLMIXR2BAYES_TEST_SHARD in tests/testthat.R), so no
+# hand-maintained batch list has to be kept in step with the test directory.
+on:
+  schedule:
+    # Weekly, Saturdays 04:30 UTC.
+    - cron: '30 4 * * 6'
+  workflow_dispatch:
+    inputs:
+      sbcN:
+        description: "SBC replicate count (NLMIXR2STAN_SBC_N; default 40)"
+        required: false
+        default: ""
+
+name: slow-tests.yaml
+
+permissions: read-all
+
+# Never overlap slow-test runs (they are long); let an in-progress run finish.
+concurrency:
+  group: slow-tests
+  cancel-in-progress: false
+
+jobs:
+  slow-tests:
+    runs-on: ubuntu-latest
+
+    name: slow-tests (shard ${{ matrix.shard }})
+
+    strategy:
+      fail-fast: false
+      # Stan compilation is the cost here and each shard has its own model
+      # cache, so the shards do not contend for anything but runners; a few at
+      # a time keeps the weekly run from taking most of a day.
+      max-parallel: 3
+      matrix:
+        shard: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6']
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      NLMIXR2BAYES_TEST_SHARD: ${{ matrix.shard }}
+      # The two gates the push/PR run never sets.
+      NLMIXR2STAN_SLOW: 'TRUE'
+      RXSTAN_STAN_TESTS: '1'
+      NLMIXR2STAN_SBC_N: ${{ github.event.inputs.sbcN || '40' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          # Keep in step with R-CMD-check.yaml.
+          cache-version: 1
+          extra-packages: |
+            any::rcmdcheck
+            nlmixr2/lbfgsb3c
+            nlmixr2/dparser-R
+            nlmixr2/n1qn1c
+            nlmixr2/lotri
+            nlmixr2/rxode2ll
+            nlmixr2/rxode2lincmt
+            nlmixr2/rxode2
+            nlmixr2/PreciseSums
+            nlmixr2/RcppTrust
+            nlmixr2/nlmixr2data
+            nlmixr2/nlmixr2est
+            nlmixr2/nlmixr2
+            nlmixr2/nlmixr2save
+            qs=?ignore
+          needs: check
+
+      # See R-CMD-check.yaml.  A separate key space from the push/PR shards:
+      # these run different programs, and sharing would just evict.
+      - name: Cache compiled Stan models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/R/nlmixr2bayes
+          key: stan-models-${{ runner.os }}-slow-${{ matrix.shard }}-${{ hashFiles('R/**', 'inst/include/**', 'inst/stan/**') }}
+          restore-keys: stan-models-${{ runner.os }}-slow-${{ matrix.shard }}-
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          upload-snapshots: true
+          build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'

@@ -43,14 +43,17 @@ test_that("omega blocks are the connected components of the off-diagonals", {
 
 simCor <- function(nsub = 8L, seed = 5) {
   times <- c(0.25, 0.5, 1, 2, 4, 8, 12, 24)
-  dat <- do.call(rbind, lapply(seq_len(nsub), function(i) {
-    e <- rxode2::et(amt = 100, cmt = "depot")
-    e <- rxode2::et(e, times)
-    d <- as.data.frame(e)
-    d$id <- i
-    d$dv <- 0
-    d
-  }))
+  dat <- do.call(
+    rbind,
+    lapply(seq_len(nsub), function(i) {
+      e <- rxode2::et(amt = 100, cmt = "depot")
+      e <- rxode2::et(e, times)
+      d <- as.data.frame(e)
+      d$id <- i
+      d$dv <- 0
+      d
+    })
+  )
 
   theta <- c(0.0953, 1.386, 3.401)
   omega <- matrix(c(0.09, 0.045, 0, 0.045, 0.0625, 0, 0, 0, 0.04), 3, 3)
@@ -69,8 +72,7 @@ d/dt(center) <-  ka * depot - cl / v * center
 cp <- center / v
 ")
   pm <- cbind(lka = phi[, 1], lcl = phi[, 2], lv = phi[, 3])
-  s <- rxode2::rxSolve(m, params = pm, events = dat, returnType = "data.frame",
-                       cores = 1L, atol = 1e-10, rtol = 1e-10)
+  s <- rxode2::rxSolve(m, params = pm, events = dat, returnType = "data.frame", cores = 1L, atol = 1e-10, rtol = 1e-10)
   dat$dv[dat$evid == 0] <- s$cp + stats::rnorm(nrow(s), 0, 0.3)
   list(data = dat, theta = theta, omega = omega, eta = eta, nsub = nsub)
 }
@@ -91,8 +93,7 @@ test_that("a correlated block becomes a Cholesky factor with an LKJ prior", {
   expect_match(gen$code, "eta[3, s] = omega_eta_v * z[3, s];", fixed = TRUE)
 
   ## The correlation is reported, otherwise it cannot be read off the fit.
-  expect_match(gen$code, "corr_blk1 = multiply_lower_tri_self_transpose(L_blk1)",
-               fixed = TRUE)
+  expect_match(gen$code, "corr_blk1 = multiply_lower_tri_self_transpose(L_blk1)", fixed = TRUE)
 
   ## Off-diagonal rows must not be mistaken for etas.
   expect_equal(gen$etaNames, c("eta.ka", "eta.cl", "eta.v"))
@@ -113,9 +114,15 @@ test_that("a correlated model has correct gradients", {
   for (trial in 1:3) {
     u <- stats::runif(rstan::get_num_upars(fit), -0.5, 0.5)
     chk <- rxsCheckGradient(fit, u)
-    expect_true(all(chk$relDiff < 1e-4),
-                info = paste(utils::capture.output(
-                  print(chk[order(-chk$relDiff), ][1:3, ])), collapse = "\n"))
+    expect_true(
+      all(chk$relDiff < 1e-4),
+      info = paste(
+        utils::capture.output(
+          print(chk[order(-chk$relDiff), ][1:3, ])
+        ),
+        collapse = "\n"
+      )
+    )
   }
 })
 
@@ -128,8 +135,7 @@ test_that("the correlation itself is recovered, not just the marginals", {
 
   sm <- stanModelFor(gen$code, "rxstan_corr_fit")
 
-  s <- rstan::sampling(sm, data = gen$standata, chains = 1, iter = 700,
-                       warmup = 350, seed = 3, refresh = 0)
+  s <- rstan::sampling(sm, data = gen$standata, chains = 1, iter = 700, warmup = 350, seed = 3, refresh = 0)
 
   rho <- as.matrix(s, pars = "corr_blk1[1,2]")
   ci <- stats::quantile(rho, c(0.05, 0.95))

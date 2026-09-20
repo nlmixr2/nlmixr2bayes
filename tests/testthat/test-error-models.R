@@ -7,7 +7,8 @@
 library(testthat)
 
 mkModel <- function(pars, errline) {
-  txt <- sprintf("function() {
+  txt <- sprintf(
+    "function() {
   ini({ tka <- 0.5; tcl <- 1.0; tv <- 3.4; %s })
   model({
     ka <- exp(tka); cl <- exp(tcl); v <- exp(tv)
@@ -16,7 +17,10 @@ mkModel <- function(pars, errline) {
     cp <- center / v
     %s
   })
-}", pars, errline)
+}",
+    pars,
+    errline
+  )
   eval(parse(text = txt))
 }
 
@@ -29,14 +33,17 @@ simData <- function(nsub = 10L, lloq = 0, seed = 5, mult = FALSE, late = TRUE) {
   } else {
     c(0.25, 0.5, 1, 2, 4, 8, 12)
   }
-  dat <- do.call(rbind, lapply(seq_len(nsub), function(i) {
-    e <- rxode2::et(amt = 100, cmt = "depot")
-    e <- rxode2::et(e, times)
-    d <- as.data.frame(e)
-    d$id <- i
-    d$dv <- 0
-    d
-  }))
+  dat <- do.call(
+    rbind,
+    lapply(seq_len(nsub), function(i) {
+      e <- rxode2::et(amt = 100, cmt = "depot")
+      e <- rxode2::et(e, times)
+      d <- as.data.frame(e)
+      d$id <- i
+      d$dv <- 0
+      d
+    })
+  )
   set.seed(seed)
   m <- rxode2::rxode2("
 ka <- exp(tka)
@@ -46,8 +53,13 @@ d/dt(depot)  <- -ka * depot
 d/dt(center) <-  ka * depot - cl / v * center
 cp <- center / v
 ")
-  s <- rxode2::rxSolve(m, params = c(tka = 0.5, tcl = 1.0, tv = 3.4),
-                       events = dat, returnType = "data.frame", cores = 1L)
+  s <- rxode2::rxSolve(
+    m,
+    params = c(tka = 0.5, tcl = 1.0, tv = 3.4),
+    events = dat,
+    returnType = "data.frame",
+    cores = 1L
+  )
   y <- if (mult) {
     s$cp * exp(stats::rnorm(nrow(s), 0, 0.2))
   } else {
@@ -77,12 +89,13 @@ test_that("each residual error model emits the density it should", {
   cases <- list(
     list("a <- 0.2", "cp ~ add(a)", "normal_lpdf(dv[i] | pred[i], a)"),
     list("b <- 0.1", "cp ~ prop(b)", "normal_lpdf(dv[i] | pred[i], b * pred[i])"),
-    list("a <- 0.2; b <- 0.1", "cp ~ add(a) + prop(b)",
-         "normal_lpdf(dv[i] | pred[i], sqrt(square(a) + square(b * pred[i])))"),
-    list("a <- 0.2", "cp ~ lnorm(a)",
-         "lognormal_lpdf(dv[i] | log(pred[i]), a)"),
-    list("a <- 0.2; b <- 0.9", "cp ~ pow(a, b)",
-         "normal_lpdf(dv[i] | pred[i], a * pow(pred[i], b))")
+    list(
+      "a <- 0.2; b <- 0.1",
+      "cp ~ add(a) + prop(b)",
+      "normal_lpdf(dv[i] | pred[i], sqrt(square(a) + square(b * pred[i])))"
+    ),
+    list("a <- 0.2", "cp ~ lnorm(a)", "lognormal_lpdf(dv[i] | log(pred[i]), a)"),
+    list("a <- 0.2; b <- 0.9", "cp ~ pow(a, b)", "normal_lpdf(dv[i] | pred[i], a * pow(pred[i], b))")
   )
 
   for (cs in cases) {
@@ -105,10 +118,12 @@ test_that("error models that would reshape the theta block are refused", {
   ## silently stop being a theta.
   expect_error(
     rxsStanFromUi(mkModel("a <- 0.2; b <- 0.1", "cp ~ add(a) + pow(b, tv)"), d),
-    "pow\\(\\) combined")
+    "pow\\(\\) combined"
+  )
   expect_error(
     rxsStanFromUi(mkModel("a <- 0.2; b <- 0.1", "cp ~ lnorm(a) + prop(b)"), d),
-    "lnorm\\(\\) combined")
+    "lnorm\\(\\) combined"
+  )
 })
 
 test_that("censoring machinery appears only when the data is censored", {
@@ -126,8 +141,7 @@ test_that("censoring machinery appears only when the data is censored", {
   expect_false(grepl("rxs_obs_ll", z$code, fixed = TRUE))
   rxsRelease(z$handle)
 
-  cens <- rxsStanFromUi(mkModel("a <- 0.2", "cp ~ add(a)"),
-                        simData(3L, lloq = 0.25))
+  cens <- rxsStanFromUi(mkModel("a <- 0.2", "cp ~ add(a)"), simData(3L, lloq = 0.25))
   ## One censored-likelihood function per distribution family, since endpoints
   ## need not share one.
   expect_true(grepl("real rxs_obs_ll_normal(", cens$code, fixed = TRUE))
@@ -141,8 +155,7 @@ test_that("censoring machinery appears only when the data is censored", {
 
 test_that("lnorm censoring uses the lognormal tail, not the normal one", {
   skip_if_not_installed("nlmixr2")
-  g <- rxsStanFromUi(mkModel("a <- 0.2", "cp ~ lnorm(a)"),
-                     simData(3L, lloq = 0.25))
+  g <- rxsStanFromUi(mkModel("a <- 0.2", "cp ~ lnorm(a)"), simData(3L, lloq = 0.25))
   expect_true(grepl("lognormal_lcdf", g$code, fixed = TRUE))
   expect_false(grepl(" normal_lcdf", g$code, fixed = TRUE))
   rxsRelease(g$handle)
@@ -167,8 +180,7 @@ test_that("a nonsense CENS value is refused rather than coerced", {
   d$cens[d$evid == 0][1] <- 2L
   ## rxode2 validates CENS during the probe solve and names the row, so
   ## rxstan does not duplicate the check.
-  expect_error(rxsStanFromUi(mkModel("a <- 0.2", "cp ~ add(a)"), d),
-               "censoring column can only be")
+  expect_error(rxsStanFromUi(mkModel("a <- 0.2", "cp ~ add(a)"), d), "censoring column can only be")
 })
 
 test_that("lnorm refuses non-positive observations at codegen time", {
@@ -178,12 +190,10 @@ test_that("lnorm refuses non-positive observations at codegen time", {
   ## surfaces as a Stan exception partway through warmup.
   d <- simData(6L)
   expect_true(any(d$dv[d$evid == 0] <= 0))
-  expect_error(rxsStanFromUi(mkModel("a <- 0.2", "cp ~ lnorm(a)"), d),
-               "lnorm\\(\\) needs positive observations")
+  expect_error(rxsStanFromUi(mkModel("a <- 0.2", "cp ~ lnorm(a)"), d), "lnorm\\(\\) needs positive observations")
 
   ## The same model is fine on multiplicative data.
-  g <- rxsStanFromUi(mkModel("a <- 0.2", "cp ~ lnorm(a)"),
-                     simData(6L, mult = TRUE))
+  g <- rxsStanFromUi(mkModel("a <- 0.2", "cp ~ lnorm(a)"), simData(6L, mult = TRUE))
   expect_true(grepl("lognormal_lpdf", g$code, fixed = TRUE))
   rxsRelease(g$handle)
 })
@@ -197,10 +207,9 @@ test_that("lnorm and censored programs have correct gradients", {
   ## absolute tolerance -- see the conditioning test below for why that
   ## qualification is not cosmetic.
   cases <- list(
-    list(err = "cp ~ lnorm(a)", lloq = 0, mult = TRUE, late = FALSE,
-         nm = "rxstan_lnorm"),
-    list(err = "cp ~ add(a)", lloq = 0.25, mult = FALSE, late = TRUE,
-         nm = "rxstan_cens"))
+    list(err = "cp ~ lnorm(a)", lloq = 0, mult = TRUE, late = FALSE, nm = "rxstan_lnorm"),
+    list(err = "cp ~ add(a)", lloq = 0.25, mult = FALSE, late = TRUE, nm = "rxstan_cens")
+  )
 
   for (cs in cases) {
     d <- simData(6L, lloq = cs$lloq, mult = cs$mult, late = cs$late)
@@ -211,9 +220,10 @@ test_that("lnorm and censored programs have correct gradients", {
     set.seed(2)
     u <- stats::rnorm(rstan::get_num_upars(fit), 0, 0.3)
     chk <- rxsCheckGradient(fit, u)
-    expect_true(all(chk$relDiff < 1e-6),
-                info = paste(cs$err, paste(utils::capture.output(print(chk)),
-                                           collapse = "\n")))
+    expect_true(
+      all(chk$relDiff < 1e-6),
+      info = paste(cs$err, paste(utils::capture.output(print(chk)), collapse = "\n"))
+    )
     rxsRelease(g$handle)
   }
 })
@@ -235,20 +245,18 @@ test_that("a log-scale error model needs predictions above the noise floor", {
     d <- simData(6L, mult = mult, late = TRUE)
     g <- rxsStanFromUi(mkModel("a <- 0.2", err), d)
     on.exit(rxsRelease(g$handle))
-    sm <- stanModelFor(g$code, paste0("rxstan_cond_",
-                                      if (mult) "ln" else "add"))
+    sm <- stanModelFor(g$code, paste0("rxstan_cond_", if (mult) "ln" else "add"))
     fit <- rstan::sampling(sm, data = g$standata, chains = 0)
     set.seed(2)
     u <- stats::rnorm(rstan::get_num_upars(fit), 0, 0.3)
-    list(rel = max(rxsCheckGradient(fit, u)$relDiff),
-         minPred = min(rstan::constrain_pars(fit, u)$pred))
+    list(rel = max(rxsCheckGradient(fit, u)$relDiff), minPred = min(rstan::constrain_pars(fit, u)$pred))
   }
 
   ln <- gradAt("cp ~ lnorm(a)", TRUE)
   ad <- gradAt("cp ~ add(a)", FALSE)
 
-  expect_lt(ln$minPred, 1e-8)          # the curve really does underflow
-  expect_lt(ad$rel, 1e-6)              # additive is unaffected
+  expect_lt(ln$minPred, 1e-8) # the curve really does underflow
+  expect_lt(ad$rel, 1e-6) # additive is unaffected
   ## If this ever starts passing, the conditioning problem has been solved and
   ## the guidance above should be revisited rather than the test relaxed.
   expect_gt(ln$rel, 1e-4)
@@ -267,39 +275,44 @@ test_that("M3 censoring is less biased than substituting LLOQ/2", {
   naive$cens <- NULL
 
   nblq <- sum(censored$cens[censored$evid == 0] == 1L)
-  expect_gt(nblq, 20L)  # otherwise the comparison proves nothing
+  expect_gt(nblq, 20L) # otherwise the comparison proves nothing
 
   fitOne <- function(dat, nm) {
     g <- rxsStanFromUi(mkModel("a <- 0.2", "cp ~ add(a)"), dat)
     on.exit(rxsRelease(g$handle))
     sm <- stanModelFor(g$code, nm)
-    s <- rstan::sampling(sm, data = g$standata, chains = 2, iter = 800,
-                         warmup = 400, seed = 7, refresh = 0,
-                         init = rxsInit(g, jitter = 0.1))
+    s <- rstan::sampling(
+      sm,
+      data = g$standata,
+      chains = 2,
+      iter = 800,
+      warmup = 400,
+      seed = 7,
+      refresh = 0,
+      init = rxsInit(g, jitter = 0.1)
+    )
     post <- as.matrix(s, pars = c("tka", "tcl", "tv", "a"))
-    list(mean = colMeans(post),
-         lo = apply(post, 2, stats::quantile, 0.025),
-         hi = apply(post, 2, stats::quantile, 0.975))
+    list(
+      mean = colMeans(post),
+      lo = apply(post, 2, stats::quantile, 0.025),
+      hi = apply(post, 2, stats::quantile, 0.975)
+    )
   }
 
   m3 <- fitOne(censored, "rxstan_m3")
   sub <- fitOne(naive, "rxstan_sub")
 
-  cat("\n  truth:", truth,
-      "\n  M3   :", round(m3$mean, 3),
-      "\n  LLOQ/2:", round(sub$mean, 3), "\n")
+  cat("\n  truth:", truth, "\n  M3   :", round(m3$mean, 3), "\n  LLOQ/2:", round(sub$mean, 3), "\n")
 
   ## M3 should recover the residual sd; substitution distorts it because the
   ## invented values are all identical.
-  expect_lt(abs(m3$mean[["a"]] - truth[["a"]]),
-            abs(sub$mean[["a"]] - truth[["a"]]))
+  expect_lt(abs(m3$mean[["a"]] - truth[["a"]]), abs(sub$mean[["a"]] - truth[["a"]]))
 
   ## Deliberately NOT asserting that the 95% intervals cover the truth: with
   ## one seed and three parameters that is a ~14% failure rate by
   ## construction, and it did fail once by 0.003.  A tolerance on the
   ## posterior mean tests the same thing without the coin toss.
   for (p in c("tcl", "tv", "a")) {
-    expect_lt(abs(m3$mean[[p]] - truth[[p]]), 0.2 * max(1, abs(truth[[p]])),
-              label = paste0("M3 ", p))
+    expect_lt(abs(m3$mean[[p]] - truth[[p]]), 0.2 * max(1, abs(truth[[p]])), label = paste0("M3 ", p))
   }
 })

@@ -13,11 +13,13 @@ test_that("ADVI meanfield: a complete nlmixr2 fit through rstan::vb", {
   skip_on_cran()
   skip_if_not_installed("rstan")
   .fit <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan",
-                        control = stanControl(algorithm = "meanfield",
-                                              seed = 42L, cores = 1L,
-                                              print = 0L,
-                                              onDiagnostic = "none"))))
+    nlmixr2est::nlmixr2(
+      .estMod,
+      .linkData(),
+      est = "stan",
+      control = stanControl(algorithm = "meanfield", seed = 42L, cores = 1L, print = 0L, onDiagnostic = "none")
+    )
+  ))
   expect_true(inherits(.fit, "nlmixr2FitData"))
   .env <- .fit$env
   expect_equal(.env$method, "Stan (ADVI meanfield)")
@@ -49,13 +51,21 @@ test_that("ADVI fullrank runs and labels itself", {
   skip_on_cran()
   skip_if_not_installed("rstan")
   .fit <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.estMod, .linkData(), est = "stan",
-                        control = stanControl(algorithm = "fullrank",
-                                              seed = 42L, cores = 1L,
-                                              print = 0L,
-                                              calcTables = FALSE,
-                                              ofv = "none",
-                                              onDiagnostic = "none"))))
+    nlmixr2est::nlmixr2(
+      .estMod,
+      .linkData(),
+      est = "stan",
+      control = stanControl(
+        algorithm = "fullrank",
+        seed = 42L,
+        cores = 1L,
+        print = 0L,
+        calcTables = FALSE,
+        ofv = "none",
+        onDiagnostic = "none"
+      )
+    )
+  ))
   # calcTables=FALSE -> core fit (no table build), still the full contract
   expect_true(inherits(.fit, "nlmixr2FitCore"))
   expect_equal(.fit$env$method, "Stan (ADVI fullrank)")
@@ -69,8 +79,7 @@ test_that("a high khat is surfaced through onDiagnostic", {
   .sim <- list(diagnostics = list(psis = list(pareto_k = 1.2)))
   .fake <- methods::setClass("fakeVb", representation(sim = "list"))(sim = .sim)
   .ctl <- list(algorithm = "meanfield", onDiagnostic = "warn")
-  expect_warning(nlmixr2bayes:::.stanDiagnosticsVb(.fake, .ctl),
-                 "khat")
+  expect_warning(nlmixr2bayes:::.stanDiagnosticsVb(.fake, .ctl), "khat")
   .ctl$onDiagnostic <- "none"
   .dx <- nlmixr2bayes:::.stanDiagnosticsVb(.fake, .ctl)
   expect_equal(.dx$khat, 1.2)

@@ -19,8 +19,16 @@ p0 <- c(log(1.1), log(0.15), log(0.5))
 mkHandle <- function(...) {
   ev <- rxode2::et(amt = 100, cmt = "depot")
   ev <- rxode2::et(ev, c(1, 2, 4, 8, 12))
-  rxsRegister(lagModel, events = ev, sens = sens, output = "center",
-              eventSens = "jump", atol = 1e-10, rtol = 1e-10, ...)
+  rxsRegister(
+    lagModel,
+    events = ev,
+    sens = sens,
+    output = "center",
+    eventSens = "jump",
+    atol = 1e-10,
+    rtol = 1e-10,
+    ...
+  )
 }
 
 test_that("a modeled lag time carries analytic sensitivities", {
@@ -33,12 +41,18 @@ test_that("a modeled lag time carries analytic sensitivities", {
   ## The lag column must not be trivially zero, or the jump is not happening.
   expect_gt(max(abs(got[, 4L])), 1e-3)
 
-  fd <- vapply(seq_along(p0), function(j) {
-    step <- 1e-5
-    pp <- p0; pp[j] <- pp[j] + step
-    pm <- p0; pm[j] <- pm[j] - step
-    (rxsSolve(h, pp)[, 1L] - rxsSolve(h, pm)[, 1L]) / (2 * step)
-  }, numeric(attr(h, "ny")))
+  fd <- vapply(
+    seq_along(p0),
+    function(j) {
+      step <- 1e-5
+      pp <- p0
+      pp[j] <- pp[j] + step
+      pm <- p0
+      pm[j] <- pm[j] - step
+      (rxsSolve(h, pp)[, 1L] - rxsSolve(h, pm)[, 1L]) / (2 * step)
+    },
+    numeric(attr(h, "ny"))
+  )
 
   expect_equal(got[, -1L], fd, tolerance = 1e-5, ignore_attr = TRUE)
 })
@@ -49,8 +63,15 @@ test_that("nothing has happened before the dose is released", {
   ## every parameter there.
   ev <- rxode2::et(amt = 100, cmt = "depot")
   ev <- rxode2::et(ev, c(1, 2, 4, 8))
-  h <- rxsRegister(lagModel, events = ev, sens = sens, output = "center",
-                   eventSens = "jump", atol = 1e-10, rtol = 1e-10)
+  h <- rxsRegister(
+    lagModel,
+    events = ev,
+    sens = sens,
+    output = "center",
+    eventSens = "jump",
+    atol = 1e-10,
+    rtol = 1e-10
+  )
   on.exit(rxsRelease(h))
 
   got <- rxsSolve(h, c(log(1.1), log(0.15), log(3)))
@@ -106,9 +127,11 @@ d/dt(center) <-  ka * depot - cl * center
   ev <- rxode2::et(ev, c(1, 2, 4, 8, 12))
 
   hLag <- mkHandle()
-  hPlain <- rxsRegister(plainModel, events = ev, sens = c("lka", "lcl"),
-                        output = "center", atol = 1e-10, rtol = 1e-10)
-  on.exit({ rxsRelease(hLag); rxsRelease(hPlain) })
+  hPlain <- rxsRegister(plainModel, events = ev, sens = c("lka", "lcl"), output = "center", atol = 1e-10, rtol = 1e-10)
+  on.exit({
+    rxsRelease(hLag)
+    rxsRelease(hPlain)
+  })
 
   refLag <- rxsSolve(hLag, p0, slow = TRUE)
   refPlain <- rxsSolve(hPlain, p0[1:2], slow = TRUE)

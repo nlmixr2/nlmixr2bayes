@@ -6,7 +6,9 @@
 ## do not need the codegen path at all.
 skipUnlessStan <- function(nlmixr2 = TRUE) {
   skip_if_not_installed("rstan")
-  if (nlmixr2) skip_if_not_installed("nlmixr2")
+  if (nlmixr2) {
+    skip_if_not_installed("nlmixr2")
+  }
   if (!nzchar(Sys.getenv("RXSTAN_STAN_TESTS"))) {
     skip("set RXSTAN_STAN_TESTS=1 to run the Stan compilation tests")
   }
@@ -28,18 +30,21 @@ skipUnlessStan <- function(nlmixr2 = TRUE) {
 ## The cached model may have been compiled under a different `modelName` than
 ## the caller asked for; that only changes the generated C++ namespace.
 stanModelFor <- function(src, modelName, ...) {
-  isPath <- length(src) == 1L && !grepl("\n", src, fixed = TRUE) &&
-    file.exists(src)
+  isPath <- length(src) == 1L && !grepl("\n", src, fixed = TRUE) && file.exists(src)
   code <- if (isPath) readLines(src) else src
   hdr <- system.file("include", "rxstan", "rxstan.hpp", package = "nlmixr2bayes")
-  key <- paste(.textHash(code), .textHash(readLines(hdr)),
-               as.character(utils::packageVersion("rstan")),
-               paste(vapply(list(...), function(a) paste(deparse(a), collapse = ""),
-                            character(1)), collapse = "|"),
-               sep = "-")
+  key <- paste(
+    .textHash(code),
+    .textHash(readLines(hdr)),
+    as.character(utils::packageVersion("rstan")),
+    paste(vapply(list(...), function(a) paste(deparse(a), collapse = ""), character(1)), collapse = "|"),
+    sep = "-"
+  )
 
   hit <- .stanCache[[key]]
-  if (!is.null(hit)) return(hit)
+  if (!is.null(hit)) {
+    return(hit)
+  }
 
   ## In-session only, deliberately.  Two attempts at persisting compiled
   ## models across runs both failed silently: rstan::is_sm_valid is not

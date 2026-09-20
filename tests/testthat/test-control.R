@@ -17,17 +17,17 @@ test_that("stanControl builds, validates, and pins its invariants", {
   expect_equal(stanControl()$max_treedepth, 10L)
   # default solver: dense AutoSwitch dop853+ros4 (the dense Dormand-Prince
   # twin of Stan's ode_rk45, with automatic stiff fallback)
-  expect_equal(stanControl()$rxControl$method,
-               rxode2::rxControl(method = "dop853+ros4")$method)
+  expect_equal(stanControl()$rxControl$method, rxode2::rxControl(method = "dop853+ros4")$method)
   expect_true(stanControl()$rxControl$dense)
   if (identical(.Platform$OS.type, "unix")) {
     # forked parallel chains by default, inheriting the core budget
     # capped at the chain count; subject threads then default to 1
     # (OpenMP-after-fork hazard)
     .c2 <- stanControl(chains = 2L)
-    expect_equal(.c2$chainCores,
-                 min(2L, as.integer(rxode2::getRxThreads())))
-    if (.c2$chainCores > 1L) expect_equal(.c2$cores, 1L)
+    expect_equal(.c2$chainCores, min(2L, as.integer(rxode2::getRxThreads())))
+    if (.c2$chainCores > 1L) {
+      expect_equal(.c2$cores, 1L)
+    }
     # sequential opt-out restores subject-parallel evaluation
     .c1 <- stanControl(chains = 2L, chainCores = 1L)
     expect_equal(.c1$chainCores, 1L)
@@ -37,8 +37,7 @@ test_that("stanControl builds, validates, and pins its invariants", {
   } else {
     # Windows chain parallelism uses PSOCK workers and keeps the
     # user-requested per-worker subject-thread count.
-    .c2 <- suppressWarnings(stanControl(chains = 2L, chainCores = 2L,
-                                        cores = 2L))
+    .c2 <- suppressWarnings(stanControl(chains = 2L, chainCores = 2L, cores = 2L))
     expect_equal(.c2$chainCores, 2L)
     expect_equal(.c2$cores, 2L)
   }
@@ -93,39 +92,34 @@ test_that("sugar-control algorithm contradictions error, not silently override",
   # "NUTS" is only ever stanControl()'s default leaking through: est="advi"
   # picks the ADVI default and est="pathfinder" picks Pathfinder
   expect_equal(do.call(adviControl, stanControl())$algorithm, "meanfield")
-  expect_equal(do.call(pathfinderControl, stanControl())$algorithm,
-               "pathfinder")
-  expect_error(do.call(nutsControl, stanControl(algorithm = "meanfield")),
-               "nuts")
+  expect_equal(do.call(pathfinderControl, stanControl())$algorithm, "pathfinder")
+  expect_error(do.call(nutsControl, stanControl(algorithm = "meanfield")), "nuts")
 })
 
 test_that("getValidNlmixrCtl.<sugar> coerces stanControl and re-validates", {
   expect_s3_class(getValidNlmixrCtl.nuts(list(NULL)), "nutsControl")
   expect_s3_class(getValidNlmixrCtl.advi(list(NULL)), "adviControl")
-  expect_s3_class(getValidNlmixrCtl.pathfinder(list(NULL)),
-                  "pathfinderControl")
+  expect_s3_class(getValidNlmixrCtl.pathfinder(list(NULL)), "pathfinderControl")
   expect_equal(getValidNlmixrCtl.nuts(list(list(chains = 2L)))$chains, 2L)
   # a plain stanControl() still works for est="nuts"/"advi"/"pathfinder"
   .v <- getValidNlmixrCtl.nuts(list(stanControl(iter = 500L)))
   expect_s3_class(.v, "nutsControl")
   expect_equal(.v$iter, 500L)
-  expect_equal(getValidNlmixrCtl.advi(list(stanControl()))$algorithm,
-               "meanfield")
+  expect_equal(getValidNlmixrCtl.advi(list(stanControl()))$algorithm, "meanfield")
   # a contradicting sugar control is an error, not a silent conversion
-  expect_error(suppressMessages(getValidNlmixrCtl.nuts(list(adviControl()))),
-               "nuts")
+  expect_error(suppressMessages(getValidNlmixrCtl.nuts(list(adviControl()))), "nuts")
 })
 
 test_that("the sugar controls deparse as themselves", {
-  expect_equal(rxode2::rxUiDeparse(nutsControl(), "ctl"),
-               str2lang("ctl <- nutsControl()"))
-  expect_equal(rxode2::rxUiDeparse(nutsControl(iter = 500L, warmup = 100L),
-                                   "ctl"),
-               str2lang("ctl <- nutsControl(iter = 500L, warmup = 100L)"))
-  expect_equal(rxode2::rxUiDeparse(adviControl(), "ctl"),
-               str2lang("ctl <- adviControl()"))
-  expect_equal(rxode2::rxUiDeparse(adviControl(algorithm = "fullrank"), "ctl"),
-               str2lang("ctl <- adviControl(algorithm = \"fullrank\")"))
-  expect_equal(rxode2::rxUiDeparse(pathfinderControl(), "ctl"),
-               str2lang("ctl <- pathfinderControl()"))
+  expect_equal(rxode2::rxUiDeparse(nutsControl(), "ctl"), str2lang("ctl <- nutsControl()"))
+  expect_equal(
+    rxode2::rxUiDeparse(nutsControl(iter = 500L, warmup = 100L), "ctl"),
+    str2lang("ctl <- nutsControl(iter = 500L, warmup = 100L)")
+  )
+  expect_equal(rxode2::rxUiDeparse(adviControl(), "ctl"), str2lang("ctl <- adviControl()"))
+  expect_equal(
+    rxode2::rxUiDeparse(adviControl(algorithm = "fullrank"), "ctl"),
+    str2lang("ctl <- adviControl(algorithm = \"fullrank\")")
+  )
+  expect_equal(rxode2::rxUiDeparse(pathfinderControl(), "ctl"), str2lang("ctl <- pathfinderControl()"))
 })

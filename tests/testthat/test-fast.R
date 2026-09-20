@@ -14,8 +14,15 @@ d/dt(center) <-  ka * depot - (cl / v) * center
 mkHandle <- function(fast = TRUE, output = "center") {
   ev <- rxode2::et(amt = 100, cmt = "depot")
   ev <- rxode2::et(ev, seq(0.5, 24, by = 1.5))
-  rxsRegister(pkModel, events = ev, sens = c("lka", "lcl", "lv"),
-              output = output, atol = 1e-10, rtol = 1e-10, fast = fast)
+  rxsRegister(
+    pkModel,
+    events = ev,
+    sens = c("lka", "lcl", "lv"),
+    output = output,
+    atol = 1e-10,
+    rtol = 1e-10,
+    fast = fast
+  )
 }
 
 p0 <- c(log(1.1), log(4), log(30))
@@ -53,8 +60,7 @@ test_that("a foreign rxSolve is detected and does not corrupt results", {
 
   ## Something else solves, freeing and rebuilding rxode2's structure.
   other <- rxode2::rxode2("d/dt(x) <- -0.3 * x")
-  rxode2::rxSolve(other, params = c(), events = rxode2::et(seq(0, 5, by = 1)),
-                  returnType = "data.frame", cores = 1L)
+  rxode2::rxSolve(other, params = c(), events = rxode2::et(seq(0, 5, by = 1)), returnType = "data.frame", cores = 1L)
   expect_false(rxsFastAvailable(h))
 
   ## The next solve must still be right, and must re-arm Path A.
@@ -66,7 +72,10 @@ test_that("a foreign rxSolve is detected and does not corrupt results", {
 test_that("interleaving two handles stays correct", {
   h1 <- mkHandle()
   h2 <- mkHandle(output = "depot")
-  on.exit({ rxsRelease(h1); rxsRelease(h2) })
+  on.exit({
+    rxsRelease(h1)
+    rxsRelease(h2)
+  })
 
   r1 <- rxsSolve(h1, p0, slow = TRUE)
   r2 <- rxsSolve(h2, p0, slow = TRUE)

@@ -11,20 +11,21 @@
 #' @noRd
 .stanProbeCode <- function() {
   paste(
-        "functions {",
-        "  vector nlmixr2_cond_all(matrix etaMat);",
-        "}",
-        "data {",
-        "  int<lower=1> N;",
-        "  int<lower=1> P;",
-        "}",
-        "parameters {",
-        "  matrix[N, P] eta;",
-        "}",
-        "model {",
-        "  target += sum(nlmixr2_cond_all(eta));",
-        "}",
-        sep = "\n")
+    "functions {",
+    "  vector nlmixr2_cond_all(matrix etaMat);",
+    "}",
+    "data {",
+    "  int<lower=1> N;",
+    "  int<lower=1> P;",
+    "}",
+    "parameters {",
+    "  matrix[N, P] eta;",
+    "}",
+    "model {",
+    "  target += sum(nlmixr2_cond_all(eta));",
+    "}",
+    sep = "\n"
+  )
 }
 
 #' Probe the Stan build environment
@@ -46,15 +47,21 @@
 #' @export
 #' @author Matthew L Fidler
 nlmixr2bayesBuildInfo <- function(force = FALSE) {
-  if (!force && !is.null(.stanBuildEnv$info)) return(.stanBuildEnv$info)
+  if (!force && !is.null(.stanBuildEnv$info)) {
+    return(.stanBuildEnv$info)
+  }
   if (!requireNamespace("rstan", quietly = TRUE)) {
-    .ret <- list(ok = NA, callShape = NA, injectionPoint = NA,
-                 stancVersion = NA_character_, rstanVersion = NA_character_)
+    .ret <- list(
+      ok = NA,
+      callShape = NA,
+      injectionPoint = NA,
+      stancVersion = NA_character_,
+      rstanVersion = NA_character_
+    )
     .stanBuildEnv$info <- .ret
     return(.ret)
   }
-  .sc <- rstan::stanc(model_code = .stanProbeCode(), model_name = "nlmixr2bayes_probe",
-                      allow_undefined = TRUE)
+  .sc <- rstan::stanc(model_code = .stanProbeCode(), model_name = "nlmixr2bayes_probe", allow_undefined = TRUE)
   .cpp <- .sc$cppcode
   # (1) call shape: the plain two-argument form, no template arguments
   .callShape <- grepl("nlmixr2_cond_all(eta, pstream__)", .cpp, fixed = TRUE) &&
@@ -65,12 +72,13 @@ nlmixr2bayesBuildInfo <- function(force = FALSE) {
   .clsPos <- regexpr("class[[:space:]]+[A-Za-z_][A-Za-z0-9_]*", .cpp)
   .nsPos <- regexpr("namespace[[:space:]]+[A-Za-z_][A-Za-z0-9_]*_namespace", .cpp)
   .injection <- .clsPos > 0 && .nsPos > 0 && .nsPos < .clsPos
-  .ret <- list(ok = isTRUE(.callShape) && isTRUE(.injection),
-               callShape = .callShape,
-               injectionPoint = .injection,
-               stancVersion = tryCatch(as.character(rstan::stan_version()),
-                                       error = function(e) NA_character_),
-               rstanVersion = as.character(utils::packageVersion("rstan")))
+  .ret <- list(
+    ok = isTRUE(.callShape) && isTRUE(.injection),
+    callShape = .callShape,
+    injectionPoint = .injection,
+    stancVersion = tryCatch(as.character(rstan::stan_version()), error = function(e) NA_character_),
+    rstanVersion = as.character(utils::packageVersion("rstan"))
+  )
   .stanBuildEnv$info <- .ret
   .ret
 }
@@ -80,19 +88,24 @@ nlmixr2bayesBuildInfo <- function(force = FALSE) {
 .stanAssertBuildOk <- function() {
   .i <- nlmixr2bayesBuildInfo()
   if (isTRUE(is.na(.i$ok))) {
-    stop("rstan is not installed; install rstan to compile the linked Stan model",
-         call. = FALSE)
+    stop("rstan is not installed; install rstan to compile the linked Stan model", call. = FALSE)
   }
   if (!isTRUE(.i$callShape)) {
-    stop("this stanc3 no longer emits the external-function call shape ",
-         "nlmixr2bayes's header binds to (nlmixr2_cond_all(eta, pstream__)); ",
-         "nlmixr2bayes needs updating for rstan ", .i$rstanVersion,
-         call. = FALSE)
+    stop(
+      "this stanc3 no longer emits the external-function call shape ",
+      "nlmixr2bayes's header binds to (nlmixr2_cond_all(eta, pstream__)); ",
+      "nlmixr2bayes needs updating for rstan ",
+      .i$rstanVersion,
+      call. = FALSE
+    )
   }
   if (!isTRUE(.i$injectionPoint)) {
-    stop("this rstan no longer injects includes= inside the model namespace; ",
-         "nlmixr2bayes needs updating for rstan ", .i$rstanVersion,
-         call. = FALSE)
+    stop(
+      "this rstan no longer injects includes= inside the model namespace; ",
+      "nlmixr2bayes needs updating for rstan ",
+      .i$rstanVersion,
+      call. = FALSE
+    )
   }
   invisible(TRUE)
 }

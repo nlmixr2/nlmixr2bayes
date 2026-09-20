@@ -37,21 +37,23 @@ test_that("Torsten poppk2cpt port generates and parses", {
       cp ~ lnorm(lnorm.sd)
     })
   }
-  .d <- do.call(rbind, lapply(1:4, function(id) {
-    rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 1000, EVID = 1),
-          data.frame(ID = id, TIME = c(1, 2, 4, 8, 12, 24),
-                     DV = c(20, 25, 18, 10, 6, 2), AMT = 0, EVID = 0))
-  }))
+  .d <- do.call(
+    rbind,
+    lapply(1:4, function(id) {
+      rbind(
+        data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 1000, EVID = 1),
+        data.frame(ID = id, TIME = c(1, 2, 4, 8, 12, 24), DV = c(20, 25, 18, 10, 6, 2), AMT = 0, EVID = 0)
+      )
+    })
+  )
   .code <- suppressMessages(
-    nlmixr2est::nlmixr2(.poppk2cpt, .d, est = "stan",
-                        control = stanControl(run = FALSE)))
+    nlmixr2est::nlmixr2(.poppk2cpt, .d, est = "stan", control = stanControl(run = FALSE))
+  )
   expect_s3_class(.code, "nlmixr2bayesCode")
   # the announced default omega prior mirrors Torsten's hand-coded choice
-  expect_true(any(grepl("lkj_corr_cholesky", strsplit(.code$code, "\n")[[1]],
-                        fixed = TRUE)))
+  expect_true(any(grepl("lkj_corr_cholesky", strsplit(.code$code, "\n")[[1]], fixed = TRUE)))
   if (requireNamespace("rstan", quietly = TRUE)) {
-    expect_silent(rstan::stanc(model_code = .code$code,
-                               allow_undefined = TRUE))
+    expect_silent(rstan::stanc(model_code = .code$code, allow_undefined = TRUE))
   }
 })
 
@@ -115,30 +117,28 @@ test_that("Torsten Friberg-Karlsson port (two endpoints) generates and parses", 
       circ ~ lnorm(lnormNeut.sd)
     })
   }
-  .d <- do.call(rbind, lapply(1:3, function(id) {
-    rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 80, EVID = 1,
-                     CMT = "depot"),
-          data.frame(ID = id, TIME = c(1, 4, 12, 24),
-                     DV = c(1.5, 1.1, 0.5, 0.2), AMT = 0, EVID = 0,
-                     CMT = "conc"),
-          data.frame(ID = id, TIME = c(24, 96, 168, 336),
-                     DV = c(4.9, 3.2, 2.1, 4.4), AMT = 0, EVID = 0,
-                     CMT = "circ"))
-  }))
+  .d <- do.call(
+    rbind,
+    lapply(1:3, function(id) {
+      rbind(
+        data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 80, EVID = 1, CMT = "depot"),
+        data.frame(ID = id, TIME = c(1, 4, 12, 24), DV = c(1.5, 1.1, 0.5, 0.2), AMT = 0, EVID = 0, CMT = "conc"),
+        data.frame(ID = id, TIME = c(24, 96, 168, 336), DV = c(4.9, 3.2, 2.1, 4.4), AMT = 0, EVID = 0, CMT = "circ")
+      )
+    })
+  )
   .code <- suppressMessages(
-    nlmixr2est::nlmixr2(.fk, .d, est = "stan",
-                        control = stanControl(run = FALSE)))
+    nlmixr2est::nlmixr2(.fk, .d, est = "stan", control = stanControl(run = FALSE))
+  )
   expect_s3_class(.code, "nlmixr2bayesCode")
   if (requireNamespace("rstan", quietly = TRUE)) {
-    expect_silent(rstan::stanc(model_code = .code$code,
-                               allow_undefined = TRUE))
+    expect_silent(rstan::stanc(model_code = .code$code, allow_undefined = TRUE))
   }
 })
 
 test_that("Torsten pk2cpt port (single patient, no etas) generates and parses", {
   skip_on_cran()
-  skip_if_not(nlmixr2bayes:::.stanHasNlmApi(),
-              "nlmixr2est lacks the nlm C API (#953)")
+  skip_if_not(nlmixr2bayes:::.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
   # the single-patient two-compartment example, Torsten's informative
   # lognormal priors verbatim (normal on the log-scale parameters)
   .pk2cpt <- function() {
@@ -166,20 +166,18 @@ test_that("Torsten pk2cpt port (single patient, no etas) generates and parses", 
       cp ~ lnorm(lnorm.sd)
     })
   }
-  .d <- rbind(data.frame(ID = 1, TIME = 0, DV = NA_real_, AMT = 1000,
-                         EVID = 1),
-              data.frame(ID = 1, TIME = c(0.5, 1, 2, 4, 8, 12, 24),
-                         DV = c(15, 22, 24, 18, 12, 8, 3), AMT = 0,
-                         EVID = 0))
+  .d <- rbind(
+    data.frame(ID = 1, TIME = 0, DV = NA_real_, AMT = 1000, EVID = 1),
+    data.frame(ID = 1, TIME = c(0.5, 1, 2, 4, 8, 12, 24), DV = c(15, 22, 24, 18, 12, 8, 3), AMT = 0, EVID = 0)
+  )
   .code <- suppressMessages(
-    nlmixr2est::nlmixr2(.pk2cpt, .d, est = "stan",
-                        control = stanControl(run = FALSE)))
+    nlmixr2est::nlmixr2(.pk2cpt, .d, est = "stan", control = stanControl(run = FALSE))
+  )
   expect_s3_class(.code, "nlmixr2bayesCode")
   .lines <- strsplit(.code$code, "\n")[[1]]
   expect_true(any(grepl("nlmixr2_pop_ll", .lines, fixed = TRUE)))
   if (requireNamespace("rstan", quietly = TRUE)) {
-    expect_silent(rstan::stanc(model_code = .code$code,
-                               allow_undefined = TRUE))
+    expect_silent(rstan::stanc(model_code = .code$code, allow_undefined = TRUE))
   }
 })
 
@@ -204,23 +202,23 @@ test_that("IOV occasion-indicator pattern generates and parses", {
       cp ~ lnorm(lnorm.sd)
     })
   }
-  .d <- do.call(rbind, lapply(1:4, function(id) {
-    rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 100, EVID = 1,
-                     OCC = 1),
-          data.frame(ID = id, TIME = c(1, 4, 8), DV = c(2, 1.4, 0.8),
-                     AMT = 0, EVID = 0, OCC = 1),
-          data.frame(ID = id, TIME = 24, DV = NA_real_, AMT = 100, EVID = 1,
-                     OCC = 2),
-          data.frame(ID = id, TIME = c(25, 28, 32), DV = c(2.1, 1.5, 0.9),
-                     AMT = 0, EVID = 0, OCC = 2))
-  }))
+  .d <- do.call(
+    rbind,
+    lapply(1:4, function(id) {
+      rbind(
+        data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 100, EVID = 1, OCC = 1),
+        data.frame(ID = id, TIME = c(1, 4, 8), DV = c(2, 1.4, 0.8), AMT = 0, EVID = 0, OCC = 1),
+        data.frame(ID = id, TIME = 24, DV = NA_real_, AMT = 100, EVID = 1, OCC = 2),
+        data.frame(ID = id, TIME = c(25, 28, 32), DV = c(2.1, 1.5, 0.9), AMT = 0, EVID = 0, OCC = 2)
+      )
+    })
+  )
   .code <- suppressMessages(
-    nlmixr2est::nlmixr2(.iov, .d, est = "stan",
-                        control = stanControl(run = FALSE)))
+    nlmixr2est::nlmixr2(.iov, .d, est = "stan", control = stanControl(run = FALSE))
+  )
   expect_s3_class(.code, "nlmixr2bayesCode")
   if (requireNamespace("rstan", quietly = TRUE)) {
-    expect_silent(rstan::stanc(model_code = .code$code,
-                               allow_undefined = TRUE))
+    expect_silent(rstan::stanc(model_code = .code$code, allow_undefined = TRUE))
   }
 })
 
@@ -268,22 +266,21 @@ test_that("Torsten effCpt port (effect-compartment population PK/PD) generates a
       resp ~ add(resp.sd)
     })
   }
-  .d <- do.call(rbind, lapply(1:3, function(id) {
-    rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 100, EVID = 1,
-                     CMT = "depot"),
-          data.frame(ID = id, TIME = c(0.5, 2, 8, 24),
-                     DV = c(400, 900, 500, 150), AMT = 0, EVID = 0,
-                     CMT = "cp"),
-          data.frame(ID = id, TIME = c(1, 4, 12, 24),
-                     DV = c(40, 70, 60, 30), AMT = 0, EVID = 0,
-                     CMT = "resp"))
-  }))
+  .d <- do.call(
+    rbind,
+    lapply(1:3, function(id) {
+      rbind(
+        data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 100, EVID = 1, CMT = "depot"),
+        data.frame(ID = id, TIME = c(0.5, 2, 8, 24), DV = c(400, 900, 500, 150), AMT = 0, EVID = 0, CMT = "cp"),
+        data.frame(ID = id, TIME = c(1, 4, 12, 24), DV = c(40, 70, 60, 30), AMT = 0, EVID = 0, CMT = "resp")
+      )
+    })
+  )
   .code <- suppressMessages(
-    nlmixr2est::nlmixr2(.effCpt, .d, est = "stan",
-                        control = stanControl(run = FALSE)))
+    nlmixr2est::nlmixr2(.effCpt, .d, est = "stan", control = stanControl(run = FALSE))
+  )
   expect_s3_class(.code, "nlmixr2bayesCode")
   if (requireNamespace("rstan", quietly = TRUE)) {
-    expect_silent(rstan::stanc(model_code = .code$code,
-                               allow_undefined = TRUE))
+    expect_silent(rstan::stanc(model_code = .code$code, allow_undefined = TRUE))
   }
 })

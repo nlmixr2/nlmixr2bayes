@@ -30,8 +30,11 @@
 #' @return the cache directory, invisibly
 bayesCache <- function(prefix = "") {
   if (!requireNamespace("nlmixr2save", quietly = TRUE)) {
-    stop("the nlmixr2bayes documentation caches its fits with nlmixr2save;\n",
-         "  install it with pak::pak(\"nlmixr2/nlmixr2save\")", call. = FALSE)
+    stop(
+      "the nlmixr2bayes documentation caches its fits with nlmixr2save;\n",
+      "  install it with pak::pak(\"nlmixr2/nlmixr2save\")",
+      call. = FALSE
+    )
   }
   ## `:=` is an operator, so it has to be on the search path, not merely
   ## installed, for `fit := nlmixr2(...)` to parse into nlmixr2save's method.
@@ -58,12 +61,14 @@ bayesCache <- function(prefix = "") {
     file.copy(list.files(.src, full.names = TRUE), .tmp, overwrite = TRUE)
     .tmp
   }
-  options(nlmixr2save.dir = .dir,
-          nlmixr2save.prefix = prefix,
-          ## trusted cache: load what is there, run and save what is not
-          nlmixr2save.check = FALSE,
-          ## a committed cache necessarily outlives the nlmixr2est/rxode2 build
-          ## that produced it; that is the point, so do not warn about it
-          nlmixr2save.checkVersion = FALSE)
+  options(
+    nlmixr2save.dir = .dir,
+    nlmixr2save.prefix = prefix,
+    ## trusted cache: load what is there, run and save what is not
+    nlmixr2save.check = FALSE,
+    ## a committed cache necessarily outlives the nlmixr2est/rxode2 build
+    ## that produced it; that is the point, so do not warn about it
+    nlmixr2save.checkVersion = FALSE
+  )
   invisible(.dir)
 }

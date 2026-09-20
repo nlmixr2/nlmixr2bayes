@@ -22,7 +22,9 @@ if (!requireNamespace("rmarkdown", quietly = TRUE)) {
 }
 
 ## Run from the package root whichever way it was invoked.
-if (basename(getwd()) == "vignettes") setwd("..")
+if (basename(getwd()) == "vignettes") {
+  setwd("..")
+}
 if (!file.exists("DESCRIPTION")) {
   stop("run precompute.R from the nlmixr2bayes package root (or vignettes/)")
 }
@@ -31,11 +33,13 @@ rscript <- file.path(R.home("bin"), "Rscript")
 
 ## Documents whose fits are cached.  Add one here once its expensive calls use
 ## the `:=` operator.
-docs <- c("README.Rmd",
-          "vignettes/nlmixr2bayes.Rmd",
-          "vignettes/rxstan-handcoded.Rmd",
-          "vignettes/rxstan-dde.Rmd",
-          "vignettes/torsten-comparison.Rmd")
+docs <- c(
+  "README.Rmd",
+  "vignettes/nlmixr2bayes.Rmd",
+  "vignettes/rxstan-handcoded.Rmd",
+  "vignettes/rxstan-dde.Rmd",
+  "vignettes/torsten-comparison.Rmd"
+)
 
 args <- commandArgs(trailingOnly = TRUE)
 if ("--clean" %in% args) {
@@ -59,8 +63,7 @@ for (d in docs) {
   cmd <- if (identical(d, "README.Rmd")) {
     sprintf('rmarkdown::render("%s", quiet=TRUE, envir=new.env(parent=globalenv()))', d)
   } else {
-    sprintf('rmarkdown::render("%s", output_dir="%s", quiet=TRUE, envir=new.env(parent=globalenv()))',
-            d, outDir)
+    sprintf('rmarkdown::render("%s", output_dir="%s", quiet=TRUE, envir=new.env(parent=globalenv()))', d, outDir)
   }
   status <- system2(rscript, c("-e", shQuote(cmd)))
   if (!identical(status, 0L)) {
@@ -72,7 +75,6 @@ for (d in docs) {
 message("precompute.R: done. Cached fits:")
 print(list.files("inst/cache", pattern = "\\.(zip|rds)$"))
 if (length(failed)) {
-  message("precompute.R: documents that did NOT render cleanly: ",
-          paste(failed, collapse = ", "))
+  message("precompute.R: documents that did NOT render cleanly: ", paste(failed, collapse = ", "))
   quit(status = 1L)
 }

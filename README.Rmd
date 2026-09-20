@@ -23,6 +23,13 @@ bayesCache("readme-")
 # nlmixr2bayes <img src="man/figures/logo.png" align="right" height="120" alt="" />
 
 <!-- badges: start -->
+[![R-CMD-check](https://github.com/nlmixr2/nlmixr2bayes/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/nlmixr2/nlmixr2bayes/actions/workflows/R-CMD-check.yaml)
+[![CodeFactor](https://www.codefactor.io/repository/github/nlmixr2/nlmixr2bayes/badge)](https://www.codefactor.io/repository/github/nlmixr2/nlmixr2bayes)
+[![CRAN status](https://www.r-pkg.org/badges/version/nlmixr2bayes)](https://CRAN.R-project.org/package=nlmixr2bayes)
+[![CRAN total downloads](https://cranlogs.r-pkg.org/badges/grand-total/nlmixr2bayes)](https://cran.r-project.org/package=nlmixr2bayes)
+[![CRAN total downloads](https://cranlogs.r-pkg.org/badges/nlmixr2bayes)](https://cran.r-project.org/package=nlmixr2bayes)
+[![Codecov test coverage](https://codecov.io/gh/nlmixr2/nlmixr2bayes/graph/badge.svg)](https://app.codecov.io/gh/nlmixr2/nlmixr2bayes)
+![r-universe](https://nlmixr2.r-universe.dev/badges/nlmixr2bayes)
 <!-- badges: end -->
 
 A Stan interface for nlmixr2 combining two complementary approaches:

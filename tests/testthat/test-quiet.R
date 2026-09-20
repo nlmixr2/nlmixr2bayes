@@ -13,8 +13,15 @@ d/dt(center) <-  ka * depot - (cl / v) * center
 mk <- function(quiet) {
   ev <- rxode2::et(amt = 100, cmt = "depot")
   ev <- rxode2::et(ev, seq(0.5, 24, by = 1.5))
-  rxsRegister(pkModel, events = ev, sens = c("lka", "lcl", "lv"),
-              output = "center", atol = 1e-10, rtol = 1e-10, quiet = quiet)
+  rxsRegister(
+    pkModel,
+    events = ev,
+    sens = c("lka", "lcl", "lv"),
+    output = "center",
+    atol = 1e-10,
+    rtol = 1e-10,
+    quiet = quiet
+  )
 }
 
 good <- c(log(1.1), log(4), log(30))
@@ -25,7 +32,8 @@ test_that("quiet suppresses solver chatter", {
   on.exit(rxsRelease(h))
   out <- utils::capture.output(
     suppressWarnings(try(rxsSolve(h, bad), silent = TRUE)),
-    type = "output")
+    type = "output"
+  )
   expect_false(any(grepl("lsoda|intdy", out)))
 })
 
@@ -38,7 +46,10 @@ test_that("a failure is still an error when quiet", {
 test_that("quiet does not change the numbers", {
   hq <- mk(TRUE)
   hl <- mk(FALSE)
-  on.exit({ rxsRelease(hq); rxsRelease(hl) })
+  on.exit({
+    rxsRelease(hq)
+    rxsRelease(hl)
+  })
   expect_identical(rxsSolve(hq, good), rxsSolve(hl, good))
 })
 

@@ -16,7 +16,8 @@ Description: Bayesian estimation for 'nlmixr2' models by linking Stan (via
     distributions come from the model's 'ini({})' block, whose distribution
     catalog is one-to-one with Stan's.
 License: MIT
-URL: https://github.com/nlmixr2/nlmixr2bayes
+URL: https://github.com/nlmixr2/nlmixr2bayes,
+    https://nlmixr2.github.io/nlmixr2bayes/
 BugReports: https://github.com/nlmixr2/nlmixr2bayes/issues
 Depends: R (>= 4.2)
 Imports:

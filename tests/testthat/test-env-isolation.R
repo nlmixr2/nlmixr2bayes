@@ -14,17 +14,21 @@ test_that("compiling a Stan model leaves rxode2 able to compile", {
 
   ev <- rxode2::et(amt = 100, cmt = "depot")
   ev <- rxode2::et(ev, seq(0.5, 24, by = 4))
-  h <- rxsRegister("
+  h <- rxsRegister(
+    "
 ka  <- exp(lka)
 cl  <- exp(lcl)
 v   <- exp(lv)
 d/dt(depot)  <- -ka * depot
 d/dt(center) <-  ka * depot - (cl / v) * center
-", events = ev, sens = c("lka", "lcl", "lv"), output = "center")
+",
+    events = ev,
+    sens = c("lka", "lcl", "lv"),
+    output = "center"
+  )
   on.exit(rxsRelease(h))
 
-  rxsStanModel(system.file("stan", "pk_1cmt_oral.stan", package = "nlmixr2bayes"),
-               modelName = "envcheck")
+  rxsStanModel(system.file("stan", "pk_1cmt_oral.stan", package = "nlmixr2bayes"), modelName = "envcheck")
 
   expect_equal(Sys.getenv(c("PKG_CPPFLAGS", "PKG_LIBS"), unset = NA), before)
 

@@ -33,9 +33,14 @@ rxsInit <- function(gen, jitter = 0.2) {
   }
   base <- gen$inits
   thetas <- gen$stanNames$theta
-  if (jitter < 0) stop("rxsInit(): jitter must be >= 0", call. = FALSE)
+  if (jitter < 0) {
+    stop("rxsInit(): jitter must be >= 0", call. = FALSE)
+  }
 
+  # rstan calls the init function with this exact argument name.
+  # nolint start: object_name_linter.
   function(chain_id = 1L) {
+    # nolint end
     out <- base
     if (jitter > 0 && length(thetas)) {
       for (nm in intersect(thetas, names(out))) {

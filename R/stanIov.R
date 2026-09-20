@@ -59,18 +59,18 @@
   if (!is.data.frame(iniDf) || !("backTransform" %in% names(iniDf))) {
     return(character(0))
   }
-  .w <- which(!is.na(iniDf$ntheta) & !is.na(iniDf$backTransform) &
-                grepl(.stanIovBackTransform, iniDf$backTransform))
+  .w <- which(!is.na(iniDf$ntheta) & !is.na(iniDf$backTransform) & grepl(.stanIovBackTransform, iniDf$backTransform))
   .bad <- .w[!grepl("^nlmixr2iovSd", iniDf$backTransform[.w])]
   if (length(.bad) > 0L) {
-    stop("est=\"stan\" samples an inter-occasion magnitude as a standard ",
-         "deviation, but ",
-         paste0("'", iniDf$name[.bad], "'", collapse = ", "),
-         " was expanded with a different iovXform (",
-         paste(unique(sub("^nlmixr2iov", "", iniDf$backTransform[.bad])),
-               collapse = ", "),
-         "); its prior would mean something else on that scale",
-         call. = FALSE)
+    stop(
+      "est=\"stan\" samples an inter-occasion magnitude as a standard ",
+      "deviation, but ",
+      paste0("'", iniDf$name[.bad], "'", collapse = ", "),
+      " was expanded with a different iovXform (",
+      paste(unique(sub("^nlmixr2iov", "", iniDf$backTransform[.bad])), collapse = ", "),
+      "); its prior would mean something else on that scale",
+      call. = FALSE
+    )
   }
   iniDf$name[.w]
 }
@@ -85,9 +85,13 @@
   if (!is.data.frame(iniDf) || !("condition" %in% names(iniDf))) {
     return(integer(0))
   }
-  which(!is.na(iniDf$neta1) & iniDf$neta1 == iniDf$neta2 &
-          !is.na(iniDf$condition) & iniDf$condition != "id" &
-          is.na(iniDf$err))
+  which(
+    !is.na(iniDf$neta1) &
+      iniDf$neta1 == iniDf$neta2 &
+      !is.na(iniDf$condition) &
+      iniDf$condition != "id" &
+      is.na(iniDf$err)
+  )
 }
 
 #' Pre-processing hook: remember the priors declared on occasion etas
@@ -99,14 +103,14 @@
 .stanCaptureIovPriors <- function(ui, est, data, control) {
   .stanIovEnv$priors <- character(0)
   .iniDf <- tryCatch(ui$iniDf, error = function(e) NULL)
-  if (is.null(.iniDf) || !is.data.frame(.iniDf) ||
-        !("prior" %in% names(.iniDf))) {
+  if (is.null(.iniDf) || !is.data.frame(.iniDf) || !("prior" %in% names(.iniDf))) {
     return(NULL)
   }
   .w <- .stanIovEtaRows(.iniDf)
-  if (length(.w) == 0L) return(NULL)
-  .stanIovEnv$priors <- stats::setNames(as.character(.iniDf$prior[.w]),
-                                        .iniDf$name[.w])
+  if (length(.w) == 0L) {
+    return(NULL)
+  }
+  .stanIovEnv$priors <- stats::setNames(as.character(.iniDf$prior[.w]), .iniDf$name[.w])
   NULL
 }
 
@@ -119,15 +123,20 @@
 #' a future ordering change becomes an error rather than a wrong prior.
 #' @noRd
 .stanIovRegisterHook <- function() {
-  .add <- tryCatch(getExportedValue("nlmixr2est", "preProcessHooksAdd"),
-                   error = function(e) NULL)
-  .lst <- tryCatch(getExportedValue("nlmixr2est", "preProcessHooks"),
-                   error = function(e) NULL)
-  if (is.null(.add) || is.null(.lst)) return(invisible(FALSE)) # nocov
+  .add <- tryCatch(getExportedValue("nlmixr2est", "preProcessHooksAdd"), error = function(e) NULL)
+  .lst <- tryCatch(getExportedValue("nlmixr2est", "preProcessHooks"), error = function(e) NULL)
+  # nocov start
+  if (is.null(.add) || is.null(.lst)) {
+    return(invisible(FALSE))
+  }
+  # nocov end
   if (".stanCaptureIovPriors" %in% .lst()) {
-    .rm <- tryCatch(getExportedValue("nlmixr2est", "preProcessHooksRm"),
-                    error = function(e) NULL)
-    if (is.null(.rm)) return(invisible(FALSE)) # nocov
+    .rm <- tryCatch(getExportedValue("nlmixr2est", "preProcessHooksRm"), error = function(e) NULL)
+    # nocov start
+    if (is.null(.rm)) {
+      return(invisible(FALSE))
+    }
+    # nocov end
     .rm(".stanCaptureIovPriors")
   }
   .add(".stanCaptureIovPriors", .stanCaptureIovPriors)
@@ -148,13 +157,12 @@
   .statements <- character(0)
   .notes <- character(0)
   for (.n in names) {
-    .p <- sprintf(ctl$diagOmegaSdPrior,
-                  .stanNum(2.5 * abs(free$est[match(.n, free$name)])))
-    .statements <- c(.statements,
-                     paste0("  ", .stanParName(.n), " ~ ", .p, ";"))
-    .notes <- c(.notes,
-                paste0("default prior ", .stanParName(.n), " ~ ", .p,
-                       " on the inter-occasion magnitude (SD) of '", .n, "'"))
+    .p <- sprintf(ctl$diagOmegaSdPrior, .stanNum(2.5 * abs(free$est[match(.n, free$name)])))
+    .statements <- c(.statements, paste0("  ", .stanParName(.n), " ~ ", .p, ";"))
+    .notes <- c(
+      .notes,
+      paste0("default prior ", .stanParName(.n), " ~ ", .p, " on the inter-occasion magnitude (SD) of '", .n, "'")
+    )
   }
   list(statements = .statements, notes = .notes)
 }
@@ -169,7 +177,9 @@
 #' @noRd
 .stanIovRepairPriors <- function(iniDf, pri) {
   .mag <- .stanIovMagnitude(iniDf)
-  if (length(.mag) == 0L) return(pri)
+  if (length(.mag) == 0L) {
+    return(pri)
+  }
   .cap <- .stanIovEnv$priors
   # The capture is keyed by parameter name and is refreshed by every
   # estimation, so it is always the current fit's during a fit.  The one way
@@ -178,30 +188,52 @@
   # fitting a DIFFERENT model whose IOV parameters carry the same names; the
   # name check below cannot see that.
   if (!setequal(.mag, names(.cap))) {
-    stop("cannot recover the priors declared on the inter-occasion ",
-         "parameter(s) ", paste0("'", .mag, "'", collapse = ", "),
-         ": nlmixr2bayes did not see this model before nlmixr2est's IOV ",
-         "preprocessing rewrote it (fit the model with nlmixr2(..., ",
-         "est=\"stan\") rather than reusing a rewritten ui)", call. = FALSE)
+    stop(
+      "cannot recover the priors declared on the inter-occasion ",
+      "parameter(s) ",
+      paste0("'", .mag, "'", collapse = ", "),
+      ": nlmixr2bayes did not see this model before nlmixr2est's IOV ",
+      "preprocessing rewrote it (fit the model with nlmixr2(..., ",
+      "est=\"stan\") rather than reusing a rewritten ui)",
+      call. = FALSE
+    )
   }
   # whatever the rewrite left on the magnitude theta belongs to the theta it
   # was copied from, never to this one
   pri <- pri[!(pri$name %in% .mag & is.na(pri$neta1)), , drop = FALSE]
   for (.n in .mag) {
     .p <- .cap[[.n]]
-    if (is.na(.p)) next
+    if (is.na(.p)) {
+      next
+    }
     .lk <- .stanPriorLookup(.p)
     if (.lk$kind %in% c("matrix", "multivariate")) {
-      stop("prior '", .lk$name, "' on the inter-occasion parameter '", .n,
-           "' is a ", .lk$kind, " prior; est=\"stan\" samples an IOV ",
-           "magnitude as a single standard-deviation theta, so its prior ",
-           "must be univariate", call. = FALSE)
+      stop(
+        "prior '",
+        .lk$name,
+        "' on the inter-occasion parameter '",
+        .n,
+        "' is a ",
+        .lk$kind,
+        " prior; est=\"stan\" samples an IOV ",
+        "magnitude as a single standard-deviation theta, so its prior ",
+        "must be univariate",
+        call. = FALSE
+      )
     }
     .r <- iniDf[which(iniDf$name == .n & !is.na(iniDf$ntheta)), , drop = FALSE]
-    pri <- rbind(pri,
-                 data.frame(name = .n, prior = .p, neta1 = NA_real_,
-                            neta2 = NA_real_, lower = .r$lower[1],
-                            upper = .r$upper[1], stringsAsFactors = FALSE))
+    pri <- rbind(
+      pri,
+      data.frame(
+        name = .n,
+        prior = .p,
+        neta1 = NA_real_,
+        neta2 = NA_real_,
+        lower = .r$lower[1],
+        upper = .r$upper[1],
+        stringsAsFactors = FALSE
+      )
+    )
   }
   pri
 }

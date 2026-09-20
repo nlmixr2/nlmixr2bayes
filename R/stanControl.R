@@ -138,44 +138,59 @@
 #' @return a `stanControl` list
 #' @export
 #' @author Matthew L Fidler
-stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
-                        algorithm = c("NUTS", "meanfield", "fullrank",
-                                      "pathfinder"),
-                        pathfinderPaths = 4L,
-                        vbIter = 10000L, vbTolRelObj = 0.01,
-                        vbOutputSamples = 1000L,
-                        thin = 1L, seed = 42L,
-                        init = c("ini", "random"), initJitterSd = 0.1,
-                        adapt_delta = 0.8, max_treedepth = 10L, # nolint: object_name_linter.
-                        likelihood = c("focei", "foce"),
-                        etaParam = c("noncentered", "centered"),
-                        cores = rxode2::getRxThreads(),
-                        print = 100L,
-                        maxOdeRecalc = 3L, fallbackFD = TRUE,
-                        chainCores = NULL,
-                        diagOmegaSdPrior = "cauchy(0, %s)",
-                        lkjEta = 2,
-                        point = c("mean", "median"),
-                        ofv = c("focei", "none"),
-                        rhatMax = 1.01, essBulkMin = 100, essTailMin = 100,
-                        maxDivergent = 0L,
-                        onDiagnostic = c("warn", "error", "message", "none"),
-                        run = TRUE, cache = TRUE, cacheDir = NULL,
-                        stanFile = NULL, verbose = FALSE,
-                        sigdig = 8,
-                        rxControl = NULL,
-                        addProp = c("combined2", "combined1"),
-                        sumProd = FALSE, optExpression = TRUE,
-                        literalFix = TRUE,
-                        calcTables = TRUE, compress = TRUE, ci = 0.95,
-                        sigdigTable = NULL, ...) {
+stanControl <- function(
+  chains = 4L,
+  iter = 2000L,
+  warmup = floor(iter / 2),
+  algorithm = c("NUTS", "meanfield", "fullrank", "pathfinder"),
+  pathfinderPaths = 4L,
+  vbIter = 10000L,
+  vbTolRelObj = 0.01,
+  vbOutputSamples = 1000L,
+  thin = 1L,
+  seed = 42L,
+  init = c("ini", "random"),
+  initJitterSd = 0.1,
+  adapt_delta = 0.8, # nolint: object_name_linter.
+  max_treedepth = 10L, # nolint: object_name_linter.
+  likelihood = c("focei", "foce"),
+  etaParam = c("noncentered", "centered"),
+  cores = rxode2::getRxThreads(),
+  print = 100L,
+  maxOdeRecalc = 3L,
+  fallbackFD = TRUE,
+  chainCores = NULL,
+  diagOmegaSdPrior = "cauchy(0, %s)",
+  lkjEta = 2,
+  point = c("mean", "median"),
+  ofv = c("focei", "none"),
+  rhatMax = 1.01,
+  essBulkMin = 100,
+  essTailMin = 100,
+  maxDivergent = 0L,
+  onDiagnostic = c("warn", "error", "message", "none"),
+  run = TRUE,
+  cache = TRUE,
+  cacheDir = NULL,
+  stanFile = NULL,
+  verbose = FALSE,
+  sigdig = 8,
+  rxControl = NULL,
+  addProp = c("combined2", "combined1"),
+  sumProd = FALSE,
+  optExpression = TRUE,
+  literalFix = TRUE,
+  calcTables = TRUE,
+  compress = TRUE,
+  ci = 0.95,
+  sigdigTable = NULL,
+  ...
+) {
   algorithm <- match.arg(algorithm)
-  checkmate::assertIntegerish(pathfinderPaths, lower = 1, len = 1,
-                              any.missing = FALSE)
+  checkmate::assertIntegerish(pathfinderPaths, lower = 1, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(vbIter, lower = 10, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(vbTolRelObj, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertIntegerish(vbOutputSamples, lower = 10, len = 1,
-                              any.missing = FALSE)
+  checkmate::assertIntegerish(vbOutputSamples, lower = 10, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(chains, lower = 1, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(iter, lower = 2, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(warmup, lower = 1, upper = iter - 1, len = 1)
@@ -186,8 +201,7 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
   checkmate::assertIntegerish(max_treedepth, lower = 1, upper = 20, len = 1)
   checkmate::assertIntegerish(cores, lower = 1, len = 1)
   checkmate::assertIntegerish(print, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertIntegerish(maxOdeRecalc, lower = 0, len = 1,
-                              any.missing = FALSE)
+  checkmate::assertIntegerish(maxOdeRecalc, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertLogical(fallbackFD, len = 1, any.missing = FALSE)
   .coresExplicit <- !missing(cores)
   if (is.null(chainCores)) {
@@ -200,15 +214,20 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
       1L
     }
   }
-  checkmate::assertIntegerish(chainCores, lower = 1, len = 1,
-                              any.missing = FALSE)
+  checkmate::assertIntegerish(chainCores, lower = 1, len = 1, any.missing = FALSE)
   if (chainCores > 1L) {
     if (identical(.Platform$OS.type, "unix")) {
       if (.coresExplicit && cores > 1L) {
-        warning("subject-parallel OpenMP (cores = ", cores, ") inside ",
-                "FORKED chains (chainCores = ", chainCores, ") risks the ",
-                "OpenMP-after-fork hazard; cores = 1 is the safe setting",
-                call. = FALSE)
+        warning(
+          "subject-parallel OpenMP (cores = ",
+          cores,
+          ") inside ",
+          "FORKED chains (chainCores = ",
+          chainCores,
+          ") risks the ",
+          "OpenMP-after-fork hazard; cores = 1 is the safe setting",
+          call. = FALSE
+        )
       } else if (!.coresExplicit) {
         # the forks are the parallelism; OpenMP inside a forked child of an
         # OpenMP-tainted parent can deadlock, so the default stays serial
@@ -221,12 +240,17 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
       # count and guard with the aggregate-core warning below.
     }
   }
-  if (as.integer(chainCores) * as.integer(cores) >
-        as.integer(rxode2::getRxThreads())) {
-    warning("requested chainCores * cores (", as.integer(chainCores), " * ",
-            as.integer(cores), ") exceeds rxode2::getRxThreads() (",
-            as.integer(rxode2::getRxThreads()), "); this may oversubscribe CPUs",
-            call. = FALSE)
+  if (as.integer(chainCores) * as.integer(cores) > as.integer(rxode2::getRxThreads())) {
+    warning(
+      "requested chainCores * cores (",
+      as.integer(chainCores),
+      " * ",
+      as.integer(cores),
+      ") exceeds rxode2::getRxThreads() (",
+      as.integer(rxode2::getRxThreads()),
+      "); this may oversubscribe CPUs",
+      call. = FALSE
+    )
   }
   checkmate::assertCharacter(diagOmegaSdPrior, len = 1, pattern = "%s")
   checkmate::assertNumeric(lkjEta, lower = 0, len = 1)
@@ -244,9 +268,15 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
   checkmate::assertLogical(calcTables, len = 1, any.missing = FALSE)
   checkmate::assertLogical(compress, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(ci, lower = 0, upper = 1, len = 1)
-  if (!is.null(stanFile)) checkmate::assertCharacter(stanFile, len = 1)
-  if (!is.null(cacheDir)) checkmate::assertCharacter(cacheDir, len = 1)
-  if (is.character(init)) init <- match.arg(init)
+  if (!is.null(stanFile)) {
+    checkmate::assertCharacter(stanFile, len = 1)
+  }
+  if (!is.null(cacheDir)) {
+    checkmate::assertCharacter(cacheDir, len = 1)
+  }
+  if (is.character(init)) {
+    init <- match.arg(init)
+  }
   likelihood <- match.arg(likelihood)
   etaParam <- match.arg(etaParam)
   point <- match.arg(point)
@@ -260,8 +290,7 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
   .xtra <- list(...)
   .bad <- setdiff(names(.xtra), "genRxControl")
   if (length(.bad) > 0) {
-    stop("unused argument: ", paste0("'", .bad, "'", collapse = ", "),
-         call. = FALSE)
+    stop("unused argument: ", paste0("'", .bad, "'", collapse = ", "), call. = FALSE)
   }
   if (!is.null(.xtra$genRxControl)) {
     genRxControl <- .xtra$genRxControl
@@ -277,49 +306,71 @@ stanControl <- function(chains = 4L, iter = 2000L, warmup = floor(iter / 2),
       # cheaper per gradient than lsoda on typical PK models) with an
       # automatic dense Rosenbrock (ros4) fallback when the system turns
       # stiff, so stiff models stay correct without user intervention.
-      rxControl <- rxode2::rxControl(rtol = .tol, atol = .tol,
-                                     ssRtol = .tol, ssAtol = .tol,
-                                     method = "dop853+ros4", dense = TRUE,
-                                     maxsteps = 100000L)
+      rxControl <- rxode2::rxControl(
+        rtol = .tol,
+        atol = .tol,
+        ssRtol = .tol,
+        ssAtol = .tol,
+        method = "dop853+ros4",
+        dense = TRUE,
+        maxsteps = 100000L
+      )
       genRxControl <- TRUE
     } else if (is.list(rxControl) && !inherits(rxControl, "rxControl")) {
       rxControl <- do.call(rxode2::rxControl, rxControl)
     }
     if (!inherits(rxControl, "rxControl")) {
-      stop("'rxControl' needs to be ode solving options from rxode2::rxControl()",
-           call. = FALSE)
+      stop("'rxControl' needs to be ode solving options from rxode2::rxControl()", call. = FALSE)
     }
   }
-  .ret <- list(chains = as.integer(chains), iter = as.integer(iter),
-               algorithm = algorithm,
-               pathfinderPaths = as.integer(pathfinderPaths),
-               vbIter = as.integer(vbIter),
-               vbTolRelObj = vbTolRelObj,
-               vbOutputSamples = as.integer(vbOutputSamples),
-               warmup = as.integer(warmup), thin = as.integer(thin),
-               seed = as.integer(seed), init = init,
-               initJitterSd = initJitterSd,
-               adapt_delta = adapt_delta,
-               max_treedepth = as.integer(max_treedepth),
-               likelihood = likelihood, etaParam = etaParam,
-               cores = as.integer(cores),
-               print = as.integer(print),
-               maxOdeRecalc = as.integer(maxOdeRecalc),
-               fallbackFD = fallbackFD,
-               chainCores = as.integer(chainCores),
-               diagOmegaSdPrior = diagOmegaSdPrior, lkjEta = lkjEta,
-               point = point, ofv = ofv,
-               rhatMax = rhatMax, essBulkMin = essBulkMin,
-               essTailMin = essTailMin, maxDivergent = as.integer(maxDivergent),
-               onDiagnostic = onDiagnostic,
-               run = run, cache = cache, cacheDir = cacheDir,
-               stanFile = stanFile, verbose = verbose,
-               sigdig = sigdig, rxControl = rxControl,
-               genRxControl = genRxControl,
-               addProp = addProp, sumProd = sumProd,
-               optExpression = optExpression, literalFix = literalFix,
-               calcTables = calcTables, compress = compress, ci = ci,
-               sigdigTable = sigdigTable)
+  .ret <- list(
+    chains = as.integer(chains),
+    iter = as.integer(iter),
+    algorithm = algorithm,
+    pathfinderPaths = as.integer(pathfinderPaths),
+    vbIter = as.integer(vbIter),
+    vbTolRelObj = vbTolRelObj,
+    vbOutputSamples = as.integer(vbOutputSamples),
+    warmup = as.integer(warmup),
+    thin = as.integer(thin),
+    seed = as.integer(seed),
+    init = init,
+    initJitterSd = initJitterSd,
+    adapt_delta = adapt_delta,
+    max_treedepth = as.integer(max_treedepth),
+    likelihood = likelihood,
+    etaParam = etaParam,
+    cores = as.integer(cores),
+    print = as.integer(print),
+    maxOdeRecalc = as.integer(maxOdeRecalc),
+    fallbackFD = fallbackFD,
+    chainCores = as.integer(chainCores),
+    diagOmegaSdPrior = diagOmegaSdPrior,
+    lkjEta = lkjEta,
+    point = point,
+    ofv = ofv,
+    rhatMax = rhatMax,
+    essBulkMin = essBulkMin,
+    essTailMin = essTailMin,
+    maxDivergent = as.integer(maxDivergent),
+    onDiagnostic = onDiagnostic,
+    run = run,
+    cache = cache,
+    cacheDir = cacheDir,
+    stanFile = stanFile,
+    verbose = verbose,
+    sigdig = sigdig,
+    rxControl = rxControl,
+    genRxControl = genRxControl,
+    addProp = addProp,
+    sumProd = sumProd,
+    optExpression = optExpression,
+    literalFix = literalFix,
+    calcTables = calcTables,
+    compress = compress,
+    ci = ci,
+    sigdigTable = sigdigTable
+  )
   class(.ret) <- "stanControl"
   .ret
 }
@@ -343,13 +394,14 @@ rxUiDeparse.stanControl <- function(object, var) {
 getValidNlmixrCtl.stan <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- stanControl()
+  if (is.null(.ctl)) {
+    .ctl <- stanControl()
+  }
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
     .ctl <- do.call("stanControl", .ctl)
   }
   if (!inherits(.ctl, "stanControl")) {
-    cli::cli_inform(paste0("invalid control for est=\"", .cls,
-                           "\", using default"))
+    cli::cli_inform(paste0("invalid control for est=\"", .cls, "\", using default"))
     .ctl <- stanControl()
   } else {
     .ctl <- do.call(stanControl, .ctl)
@@ -383,14 +435,24 @@ nmObjGetControl.stan <- function(x, ...) {
 .stanControlToFoceiControl <- function(env, assign = TRUE) {
   .c <- env$stanControl
   .f <- nlmixr2est::foceiControl(
-                                 rxControl = .c$rxControl,
-                                 maxOuterIterations = 0L, maxInnerIterations = 0L,
-                                 covMethod = 0L, interaction = 1L, scaleTo = 0,
-                                 sumProd = .c$sumProd, optExpression = .c$optExpression,
-                                 literalFix = .c$literalFix,
-                                 calcTables = .c$calcTables, addProp = .c$addProp,
-                                 compress = .c$compress, ci = .c$ci, sigdigTable = .c$sigdigTable,
-                                 etaMat = env$etaMat)
-  if (assign) env$control <- .f
+    rxControl = .c$rxControl,
+    maxOuterIterations = 0L,
+    maxInnerIterations = 0L,
+    covMethod = 0L,
+    interaction = 1L,
+    scaleTo = 0,
+    sumProd = .c$sumProd,
+    optExpression = .c$optExpression,
+    literalFix = .c$literalFix,
+    calcTables = .c$calcTables,
+    addProp = .c$addProp,
+    compress = .c$compress,
+    ci = .c$ci,
+    sigdigTable = .c$sigdigTable,
+    etaMat = env$etaMat
+  )
+  if (assign) {
+    env$control <- .f
+  }
   invisible(.f)
 }

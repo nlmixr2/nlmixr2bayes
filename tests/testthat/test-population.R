@@ -13,26 +13,38 @@ d/dt(center) <-  ka * depot - (cl / v) * center
 sens <- c("lka", "lcl", "lv")
 
 popEvents <- function(nsub, times = c(0.5, 2, 6, 12)) {
-  do.call(rbind, lapply(seq_len(nsub), function(i) {
-    e <- rxode2::et(amt = 100, cmt = "depot")
-    e <- rxode2::et(e, times)
-    d <- as.data.frame(e)
-    d$id <- i
-    d
-  }))
+  do.call(
+    rbind,
+    lapply(seq_len(nsub), function(i) {
+      e <- rxode2::et(amt = 100, cmt = "depot")
+      e <- rxode2::et(e, times)
+      d <- as.data.frame(e)
+      d$id <- i
+      d
+    })
+  )
 }
 
 popHandle <- function(nsub = 3L, perSubject = TRUE, fast = TRUE) {
-  rxsRegister(pkModel, events = popEvents(nsub), sens = sens,
-              output = "center", perSubject = perSubject, fast = fast,
-              atol = 1e-10, rtol = 1e-10)
+  rxsRegister(
+    pkModel,
+    events = popEvents(nsub),
+    sens = sens,
+    output = "center",
+    perSubject = perSubject,
+    fast = fast,
+    atol = 1e-10,
+    rtol = 1e-10
+  )
 }
 
 ## Subject-major: subject 1's lka, lcl, lv, then subject 2's, ...
 popPars <- function(nsub) {
-  as.numeric(t(cbind(log(seq(1.0, 1.4, length.out = nsub)),
-                     log(seq(3.5, 4.5, length.out = nsub)),
-                     log(seq(28, 33, length.out = nsub)))))
+  as.numeric(t(cbind(
+    log(seq(1.0, 1.4, length.out = nsub)),
+    log(seq(3.5, 4.5, length.out = nsub)),
+    log(seq(28, 33, length.out = nsub))
+  )))
 }
 
 test_that("a population handle reports a block layout", {
@@ -67,8 +79,7 @@ test_that("each subject matches the same subject solved alone", {
   nt <- attr(h, "nobs") / nsub
 
   for (s in seq_len(nsub)) {
-    hs <- rxsRegister(pkModel, events = popEvents(1L), sens = sens,
-                      output = "center", atol = 1e-10, rtol = 1e-10)
+    hs <- rxsRegister(pkModel, events = popEvents(1L), sens = sens, output = "center", atol = 1e-10, rtol = 1e-10)
     block <- p[((s - 1L) * 3L + 1L):(s * 3L)]
     alone <- rxsSolve(hs, block)
     rows <- ((s - 1L) * nt + 1L):(s * nt)
@@ -121,8 +132,10 @@ test_that("block sensitivities match per-subject finite differences", {
     for (s in seq_len(nsub)) {
       k <- (s - 1L) * 3L + j
       step <- 1e-6 * max(1, abs(p[k]))
-      pp <- p; pp[k] <- pp[k] + step
-      pm <- p; pm[k] <- pm[k] - step
+      pp <- p
+      pp[k] <- pp[k] + step
+      pm <- p
+      pm[k] <- pm[k] - step
       rows <- ((s - 1L) * nt + 1L):(s * nt)
       fd[rows] <- (rxsSolve(h, pp)[rows, 1L] - rxsSolve(h, pm)[rows, 1L]) /
         (2 * step)

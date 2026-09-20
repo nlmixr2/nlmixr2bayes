@@ -23,8 +23,7 @@ test_that("quadrature over the linked conditional reproduces est=\"agq\" (G3c)",
   # 401-point trapezoid over +/- 6 sd: quadrature error ~1e-9 for this
   # smooth 1-D integrand
   .gr <- seq(-6 * sqrt(.om), 6 * sqrt(.om), length.out = 401)
-  .cond <- vapply(.gr, function(e) .condBatch(matrix(e, 4, 1))$value,
-                  numeric(4))
+  .cond <- vapply(.gr, function(e) .condBatch(matrix(e, 4, 1))$value, numeric(4))
   .w <- diff(.gr)[1]
   .marg <- apply(.cond, 1, function(v) {
     .m <- max(v)
@@ -32,11 +31,18 @@ test_that("quadrature over the linked conditional reproduces est=\"agq\" (G3c)",
   })
   stanLinkFree()
   .fit <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
-    .linkMod, .d, est = "agq",
-    control = nlmixr2est::foceiControl(nAGQ = 101L, maxOuterIterations = 0L,
-                                       maxInnerIterations = 100L,
-                                       covMethod = "", calcTables = FALSE,
-                                       print = 0))))
+    .linkMod,
+    .d,
+    est = "agq",
+    control = nlmixr2est::foceiControl(
+      nAGQ = 101L,
+      maxOuterIterations = 0L,
+      maxInnerIterations = 100L,
+      covMethod = "",
+      calcTables = FALSE,
+      print = 0
+    )
+  )))
   # both are proper -2 log-likelihoods (no NONMEM 2*pi offset); measured
   # agreement 3e-7, gated at 1e-5
   expect_lt(abs(-2 * sum(.marg) - .fit$objective), 1e-5)

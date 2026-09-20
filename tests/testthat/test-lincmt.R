@@ -7,14 +7,17 @@
 library(testthat)
 
 oralData <- function(nsub = 3L, cmt = "depot") {
-  do.call(rbind, lapply(seq_len(nsub), function(i) {
-    e <- rxode2::et(amt = 100, cmt = cmt)
-    e <- rxode2::et(e, c(0.25, 1, 2, 4, 8, 12, 24))
-    d <- as.data.frame(e)
-    d$id <- i
-    d$dv <- 1
-    d
-  }))
+  do.call(
+    rbind,
+    lapply(seq_len(nsub), function(i) {
+      e <- rxode2::et(amt = 100, cmt = cmt)
+      e <- rxode2::et(e, c(0.25, 1, 2, 4, 8, 12, 24))
+      d <- as.data.frame(e)
+      d$id <- i
+      d$dv <- 1
+      d
+    })
+  )
 }
 
 lin1Oral <- function() {
@@ -75,9 +78,15 @@ test_that("rxode2 gives NO usable sensitivities for linCmt", {
                       calcSens = c("Cl", "V", "Ka"))
   ev <- rxode2::et(amt = 100, cmt = "depot")
   ev <- rxode2::et(ev, c(0.5, 2, 6))
-  s <- rxode2::rxSolve(m, params = c(Cl = 4, V = 30, Ka = 1.1), events = ev,
-                       returnType = "data.frame", cores = 1L,
-                       atol = 1e-12, rtol = 1e-12)
+  s <- rxode2::rxSolve(
+    m,
+    params = c(Cl = 4, V = 30, Ka = 1.1),
+    events = ev,
+    returnType = "data.frame",
+    cores = 1L,
+    atol = 1e-12,
+    rtol = 1e-12
+  )
 
   sens <- grep("^rx__sens_", names(s), value = TRUE)
   expect_gt(length(sens), 0)
@@ -93,10 +102,14 @@ test_that("the expansion reproduces linCmt() itself", {
   for (mod in list(lin1Oral, lin2Oral)) {
     ui <- rxode2::rxode2(mod)
     info <- nlmixr2bayes:::.rxsLinCmtInfo(ui)
-    txt <- paste(c(grep("linCmt\\(", strsplit(rxode2::rxNorm(ui), "\n")[[1]],
-                        invert = TRUE, value = TRUE),
-                   nlmixr2bayes:::.rxsLinCmtOdes(info),
-                   sprintf("cp = central / %s;", info$v)), collapse = "\n")
+    txt <- paste(
+      c(
+        grep("linCmt\\(", strsplit(rxode2::rxNorm(ui), "\n")[[1]], invert = TRUE, value = TRUE),
+        nlmixr2bayes:::.rxsLinCmtOdes(info),
+        sprintf("cp = central / %s;", info$v)
+      ),
+      collapse = "\n"
+    )
     ## Errors if the expansion and the closed form disagree.
     d <- nlmixr2bayes:::.rxsCheckLinCmt(ui, txt, info)
     expect_lt(d, 1e-8)
@@ -109,10 +122,11 @@ test_that("compartment order matches linCmt's, so cmt numbers still line up", {
   info <- nlmixr2bayes:::.rxsLinCmtInfo(ui)
   expect_equal(info$states, c("depot", "central", "peripheral1"))
 
-  txt <- paste(c("cl <- 4", "v <- 30", "q <- 2", "vp <- 20", "ka <- 1.1",
-                 nlmixr2bayes:::.rxsLinCmtOdes(info)), collapse = "\n")
-  expect_equal(rxode2::rxState(rxode2::rxode2(txt)),
-               c("depot", "central", "peripheral1"))
+  txt <- paste(
+    c("cl <- 4", "v <- 30", "q <- 2", "vp <- 20", "ka <- 1.1", nlmixr2bayes:::.rxsLinCmtOdes(info)),
+    collapse = "\n"
+  )
+  expect_equal(rxode2::rxState(rxode2::rxode2(txt)), c("depot", "central", "peripheral1"))
 })
 
 test_that("a linCmt model generates and its states come from the expansion", {
@@ -152,8 +166,7 @@ test_that("a parameterization the expansion cannot cover is refused", {
       cp ~ add(add.sd)
     })
   }
-  expect_error(rxsStanFromUi(micro, oralData(2L)),
-               "clearance parameterization|disagrees with linCmt")
+  expect_error(rxsStanFromUi(micro, oralData(2L)), "clearance parameterization|disagrees with linCmt")
 })
 
 test_that("a linCmt model has correct gradients end to end", {
@@ -169,8 +182,14 @@ test_that("a linCmt model has correct gradients end to end", {
   for (trial in 1:3) {
     u <- stats::runif(rstan::get_num_upars(fit), -0.5, 0.5)
     chk <- rxsCheckGradient(fit, u)
-    expect_true(all(chk$relDiff < 1e-4),
-                info = paste(utils::capture.output(
-                  print(chk[order(-chk$relDiff), ][1:3, ])), collapse = "\n"))
+    expect_true(
+      all(chk$relDiff < 1e-4),
+      info = paste(
+        utils::capture.output(
+          print(chk[order(-chk$relDiff), ][1:3, ])
+        ),
+        collapse = "\n"
+      )
+    )
   }
 })

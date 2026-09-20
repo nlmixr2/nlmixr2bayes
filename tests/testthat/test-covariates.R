@@ -43,27 +43,35 @@ circModel <- function() {
 }
 
 wtData <- function(nsub = 6L, wts = NULL) {
-  if (is.null(wts)) wts <- seq(50, 100, length.out = nsub)
-  do.call(rbind, lapply(seq_len(nsub), function(i) {
-    e <- rxode2::et(amt = 100, cmt = "depot")
-    e <- rxode2::et(e, c(0.5, 1, 2, 4, 8, 12, 24))
-    x <- as.data.frame(e)
-    x$id <- i
-    x$dv <- 1
-    x$wt <- wts[i]
-    x
-  }))
+  if (is.null(wts)) {
+    wts <- seq(50, 100, length.out = nsub)
+  }
+  do.call(
+    rbind,
+    lapply(seq_len(nsub), function(i) {
+      e <- rxode2::et(amt = 100, cmt = "depot")
+      e <- rxode2::et(e, c(0.5, 1, 2, 4, 8, 12, 24))
+      x <- as.data.frame(e)
+      x$id <- i
+      x$dv <- 1
+      x$wt <- wts[i]
+      x
+    })
+  )
 }
 
 circData <- function(nsub = 3L) {
-  do.call(rbind, lapply(seq_len(nsub), function(i) {
-    e <- rxode2::et(seq(0, 48, by = 4))
-    x <- as.data.frame(e)
-    x$id <- i
-    x$dv <- 1
-    x$ctime <- (x$time + 4 * i) %% 24
-    x
-  }))
+  do.call(
+    rbind,
+    lapply(seq_len(nsub), function(i) {
+      e <- rxode2::et(seq(0, 48, by = 4))
+      x <- as.data.frame(e)
+      x$id <- i
+      x$dv <- 1
+      x$ctime <- (x$time + 4 * i) %% 24
+      x
+    })
+  )
 }
 
 test_that("a baseline covariate is declared once per subject", {
@@ -116,8 +124,7 @@ test_that("gradients are right with a covariate in the transform", {
   g <- rxsStanFromUi(wtModel, d, atol = 1e-10, rtol = 1e-10)
   on.exit(rxsRelease(g$handle), add = TRUE)
   sm <- stanModelFor(g$code, "cov_wt_grad")
-  fit <- rstan::sampling(sm, data = g$standata, chains = 1, iter = 1,
-                         refresh = 0, seed = 1)
+  fit <- rstan::sampling(sm, data = g$standata, chains = 1, iter = 1, refresh = 0, seed = 1)
   err <- rxsCheckGradient(fit, rep(0.1, rstan::get_num_upars(fit)))
   expect_lt(max(err$relDiff), 1e-6)
 })

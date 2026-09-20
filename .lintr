@@ -3,7 +3,9 @@ linters: linters_with_defaults(
       styles = "camelCase",
       regexes = c(
         internal = "^\\.[a-z][a-zA-Z0-9]*$",
-        s3 = "^[a-z][a-z0-9_]*\\.[a-zA-Z][a-zA-Z0-9]*$"
+        # S3 methods: the generic is camelCase here (nmObjGet.stanfit,
+        # saveFitItem.stanfit), and a class name may itself contain dots.
+        s3 = "^[a-z][a-zA-Z0-9]*\\.[a-zA-Z][a-zA-Z0-9._]*$"
       )
     ),
     assignment_linter(),
@@ -11,8 +13,61 @@ linters: linters_with_defaults(
     whitespace_linter(),
     pipe_continuation_linter(),
     T_and_F_symbol_linter(),
+    # `lcl <- 1; label("...")` is the ini() labelling idiom.
+    semicolon_linter(allow_compound = TRUE),
+    cyclocomp_linter(50),
     infix_spaces_linter = NULL, # Keep disabled for now due to high violation count (8541)
     commas_linter = NULL, # Keep disabled for now (2242)
-    cyclocomp_linter(50)
+    # Kept off: ini()/model() blocks are non-standard evaluation, so every
+    # model variable reads as an undefined global (313 such lints, all false).
+    object_usage_linter = NULL,
+    # `saveFitItem.nlmixr2bayesPathfinder` is an S3 method name; the class is
+    # what makes it long, and it cannot be renamed.
+    object_length_linter = NULL,
+    # The commented "code" here is worked examples in roxygen-adjacent notes.
+    commented_code_linter = NULL,
+    # air (air.toml) owns indentation and disagrees with indentation_linter on
+    # wrapped operands.
+    indentation_linter = NULL
   )
-exclusions: list()
+exclusions: c(
+    list(
+      # Benchmarks, vignettes and hand-written .stan companions are documents,
+      # not package code: they use rxode2/Stan syntax air and lintr both leave
+      # alone.
+      "inst",
+      "vignettes",
+      "src",
+      # `rxsStanFromUi()` is a single code generator with one branch per
+      # supported model feature (cyclocomp 70).  Splitting it would scatter the
+      # generated program's structure across helpers without simplifying it;
+      # revisit if it grows further.
+      "R/codegen.R" = list(cyclocomp_linter = Inf)
+    ),
+    # Tests write rxode2 model syntax (`=` assignment, `d/dt(x)`, `F`
+    # bioavailability, `if(x){`) in ini()/model()/rxode2() blocks that air
+    # leaves as written, and carry long expected-output lines.  A bare
+    # directory entry would drop every linter, so list the files one by one.
+    # list.files() is relative to the working directory: lint from the package
+    # root (lintr::lint_package()), as CI does.
+    sapply(
+      list.files("tests", pattern = "[.]R$", recursive = TRUE, full.names = TRUE),
+      function(f) {
+        list(
+          assignment_linter = Inf,
+          infix_spaces_linter = Inf,
+          spaces_left_parentheses_linter = Inf,
+          brace_linter = Inf,
+          semicolon_linter = Inf,
+          spaces_inside_linter = Inf,
+          paren_body_linter = Inf,
+          quotes_linter = Inf,
+          T_and_F_symbol_linter = Inf,
+          object_name_linter = Inf,
+          line_length_linter = Inf
+        )
+      },
+      simplify = FALSE
+    )
+  )
+encoding: "UTF-8"

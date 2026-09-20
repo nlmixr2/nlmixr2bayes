@@ -29,13 +29,18 @@
 .censData <- function(limit = NA_real_) {
   set.seed(42)
   .tt <- c(0.5, 1, 2, 4, 8)
-  .d <- do.call(rbind, lapply(1:4, function(id) {
-    .dv <- 5 * exp(-0.05 * .tt) + stats::rnorm(5, 0, 0.5)
-    .cens <- as.integer(.dv < 4.5)
-    .dv[.cens == 1] <- 4.5
-    data.frame(ID = id, TIME = .tt, DV = .dv, CENS = .cens, AMT = 0, EVID = 0)
-  }))
-  if (!is.na(limit)) .d$LIMIT <- limit
+  .d <- do.call(
+    rbind,
+    lapply(1:4, function(id) {
+      .dv <- 5 * exp(-0.05 * .tt) + stats::rnorm(5, 0, 0.5)
+      .cens <- as.integer(.dv < 4.5)
+      .dv[.cens == 1] <- 4.5
+      data.frame(ID = id, TIME = .tt, DV = .dv, CENS = .cens, AMT = 0, EVID = 0)
+    })
+  )
+  if (!is.na(limit)) {
+    .d$LIMIT <- limit
+  }
   .d
 }
 
@@ -49,39 +54,45 @@
 # hand formula here matches the f > limit branch only, and the fixture is
 # built to stay in it (limit = 0, positive concentrations).
 .censHand <- function(d, eta, limit = NA_real_) {
-  vapply(1:4, function(i) {
-    .di <- d[d$ID == i, ]
-    .f <- 100 / exp(3) * exp(-exp(1 + eta[i, 1]) / exp(3) * .di$TIME)
-    .obs <- stats::dnorm(.di$DV, .f, 0.5, log = TRUE)
-    if (!is.na(limit)) {
-      .obs <- .obs - stats::pnorm(limit, .f, 0.5, log.p = TRUE,
-                                  lower.tail = FALSE)
-    }
-    .cen <- if (is.na(limit)) {
-      stats::pnorm(.di$DV, .f, 0.5, log.p = TRUE)      # M3: log Phi
-    } else {                                            # M4: interval/tail
-      log(stats::pnorm(.di$DV, .f, 0.5) - stats::pnorm(limit, .f, 0.5)) -
-        stats::pnorm(limit, .f, 0.5, log.p = TRUE, lower.tail = FALSE)
-    }
-    sum(ifelse(.di$CENS == 1, .cen, .obs))
-  }, numeric(1))
+  vapply(
+    1:4,
+    function(i) {
+      .di <- d[d$ID == i, ]
+      .f <- 100 / exp(3) * exp(-exp(1 + eta[i, 1]) / exp(3) * .di$TIME)
+      .obs <- stats::dnorm(.di$DV, .f, 0.5, log = TRUE)
+      if (!is.na(limit)) {
+        .obs <- .obs - stats::pnorm(limit, .f, 0.5, log.p = TRUE, lower.tail = FALSE)
+      }
+      .cen <- if (is.na(limit)) {
+        stats::pnorm(.di$DV, .f, 0.5, log.p = TRUE) # M3: log Phi
+      } else {
+        # M4: interval/tail
+        log(stats::pnorm(.di$DV, .f, 0.5) - stats::pnorm(limit, .f, 0.5)) -
+          stats::pnorm(limit, .f, 0.5, log.p = TRUE, lower.tail = FALSE)
+      }
+      sum(ifelse(.di$CENS == 1, .cen, .obs))
+    },
+    numeric(1)
+  )
 }
 
 test_that("M3 censoring: value = textbook + the documented constant; gradients carry the CDF terms", {
   skip_on_cran()
   .d <- .censData()
   h <- stanLinkSetup(.censMod, .d, thetaSens = TRUE, cores = 1L)
-  on.exit({
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
-    stanLinkFree()
-  }, add = TRUE)
+  on.exit(
+    {
+      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      stanLinkFree()
+    },
+    add = TRUE
+  )
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
   .eta <- matrix(c(-0.1, 0.05, 0.2, -0.15), 4, 1)
   .th <- c(1, 3, 0.5)
   .bt <- function(theta, e) {
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta),
-          as.matrix(e))
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
   }
   got <- .bt(.th, .eta)
   expect_equal(got$nBad, 0L)
@@ -112,17 +123,19 @@ test_that("M4 censoring (LIMIT column): value constant + FD gradients", {
   skip_on_cran()
   .d <- .censData(limit = 0)
   h <- stanLinkSetup(.censMod, .d, thetaSens = TRUE, cores = 1L)
-  on.exit({
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
-    stanLinkFree()
-  }, add = TRUE)
+  on.exit(
+    {
+      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      stanLinkFree()
+    },
+    add = TRUE
+  )
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
   .eta <- matrix(c(-0.1, 0.05, 0.2, -0.15), 4, 1)
   .th <- c(1, 3, 0.5)
   .bt <- function(theta, e) {
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta),
-          as.matrix(e))
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
   }
   got <- .bt(.th, .eta)
   expect_equal(got$nBad, 0L)
@@ -131,8 +144,7 @@ test_that("M4 censoring (LIMIT column): value constant + FD gradients", {
   # density; only the censored M4 rows carry the -0.5*log(2pi) constant
   .nc <- tapply(.d$CENS, .d$ID, sum)
   .shift <- -as.numeric(.nc) * 0.5 * log(2 * pi)
-  expect_equal(got$value, .censHand(.d, .eta, limit = 0) + .shift,
-               tolerance = 1e-8)
+  expect_equal(got$value, .censHand(.d, .eta, limit = 0) + .shift, tolerance = 1e-8)
   .h <- 1e-5
   fdE <- (.bt(.th, .eta + .h)$value - .bt(.th, .eta - .h)$value) / (2 * .h)
   expect_equal(as.numeric(got$gradEta), as.numeric(fdE), tolerance = 1e-4)
@@ -173,8 +185,7 @@ test_that("ll() endpoint: twin of add() up to the per-obs constant; FD gradients
   .eta <- matrix(c(-0.1, 0.05, 0.2, -0.15), 4, 1)
   .th <- c(1, 3, 0.5)
   .bt <- function(theta, e) {
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta),
-          as.matrix(e))
+    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
   }
   h <- stanLinkSetup(.censMod, .d, thetaSens = TRUE, cores = 1L)
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
@@ -183,20 +194,27 @@ test_that("ll() endpoint: twin of add() up to the per-obs constant; FD gradients
   stanLinkFree()
   .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
   h2 <- stanLinkSetup(.llMod, .d, thetaSens = TRUE, cores = 1L)
-  on.exit({
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
-    stanLinkFree()
-  }, add = TRUE)
+  on.exit(
+    {
+      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      stanLinkFree()
+    },
+    add = TRUE
+  )
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h2$initPar))
   .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
   got <- .bt(.th, .eta)
   expect_equal(got$nBad, 0L)
   # ll() value = the full textbook density; add() twin = same + 5*0.5*log(2pi)
-  .full <- vapply(1:4, function(i) {
-    .di <- .d[.d$ID == i, ]
-    .f <- 100 / exp(3) * exp(-exp(1 + .eta[i, 1]) / exp(3) * .di$TIME)
-    sum(stats::dnorm(.di$DV, .f, 0.5, log = TRUE))
-  }, numeric(1))
+  .full <- vapply(
+    1:4,
+    function(i) {
+      .di <- .d[.d$ID == i, ]
+      .f <- 100 / exp(3) * exp(-exp(1 + .eta[i, 1]) / exp(3) * .di$TIME)
+      sum(stats::dnorm(.di$DV, .f, 0.5, log = TRUE))
+    },
+    numeric(1)
+  )
   expect_equal(got$value, .full, tolerance = 1e-8)
   expect_equal(.addV$value, .full + 5 * 0.5 * log(2 * pi), tolerance = 1e-8)
   # gradients agree with the twin exactly (the constant differentiates away)

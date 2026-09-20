@@ -14,9 +14,9 @@
 test_that("simulation-based calibration: ranks are uniform (G5)", {
   skip_on_cran()
   skip_if_not_installed("rstan")
-  skip_if_not(nzchar(Sys.getenv("NLMIXR2STAN_SLOW")),
-              "set NLMIXR2STAN_SLOW=TRUE for the SBC gate")
-  .n <- as.integer(Sys.getenv("NLMIXR2STAN_SBC_N", "40"))
+  skip_if_not(nzchar(Sys.getenv("NLMIXR2STAN_SLOW")), "set NLMIXR2STAN_SLOW=TRUE for the SBC gate")
+  .nEnv <- Sys.getenv("NLMIXR2STAN_SBC_N")
+  .n <- if (nzchar(.nEnv)) as.integer(.nEnv) else 40L
   .mod <- function() {
     ini({
       tcl <- 1
@@ -43,12 +43,15 @@ test_that("simulation-based calibration: ranks are uniform (G5)", {
   .nid <- 6L
   # one program + one compile for ALL replicates: the data live in the
   # linked nlmixr2est problem, so only the link is rebuilt per replicate
-  .dTemplate <- do.call(rbind, lapply(seq_len(.nid), function(i) {
-    data.frame(ID = i, TIME = .tt, DV = 5, AMT = 0, EVID = 0)
-  }))
+  .dTemplate <- do.call(
+    rbind,
+    lapply(seq_len(.nid), function(i) {
+      data.frame(ID = i, TIME = .tt, DV = 5, AMT = 0, EVID = 0)
+    })
+  )
   .codeGen <- suppressMessages(
-    nlmixr2est::nlmixr2(.mod, .dTemplate, est = "stan",
-                        control = stanControl(run = FALSE)))
+    nlmixr2est::nlmixr2(.mod, .dTemplate, est = "stan", control = stanControl(run = FALSE))
+  )
   .sm <- stanCompile(.codeGen$code)
   .stanData <- .codeGen$data
   .oneRep <- function(repSeed) {
@@ -58,42 +61,55 @@ test_that("simulation-based calibration: ranks are uniform (G5)", {
     .om0 <- sqrt(.omVar0)
     .add0 <- stats::rlnorm(1, -1, 0.3)
     .eta <- stats::rnorm(.nid, 0, .om0)
-    .d <- do.call(rbind, lapply(seq_len(.nid), function(i) {
-      .f <- 100 / exp(3) * exp(-exp(.tcl0 + .eta[i]) / exp(3) * .tt)
-      data.frame(ID = i, TIME = .tt,
-                 DV = .f + stats::rnorm(length(.tt), 0, .add0),
-                 AMT = 0, EVID = 0)
-    }))
+    .d <- do.call(
+      rbind,
+      lapply(seq_len(.nid), function(i) {
+        .f <- 100 / exp(3) * exp(-exp(.tcl0 + .eta[i]) / exp(3) * .tt)
+        data.frame(ID = i, TIME = .tt, DV = .f + stats::rnorm(length(.tt), 0, .add0), AMT = 0, EVID = 0)
+      })
+    )
     # drive the link + sampler directly on the ONE precompiled program --
     # the full nlmixr2() pipeline (ui rebuild, tables, finalize) per
     # replicate made the harness hours-slow with zero validation benefit;
     # this is byte-for-byte the same target (same program, same link path)
-    .sf <- try({
-      h <- stanLinkSetup(.mod, .d, thetaSens = TRUE, cores = 1L)
-      .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
-      .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
-      suppressWarnings(rstan::sampling(
-        .sm, data = .stanData, chains = 1L, iter = 1200L, warmup = 400L,
-        thin = 8L, seed = repSeed, refresh = 0, cores = 1,
-        show_messages = FALSE,
-        init = list(list(tcl = 1, add_sd = 0.4,
-                         omega_eta_cl = matrix(0.01, 1, 1),
-                         z_eta_cl = matrix(0, .nid, 1))),
-        control = list(adapt_delta = 0.95)))
-    }, silent = TRUE)
+    .sf <- try(
+      {
+        h <- stanLinkSetup(.mod, .d, thetaSens = TRUE, cores = 1L)
+        .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+        .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
+        suppressWarnings(rstan::sampling(
+          .sm,
+          data = .stanData,
+          chains = 1L,
+          iter = 1200L,
+          warmup = 400L,
+          thin = 8L,
+          seed = repSeed,
+          refresh = 0,
+          cores = 1,
+          show_messages = FALSE,
+          init = list(list(tcl = 1, add_sd = 0.4, omega_eta_cl = matrix(0.01, 1, 1), z_eta_cl = matrix(0, .nid, 1))),
+          control = list(adapt_delta = 0.95)
+        ))
+      },
+      silent = TRUE
+    )
     .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
     stanLinkFree()
-    if (inherits(.sf, "try-error")) return(NULL)
+    if (inherits(.sf, "try-error")) {
+      return(NULL)
+    }
     .sp <- rstan::get_sampler_params(.sf, inc_warmup = FALSE)
-    if (sum(vapply(.sp, function(x) sum(x[, "divergent__"]),
-                   numeric(1))) > 0) {
+    if (sum(vapply(.sp, function(x) sum(x[, "divergent__"]), numeric(1))) > 0) {
       return(NULL) # divergent replicate: discard and redraw
     }
     .ex <- rstan::extract(.sf, pars = c("tcl", "add_sd", "omegaOut"))
-    c(tcl = sum(.ex$tcl < .tcl0),
+    c(
+      tcl = sum(.ex$tcl < .tcl0),
       add.sd = sum(.ex$add_sd < .add0),
       omSd = sum(sqrt(.ex$omegaOut[, 1, 1]) < .om0),
-      L = length(.ex$tcl))
+      L = length(.ex$tcl)
+    )
   }
   .ranks <- list()
   .discard <- 0L
@@ -101,7 +117,9 @@ test_that("simulation-based calibration: ranks are uniform (G5)", {
   while (length(.ranks) < .n) {
     # hard stop: a systematically broken sampler would otherwise redraw
     # forever instead of failing the discard-rate gate
-    if (.discard > .n) break
+    if (.discard > .n) {
+      break
+    }
     .seed <- .seed + 1L
     .r <- .oneRep(.seed)
     if (is.null(.r)) {
@@ -113,8 +131,13 @@ test_that("simulation-based calibration: ranks are uniform (G5)", {
   expect_gte(length(.ranks), .n * 0.5)
   .rk <- do.call(rbind, .ranks)
   .L <- .rk[1, "L"]
-  cat(sprintf("\nSBC: %d replicates, %d discarded (%.0f%%), L = %d\n",
-              .n, .discard, 100 * .discard / (.n + .discard), .L))
+  cat(sprintf(
+    "\nSBC: %d replicates, %d discarded (%.0f%%), L = %d\n",
+    .n,
+    .discard,
+    100 * .discard / (.n + .discard),
+    .L
+  ))
   expect_lt(.discard / (.n + .discard), 0.20)
   # uniformity per parameter: randomized-PIT KS against U(0,1)
   set.seed(1)

@@ -36,16 +36,24 @@
 #'   `flags`, `setupHash`)
 #' @export
 #' @author Matthew L Fidler
-stanLinkSetup <- function(ui, data, likelihood = c("focei", "foce"),
-                          rxControl = rxode2::rxControl(),
-                          thetaSens = FALSE, literalFix = TRUE,
-                          cores = rxode2::getRxThreads(),
-                          maxOdeRecalc = 3L, fallbackFD = TRUE) {
+stanLinkSetup <- function(
+  ui,
+  data,
+  likelihood = c("focei", "foce"),
+  rxControl = rxode2::rxControl(),
+  thetaSens = FALSE,
+  literalFix = TRUE,
+  cores = rxode2::getRxThreads(),
+  maxOdeRecalc = 3L,
+  fallbackFD = TRUE
+) {
   likelihood <- match.arg(likelihood)
   if (!is.null(.stanLinkEnv$handle)) {
-    stop("an nlmixr2bayes likelihood is already linked; call stanLinkFree() first\n",
-         "(op_focei is a process-wide global: one linked problem at a time)",
-         call. = FALSE)
+    stop(
+      "an nlmixr2bayes likelihood is already linked; call stanLinkFree() first\n",
+      "(op_focei is a process-wide global: one linked problem at a time)",
+      call. = FALSE
+    )
   }
   # The failure cascade for the batch entries, calibrated by the numerical
   # study in the nlmixr2est tolerance report (2026-08-04) and matching the
@@ -57,8 +65,7 @@ stanLinkSetup <- function(ui, data, likelihood = c("focei", "foce"),
   # Deeper loosening (the default 5 steps = x316) is where the
   # loosened-analytic gradient LOSES to FD on stiff models (measured 132%
   # error), so the depth is capped here.
-  checkmate::assertIntegerish(maxOdeRecalc, lower = 0, len = 1,
-                              any.missing = FALSE)
+  checkmate::assertIntegerish(maxOdeRecalc, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertLogical(fallbackFD, len = 1, any.missing = FALSE)
   # #958: when the loaded nlmixr2est supports the combined eta+theta
   # sensitivity build, request it instead of the separate theta-sensitivity
@@ -66,18 +73,26 @@ stanLinkSetup <- function(ui, data, likelihood = c("focei", "foce"),
   # single-solve batch entry (condBatchThetaGrad) serves the whole tier-2
   # gradient (~2x cheaper per evaluation)
   .useComb <- isTRUE(thetaSens) && .stanHasCombSens()
-  .args <- list(ui, data, likelihood, rxControl = rxControl,
-                scale = "natural", thetaSens = thetaSens && !.useComb,
-                est = "stan", literalFix = literalFix,
-                maxOdeRecalc = as.integer(maxOdeRecalc),
-                fallbackFD = fallbackFD)
-  if (.useComb) .args$combSens <- TRUE
+  .args <- list(
+    ui,
+    data,
+    likelihood,
+    rxControl = rxControl,
+    scale = "natural",
+    thetaSens = thetaSens && !.useComb,
+    est = "stan",
+    literalFix = literalFix,
+    maxOdeRecalc = as.integer(maxOdeRecalc),
+    fallbackFD = fallbackFD
+  )
+  if (.useComb) {
+    .args$combSens <- TRUE
+  }
   .h <- do.call(nlmixr2est::foceiLikLoad, .args)
   .d <- .Call(`_nlmixr2bayes_dims`)
   if (.d[["status"]] != 0L) {
     nlmixr2est::foceiLikUnload()
-    stop("the linked problem did not come up (dims status ", .d[["status"]], ")",
-         call. = FALSE)
+    stop("the linked problem did not come up (dims status ", .d[["status"]], ")", call. = FALSE)
   }
   .flags <- .d[["flags"]]
   # refuse-at-load hazards (see inst/include/nlmixr2estFoceiPtr.h in
@@ -86,28 +101,38 @@ stanLinkSetup <- function(ui, data, likelihood = c("focei", "foce"),
   # mismatch; mixtures re-index subjects
   if (bitwAnd(.flags, 0x02L) != 0L || bitwAnd(.flags, 0x04L) != 0L) {
     nlmixr2est::foceiLikUnload()
-    stop("the loaded likelihood's value and gradient are not a consistent pair",
-         " (focep/fo); use likelihood=\"focei\" or \"foce\"", call. = FALSE)
+    stop(
+      "the loaded likelihood's value and gradient are not a consistent pair",
+      " (focep/fo); use likelihood=\"focei\" or \"foce\"",
+      call. = FALSE
+    )
   }
   if (bitwAnd(.flags, 0x08L) != 0L) {
     nlmixr2est::foceiLikUnload()
-    stop("some eta uses finite-difference event sensitivities; the gradient",
-         " noise breaks a gradient-based sampler", call. = FALSE)
+    stop(
+      "some eta uses finite-difference event sensitivities; the gradient",
+      " noise breaks a gradient-based sampler",
+      call. = FALSE
+    )
   }
-  if (bitwAnd(.flags, 0x10L) != 0L &&
-        identical(.Call(`_nlmixr2bayes_nMix`), -2L)) {
+  if (
+    bitwAnd(.flags, 0x10L) != 0L &&
+      identical(.Call(`_nlmixr2bayes_nMix`), -2L)
+  ) {
     # 0x10 marks the component-major mixture LAYOUT; with the blessed
     # batch entries (nlmixr2/nlmixr2est#955, the nMix table entry) the
     # linkage handles it -- only an older nlmixr2est refuses
     nlmixr2est::foceiLikUnload()
-    stop("mixture models need an nlmixr2est whose FOCEi C API blesses the ",
-         "component-major layout (nlmixr2/nlmixr2est#955); update ",
-         "nlmixr2est", call. = FALSE)
+    stop(
+      "mixture models need an nlmixr2est whose FOCEi C API blesses the ",
+      "component-major layout (nlmixr2/nlmixr2est#955); update ",
+      "nlmixr2est",
+      call. = FALSE
+    )
   }
   stanSetCores(cores)
   .h$flags <- .flags
-  .h$setupHash <- digest::digest(list(.h$thetaNames, .h$etaNames, .h$idLvl,
-                                      .h$nid, .h$neta, likelihood))
+  .h$setupHash <- digest::digest(list(.h$thetaNames, .h$etaNames, .h$idLvl, .h$nid, .h$neta, likelihood))
   .stanLinkEnv$handle <- .h
   .stanLinkEnv$hash <- .h$setupHash
   invisible(.h)
@@ -119,7 +144,9 @@ stanLinkSetup <- function(ui, data, likelihood = c("focei", "foce"),
 #' @export
 #' @author Matthew L Fidler
 stanLinkFree <- function() {
-  if (is.null(.stanLinkEnv$handle)) return(invisible(FALSE))
+  if (is.null(.stanLinkEnv$handle)) {
+    return(invisible(FALSE))
+  }
   if (isTRUE(.stanLinkEnv$handle$pop)) {
     nlmixr2est::.nlmFreeEnv()
   } else {
@@ -187,16 +214,16 @@ stanLinkFree <- function() {
 #' @return invisibly, a handle (ntheta, nobs, flags, initPar, setupHash)
 #' @export
 #' @author Matthew L Fidler
-stanPopLinkSetup <- function(ui, data, rxControl = rxode2::rxControl(),
-                             cores = rxode2::getRxThreads(),
-                             print = 0L) {
+stanPopLinkSetup <- function(ui, data, rxControl = rxode2::rxControl(), cores = rxode2::getRxThreads(), print = 0L) {
   if (!is.null(.stanLinkEnv$handle)) {
-    stop("an nlmixr2bayes likelihood is already linked; call stanLinkFree() ",
-         "first", call. = FALSE)
+    stop("an nlmixr2bayes likelihood is already linked; call stanLinkFree() ", "first", call. = FALSE)
   }
   if (!.stanHasNlmApi()) {
-    stop("this nlmixr2est does not provide the nlm population-likelihood C ",
-         "API; update nlmixr2est (nlmixr2/nlmixr2est#953)", call. = FALSE)
+    stop(
+      "this nlmixr2est does not provide the nlm population-likelihood C ",
+      "API; update nlmixr2est (nlmixr2/nlmixr2est#953)",
+      call. = FALSE
+    )
   }
   # tier-0 parallelism lives in rxode2's subject-parallel solve, driven by
   # rxControl$cores; honor an explicit setting, otherwise apply `cores`
@@ -208,29 +235,39 @@ stanPopLinkSetup <- function(ui, data, rxControl = rxode2::rxControl(),
   # FD then reject; see the tolerance-report rationale in stanLinkSetup)
   checkmate::assertIntegerish(print, lower = 0, len = 1, any.missing = FALSE)
   .ini <- nlmixr2est::nlmObjectiveSetup(
-    ui, data, control = nlmixr2est::nlmControl(rxControl = rxControl,
-                                               maxOdeRecalc = 3L,
-                                               print = as.integer(print)),
-    gradient = TRUE, scale = "natural")
+    ui,
+    data,
+    control = nlmixr2est::nlmControl(rxControl = rxControl, maxOdeRecalc = 3L, print = as.integer(print)),
+    gradient = TRUE,
+    scale = "natural"
+  )
   .d <- .Call(`_nlmixr2bayes_nlmDims`)
   if (.d[["status"]] != 0L) {
     nlmixr2est::.nlmFreeEnv() # nocov
-    stop("the tier-0 problem did not come up (dims status ", .d[["status"]],
-         ")", call. = FALSE) # nocov
+    stop("the tier-0 problem did not come up (dims status ", .d[["status"]], ")", call. = FALSE) # nocov
   }
-  if (bitwAnd(.d[["flags"]], 0x01L) == 0L ||
-        bitwAnd(.d[["flags"]], 0x02L) == 0L) {
+  if (
+    bitwAnd(.d[["flags"]], 0x01L) == 0L ||
+      bitwAnd(.d[["flags"]], 0x02L) == 0L
+  ) {
     nlmixr2est::.nlmFreeEnv() # nocov
-    stop("the tier-0 load must carry the gradient model on the natural ",
-         "scale", call. = FALSE) # nocov
+    stop("the tier-0 load must carry the gradient model on the natural ", "scale", call. = FALSE) # nocov
   }
   if (bitwAnd(.d[["flags"]], 0x04L) != 0L) {
     nlmixr2est::.nlmFreeEnv()
-    stop("some theta's sensitivity is finite-differenced; the gradient ",
-         "noise breaks a gradient-based sampler", call. = FALSE)
+    stop(
+      "some theta's sensitivity is finite-differenced; the gradient ",
+      "noise breaks a gradient-based sampler",
+      call. = FALSE
+    )
   }
-  .h <- list(pop = TRUE, ntheta = .d[["ntheta"]], nobs = .d[["nobs"]],
-             flags = .d[["flags"]], initPar = as.numeric(.ini))
+  .h <- list(
+    pop = TRUE,
+    ntheta = .d[["ntheta"]],
+    nobs = .d[["nobs"]],
+    flags = .d[["flags"]],
+    initPar = as.numeric(.ini)
+  )
   .h$setupHash <- digest::digest(list("pop", .h$ntheta, .h$nobs, .h$initPar))
   .stanLinkEnv$handle <- .h
   .stanLinkEnv$hash <- .h$setupHash
@@ -240,7 +277,9 @@ stanPopLinkSetup <- function(ui, data, rxControl = rxode2::rxControl(),
 #' Free the tier-0 link (also freed by [stanLinkFree()])
 #' @noRd
 .stanPopLinkFree <- function() {
-  if (is.null(.stanLinkEnv$handle)) return(invisible(FALSE))
+  if (is.null(.stanLinkEnv$handle)) {
+    return(invisible(FALSE))
+  }
   if (isTRUE(.stanLinkEnv$handle$pop)) {
     nlmixr2est::.nlmFreeEnv()
     .stanLinkEnv$handle <- NULL

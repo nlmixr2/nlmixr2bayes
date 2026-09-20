@@ -1,0 +1,101 @@
+# Workflow derived from https://github.com/r-lib/actions/tree/v2/examples
+# Need help debugging build failures? Start at https://github.com/r-lib/actions#where-to-find-help
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+name: test-coverage.yaml
+
+# a new commit on a pull request cancels that pull request's earlier run
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions: read-all
+
+jobs:
+  test-coverage:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      # covr instruments and re-runs the whole suite in one process, so it
+      # cannot be sharded the way R-CMD-check.yaml is.  The hand-coded .stan
+      # compilation tests are left off here (they exercise src/bridge.cpp and
+      # .stan programs, not R code, so they buy little R coverage for a lot of
+      # compile time); the weekly slow-tests run covers them.
+      RXSTAN_STAN_TESTS: ''
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          cache-version: 1
+          # See R-CMD-check.yaml: rstan is a hard Import, never ?ignore'd here.
+          extra-packages: |
+            any::covr
+            any::xml2
+            nlmixr2/lbfgsb3c
+            nlmixr2/dparser-R
+            nlmixr2/n1qn1c
+            nlmixr2/lotri
+            nlmixr2/rxode2ll
+            nlmixr2/rxode2lincmt
+            nlmixr2/rxode2
+            nlmixr2/PreciseSums
+            nlmixr2/RcppTrust
+            nlmixr2/nlmixr2data
+            nlmixr2/nlmixr2est
+            nlmixr2/nlmixr2
+            nlmixr2/nlmixr2save
+            qs=?ignore
+          needs: coverage
+
+      # See R-CMD-check.yaml for why this cache matters so much here.
+      - name: Cache compiled Stan models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/R/nlmixr2bayes
+          key: stan-models-${{ runner.os }}-coverage-${{ hashFiles('R/**', 'inst/include/**', 'inst/stan/**') }}
+          restore-keys: |
+            stan-models-${{ runner.os }}-coverage-
+            stan-models-${{ runner.os }}-release-
+
+      - name: Test coverage
+        run: |
+          cov <- covr::package_coverage(
+            quiet = FALSE,
+            clean = FALSE,
+            install_path = file.path(normalizePath(Sys.getenv("RUNNER_TEMP"), winslash = "/"), "package")
+          )
+          print(cov)
+          covr::to_cobertura(cov)
+        shell: Rscript {0}
+
+      - uses: codecov/codecov-action@v5
+        with:
+          # Fail if error if not on PR, or if on PR and token is given
+          fail_ci_if_error: ${{ github.event_name != 'pull_request' || secrets.CODECOV_TOKEN }}
+          files: ./cobertura.xml
+          plugins: noop
+          disable_search: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Show testthat output
+        if: always()
+        run: |
+          ## --------------------------------------------------------------------
+          find '${{ runner.temp }}/package' -name 'testthat.Rout*' -exec cat '{}' \; || true
+        shell: bash
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-test-failures
+          path: ${{ runner.temp }}/package
