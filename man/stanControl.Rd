@@ -230,5 +230,5 @@ a pure function of state, which gate G2 proves bitwise, with the retry
 machinery live.
 }
 \author{
-Matthew L. Fidler
+Matthew L Fidler
 }

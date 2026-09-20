@@ -262,6 +262,7 @@ rxsSolveStats <- function(handle) {
 }
 
 #' Reset a handle's solve counters
+#' @return `NULL`, invisibly; called for its effect on the handle's counters
 #' @param handle handle returned by [rxsRegister()]
 #' @author Lukas A. Widmer
 #' @export
@@ -275,6 +276,7 @@ rxsResetStats <- function(handle) {
 #' Call this if something else in the session has solved an rxode2 model and you
 #' want the bridge to rebuild its cached solve immediately rather than on the
 #' next detection.
+#' @return `NULL`, invisibly; called for its effect on the cached solve
 #' @author Lukas A. Widmer
 #' @export
 rxsInvalidateFast <- function() {
@@ -283,6 +285,8 @@ rxsInvalidateFast <- function() {
 }
 
 #' Is Path A currently armed for this handle?
+#' @return `TRUE` when the cached "fast" solve is armed for `handle`,
+#'   `FALSE` when the next solve will go through the slow path
 #' @param handle handle returned by [rxsRegister()]
 #' @author Lukas A. Widmer
 #' @export
@@ -312,6 +316,7 @@ print.rxsHandle <- function(x, ...) {
 }
 
 #' Release a registered handle
+#' @return `NULL`, invisibly; called for its effect on the handle registry
 #' @param handle handle returned by [rxsRegister()]
 #' @author Lukas A. Widmer
 #' @export
@@ -323,6 +328,7 @@ rxsRelease <- function(handle) {
 }
 
 #' Release every registered handle
+#' @return `NULL`, invisibly; called for its effect on the handle registry
 #' @author Lukas A. Widmer
 #' @export
 rxsReleaseAll <- function() {
@@ -333,6 +339,8 @@ rxsReleaseAll <- function() {
 }
 
 #' List registered handles
+#' @return an integer vector of the handles currently registered, empty
+#'   when none are
 #' @author Lukas A. Widmer
 #' @export
 rxsHandles <- function() as.integer(names(.rxsEnv$handles))
@@ -414,6 +422,9 @@ rxsHandles <- function() as.integer(names(.rxsEnv$handles))
 #' @author Lukas A. Widmer
 #' @export
 rxsSolve <- function(handle, p, slow = FALSE) {
-  fn <- if (slow) C_rxstanSolveSlow else C_rxstanSolve
-  .Call(fn, as.integer(unclass(handle)), as.double(p))
+  if (slow) {
+    .Call(C_rxstanSolveSlow, as.integer(unclass(handle)), as.double(p))
+  } else {
+    .Call(C_rxstanSolve, as.integer(unclass(handle)), as.double(p))
+  }
 }

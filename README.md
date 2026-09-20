@@ -20,7 +20,7 @@ coverage](https://codecov.io/gh/nlmixr2/nlmixr2bayes/graph/badge.svg)](https://a
 
 A Stan interface for nlmixr2 combining two complementary approaches:
 
-1.  **Likelihood-level linking** (`nlmixr2(model, data, est = "stan")`):
+1.  **Likelihood-level linking** (`nlmixr2(model, data, est = "nuts")`):
     Link Stan to the likelihoods that already exist rather than
     re-express the model in Stan’s language. rxode2 compiles the
     ODE/solving code and nlmixr2est holds the likelihood machinery, so

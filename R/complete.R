@@ -20,4 +20,4 @@ nmObjGet.posteriorSummary <- function(x, ...) {
     NULL
   }
 }
-attr(nmObjGet.stanfit, "desc") <- "Stan posterior summary"
+attr(nmObjGet.posteriorSummary, "desc") <- "Stan posterior summary"

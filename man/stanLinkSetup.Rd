@@ -54,5 +54,5 @@ vector is directly comparable with `ui$iniDf$est`), records the handle and
 a setup hash, and takes the package-level re-entrancy lock.
 }
 \author{
-Matthew L. Fidler
+Matthew L Fidler
 }

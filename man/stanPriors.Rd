@@ -27,5 +27,5 @@ and sampling statements for population parameters, and the classified
 omega-block priors for the model generator.
 }
 \author{
-Matthew L. Fidler
+Matthew L Fidler
 }

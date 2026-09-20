@@ -27,5 +27,5 @@ facts about the generated C++ (cached per session):
 3. `stancVersion`/`rstanVersion` for the record.
 }
 \author{
-Matthew L. Fidler
+Matthew L Fidler
 }

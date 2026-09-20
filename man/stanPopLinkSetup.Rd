@@ -38,5 +38,5 @@ gradient on the model's own scale.  Shares the package-level one-linked-
 problem-at-a-time lock with [stanLinkSetup()].
 }
 \author{
-Matthew L. Fidler
+Matthew L Fidler
 }

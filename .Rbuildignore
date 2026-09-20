@@ -15,3 +15,7 @@
 ^codecov\.yml$
 ^air\.toml$
 ^\.Rhistory$
+^cran-comments\.md$
+^CRAN-SUBMISSION$
+^revdep$
+^CLAUDE\.md$
