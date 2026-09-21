@@ -63,6 +63,13 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
   # ... CWRES with them: the FOCEi row above is one addCwres() could never add
   # afterwards, so ofv="focei" has to calculate the residuals up front
   expect_true("CWRES" %in% names(.fit))
+  # the ini() priors are hidden from the FOCEi finalize path (whose kernel
+  # cannot evaluate most of Stan's catalog) and restored on the finished fit:
+  # all three are back, alongside the posterior estimates rather than over them
+  expect_setequal(rxode2::rxUiPriors(.fit$ui)$name, c("tcl", "tv", "add.sd"))
+  expect_equal(.fit$ui$theta[c("tcl", "tv", "add.sd")], .fit$env$theta[c("tcl", "tv", "add.sd")])
+  # ... and $runInfo says the FOCEi row was evaluated without them
+  expect_true(any(grepl("excludes the ini() priors", .fit$runInfo, fixed = TRUE)))
   # and addCwres() is then a no-op rather than an error
   expect_identical(
     suppressMessages(nlmixr2est::addCwres(.fit, updateObject = FALSE)),

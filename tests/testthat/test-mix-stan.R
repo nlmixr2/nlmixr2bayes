@@ -197,6 +197,12 @@ test_that("mixture end to end: assembled gradient + membership + fit contract", 
   expect_true(is.data.frame(.mp))
   expect_equal(nrow(.mp), 4L)
   expect_equal(as.numeric(.mp$mix1 + .mp$mix2), rep(1, 4), tolerance = 1e-6)
+  # a dbeta() prior -- which Stan samples but the FOCEi prior kernel cannot
+  # evaluate -- no longer fails finalization, and survives onto the fit
+  .pr <- rxode2::rxUiPriors(.fit$ui)
+  expect_equal(.pr$prior[.pr$name == "p1"], "dbeta(2, 2)")
+  # ofv = "none" reports no FOCEi row, so there is nothing to note
+  expect_false(any(grepl("excludes the ini() priors", .fit$runInfo, fixed = TRUE)))
   # the etaObf is the membership-weighted eta (one row per PHYSICAL subject)
   expect_equal(nrow(.fit$env$etaObf), 4L)
   # assembled gradient FD through the whole mixture target, INCLUDING the

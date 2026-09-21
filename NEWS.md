@@ -27,3 +27,11 @@
 
 * Fits carry `$stanfit`, `$stanCode` and `$posteriorSummary`, and WAIC /
   LOO are available through the 'loo' package.
+
+* Any prior Stan samples can be written in `ini({})` -- `dnorm()`,
+  `dcauchy()`, `dbeta()`, `dgamma()`, `dlnorm()`, `dexp()`, `dunif()`,
+  `dweibull()`, `dlogis()`, `studentT()`, ... -- and all of them are part of
+  the posterior.  With `ofv = "focei"` (the default) the fit also reports a
+  FOCEi objective row at the posterior point estimate; that row is a plug-in
+  likelihood criterion, comparable across nlmixr2 methods, and is evaluated
+  *without* the `ini({})` priors.  A fit with priors says so in `$runInfo`.

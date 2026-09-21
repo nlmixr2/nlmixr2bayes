@@ -1095,6 +1095,64 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   invisible()
 }
 
+#' Hide the ui's `ini({})` priors from the FOCEi finalize path
+#'
+#' Stan has already sampled every `ini({})` prior, so the posterior accounts
+#' for them.  Finalizing through [nlmixr2est::nlmixr2CreateOutputFromUi()]
+#' (and the zero-iteration FOCEi behind [nlmixr2est::setOfv()]) nevertheless
+#' builds a FOCEi prior specification, and rxode2's kernel evaluates only
+#' normal, std_normal, cauchy, multi_normal and inv_wishart priors -- so a
+#' `dbeta()`, `dgamma()`, `dlnorm()`, `dexp()`, `dunif()`, `dweibull()`,
+#' `dlogis()` or `studentT()` prior, all of which Stan samples natively, would
+#' fail the fit only after sampling had finished.
+#'
+#' The finalize path is therefore handed a copy of the ui with its `prior`
+#' column blanked (`.nlmixr2BuildPriorSpec()` builds nothing for a ui with no
+#' prior), and [.stanRestorePriors()] puts the column back on the finished
+#' fit.  `foceiControl(priorMethod = "none")` (nlmixr2/nlmixr2est#1120) is the
+#' direct way to say this; this works with the released nlmixr2est.
+#'
+#' @param env2 the finalize environment; `env2$ui` is replaced by the copy
+#' @return `NULL` when the ui has no prior, else its `prior` column named by
+#'   parameter, for [.stanRestorePriors()]
+#' @noRd
+.stanHidePriors <- function(env2) {
+  .df <- env2$ui$iniDf
+  if (is.null(.df$prior) || all(is.na(.df$prior))) {
+    return(NULL)
+  }
+  .prior <- stats::setNames(.df$prior, .df$name)
+  # a compress/decompress round trip is an independent copy: the caller's ui
+  # (and the one on `ret`) keep their priors
+  .ui <- rxode2::rxUiDecompress(rxode2::rxUiCompress(env2$ui))
+  .df$prior <- NA_character_
+  assign("iniDf", .df, envir = .ui)
+  env2$ui <- .ui
+  .prior
+}
+
+#' Put the priors [.stanHidePriors()] removed back on a finished fit
+#'
+#' Only the `prior` column is restored, matched by parameter name: by now
+#' `iniDf` carries the posterior point estimates, which must survive.
+#' @param fitEnv the fit's environment
+#' @param prior the value [.stanHidePriors()] returned
+#' @return `fitEnv`, invisibly
+#' @noRd
+.stanRestorePriors <- function(fitEnv, prior) {
+  if (is.null(prior)) {
+    return(invisible(fitEnv))
+  }
+  .stored <- get("ui", envir = fitEnv)
+  .ui <- rxode2::rxUiDecompress(.stored)
+  .df <- .ui$iniDf
+  .df$prior <- unname(prior[.df$name])
+  assign("iniDf", .df, envir = .ui)
+  # keep whichever form the fit stored its ui in
+  assign("ui", if (is.environment(.stored)) .ui else rxode2::rxUiCompress(.ui), envir = fitEnv)
+  invisible(fitEnv)
+}
+
 #' Posterior -> nlmixr2 fit for tier 0 (population-only, no etas)
 #' @noRd
 .stanFinalizeEnvPop <- function(ret, ui, env, sf, map, gen, dx, control, popObj = NA_real_) {
@@ -1178,6 +1236,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   nlmixr2est::.nlmixr2FitUpdateParams(env2)
   .stanHandleControlObjects(env, env2)
   .stanControlToFoceiControl(env2)
+  .priors <- .stanHidePriors(env2)
   .fit <- nlmixr2est::nlmixr2CreateOutputFromUi(
     env2$ui,
     data = env2$origData,
@@ -1188,6 +1247,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   )
   .env <- .fit$env
   .env$method <- .stanMethodLabel(control)
+  .stanRestorePriors(.env, .priors)
   .fit
 }
 
@@ -1352,6 +1412,9 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   if (identical(control$ofv, "focei") && is.null(env2$table$cwres)) {
     env2$table$cwres <- TRUE
   }
+  # hidden through the output build AND the setOfv() row below, both of which
+  # evaluate FOCEi; restored once the fit is complete
+  .priors <- .stanHidePriors(env2)
   .fit <- nlmixr2est::nlmixr2CreateOutputFromUi(
     env2$ui,
     data = env2$origData,
@@ -1435,6 +1498,14 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
       }
       assign("objDf", .odf, envir = .env)
     }
+  }
+  .stanRestorePriors(.env, .priors)
+  if (!is.null(.priors) && identical(control$ofv, "focei")) {
+    # a warning raised during the run is how a note reaches the fit's
+    # $runInfo (nlmixr2est collects them there rather than re-emitting them).
+    # The FOCEi row is a plug-in criterion evaluated without the priors; the
+    # kernel may one day evaluate every prior, at which point this can change.
+    warning("FOCEi objective excludes the ini() priors (posterior only)", call. = FALSE)
   }
   .fit
 }
