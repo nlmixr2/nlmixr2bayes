@@ -817,16 +817,6 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   )
 }
 
-#' Is real Pathfinder available?  rstan does not expose the Pathfinder
-#' service (StanHeaders 2.32 predates it), and CmdStan cannot work here at
-#' all (a separate executable cannot reach the in-process linked
-#' likelihood), so Pathfinder runs through StanEstimators' in-process
-#' callbacks against the compiled model's log density + analytic gradient.
-#' @noRd
-.stanHasPathfinder <- function() {
-  requireNamespace("StanEstimators", quietly = TRUE)
-}
-
 #' Sampler diagnostics with actionable, loud messages
 #' @noRd
 .stanDiagnostics <- function(sf, control) {

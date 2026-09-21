@@ -19,7 +19,6 @@ License: MIT + file LICENSE
 URL: https://github.com/nlmixr2/nlmixr2bayes,
     https://nlmixr2.github.io/nlmixr2bayes/
 BugReports: https://github.com/nlmixr2/nlmixr2bayes/issues
-Additional_repositories: https://andrjohns.r-universe.dev
 Depends: R (>= 4.2)
 Imports:
     nlmixr2est (>= 7.0.3),
@@ -45,8 +44,7 @@ Suggests:
     numDeriv,
     mvtnorm,
     knitr,
-    rmarkdown,
-    StanEstimators
+    rmarkdown
 LinkingTo:
     rxode2,
     nlmixr2est,

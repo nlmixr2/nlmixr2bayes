@@ -29,11 +29,11 @@
 #'   approximations `"meanfield"` (independent Gaussians on the
 #'   unconstrained scale) and `"fullrank"` (one full-covariance Gaussian),
 #'   run through [rstan::vb()], or `"pathfinder"` (Stan's multi-path
-#'   Pathfinder, run through the StanEstimators package against the
-#'   compiled model's exact log density and analytic gradient --
-#'   L-BFGS trajectories from jittered starts, ELBO-selected normal
-#'   approximations, PSIS-resampled draws; needs `StanEstimators`
-#'   installed since rstan does not expose Pathfinder yet).  ADVI is typically 10-100x faster and is a
+#'   Pathfinder, implemented in this package against the compiled model's
+#'   exact log density and analytic gradient, since rstan does not expose
+#'   the Pathfinder service -- L-BFGS trajectories from jittered starts,
+#'   ELBO-selected normal approximations, PSIS-resampled draws).  ADVI is
+#'   typically 10-100x faster and is a
 #'   fair first look, but it is an APPROXIMATION -- it understates tails
 #'   and correlations; the Pareto-k diagnostic (`khat`) replaces
 #'   Rhat/divergences and `khat > 0.7` means the approximation is not

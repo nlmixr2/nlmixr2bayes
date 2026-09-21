@@ -24,9 +24,9 @@ INFERENCE ALGORITHM instead of the software tool.  Because
 with no `est=` argument.
 }
 \details{
-Pathfinder needs the `StanEstimators` package installed (rstan does not
-expose Pathfinder yet); see [stanControl()] for `pathfinderPaths` and
-the `khat` diagnostic.
+Pathfinder is implemented in this package (rstan does not expose the
+Pathfinder service), so it needs nothing beyond rstan; see
+[stanControl()] for `pathfinderPaths` and the `khat` diagnostic.
 }
 \examples{
 ct <- pathfinderControl()

@@ -260,9 +260,9 @@ adviControl <- function(..., algorithm = c("meanfield", "fullrank")) {
 #' `nlmixr2(model, data, pathfinderControl())` infers `est="pathfinder"`
 #' with no `est=` argument.
 #'
-#' Pathfinder needs the `StanEstimators` package installed (rstan does not
-#' expose Pathfinder yet); see [stanControl()] for `pathfinderPaths` and
-#' the `khat` diagnostic.
+#' Pathfinder is implemented in this package (rstan does not expose the
+#' Pathfinder service), so it needs nothing beyond rstan; see
+#' [stanControl()] for `pathfinderPaths` and the `khat` diagnostic.
 #'
 #' @param ... [stanControl()] options
 #' @param algorithm must be `"pathfinder"` (`"NUTS"` is accepted only

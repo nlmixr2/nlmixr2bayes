@@ -32,16 +32,6 @@ stay in one place.
   rather than erroring; nothing breaks.  We would gladly switch to a
   documented rstan entry point if one is added.
 
-* **`Suggests` contains 'StanEstimators', which is not on CRAN.**  It is
-  declared in `Additional_repositories`
-  (https://andrjohns.r-universe.dev).  It is the Pathfinder backend: rstan
-  does not expose Stan's Pathfinder service, and CmdStan cannot work here
-  at all, because a separate executable cannot reach the in-process linked
-  likelihood.  It is reached only through
-  `requireNamespace("StanEstimators", quietly = TRUE)`; when it is absent,
-  `est = "pathfinder"` reports that cleanly and every other algorithm is
-  unaffected.
-
 * **Package size.**  `inst/cache` holds the fitted models the vignettes and
   README display.  Every number shown in the documentation is produced by
   really running the code, and caching the fits is what keeps the vignettes
