@@ -217,7 +217,14 @@ they're not interchangeable.
 `tests/testthat/helper-est.R`/`helper-link.R` define the shared small
 fixtures (`.estMod`/`.linkData()`, `.linkMod`) most likelihood-linking tests
 reuse — a 4-subject analytic (non-ODE) model, chosen so link tests compile
-fast and the conditional density is hand-computable. Prefer extending an
+fast and the conditional density is hand-computable. Tests reach internal
+functions and native-routine symbols directly (`.stanMap()`,
+`` .Call(`_nlmixr2bayes_setThetaBase`, ...) ``) -- never through
+`nlmixr2bayes:::`, which the lint rules forbid and which is unnecessary:
+under `test_check()` the test environment's parent is the namespace, and
+`load_all()` exports everything.  The one exception is code shipped to a
+fresh subprocess (`callr::r()`, a PSOCK worker), which cannot see them.
+Prefer extending an
 existing test file over adding a new one when a fixture already fits;
 `skipUnlessStan()` (`helper-rxstan.R`) is the standard skip gate for
 rxstan-bridge tests that need an actual Stan compile.

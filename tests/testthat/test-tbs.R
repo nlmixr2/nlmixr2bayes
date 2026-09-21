@@ -45,20 +45,20 @@
 
 test_that("estimated lambda: the linked d/dlambda column FD-agrees (#949)", {
   skip_on_cran()
-  skip_if_not(nlmixr2bayes:::.stanHasTbsLambdaSens(), "nlmixr2est lacks the #949 lambda sensitivities")
+  skip_if_not(.stanHasTbsLambdaSens(), "nlmixr2est lacks the #949 lambda sensitivities")
   h <- stanLinkSetup(.tbsMod, .tbsData(), thetaSens = TRUE, cores = 1L)
   on.exit(
     {
-      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      .Call(`_nlmixr2bayes_clearThetaBase`)
       stanLinkFree()
     },
     add = TRUE
   )
   expect_true(4L %in% h$thetaSensIdx)
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
+  .Call(`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+  .Call(`_nlmixr2bayes_setMuRef`, 1L)
   .bt <- function(theta, e) {
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
+    .Call(`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
   }
   .eta <- matrix(c(-0.1, 0.05, 0.2, -0.15), 4, 1)
   .th <- c(1, 3, 0.5, 0.5)
@@ -78,7 +78,7 @@ test_that("estimated lambda: the linked d/dlambda column FD-agrees (#949)", {
 
 test_that("estimated lambda: the generator emits the Jacobian statistic", {
   skip_on_cran()
-  skip_if_not(nlmixr2bayes:::.stanHasTbsLambdaSens(), "nlmixr2est lacks the #949 lambda sensitivities")
+  skip_if_not(.stanHasTbsLambdaSens(), "nlmixr2est lacks the #949 lambda sensitivities")
   .d <- .tbsData()
   .code <- suppressMessages(
     nlmixr2est::nlmixr2(.tbsMod, .d, est = "stan", control = stanControl(run = FALSE))
@@ -157,7 +157,7 @@ test_that("estimated lambda: the generator emits the Jacobian statistic", {
 test_that("estimated lambda: the assembled target is the untransformed-scale density", {
   skip_on_cran()
   skip_if_not_installed("rstan")
-  skip_if_not(nlmixr2bayes:::.stanHasTbsLambdaSens(), "nlmixr2est lacks the #949 lambda sensitivities")
+  skip_if_not(.stanHasTbsLambdaSens(), "nlmixr2est lacks the #949 lambda sensitivities")
   .d <- .tbsData()
   .code <- suppressMessages(
     nlmixr2est::nlmixr2(.tbsMod, .d, est = "stan", control = stanControl(run = FALSE))
@@ -166,13 +166,13 @@ test_that("estimated lambda: the assembled target is the untransformed-scale den
   h <- stanLinkSetup(.tbsMod, .d, thetaSens = TRUE, cores = 1L)
   on.exit(
     {
-      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      .Call(`_nlmixr2bayes_clearThetaBase`)
       stanLinkFree()
     },
     add = TRUE
   )
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
+  .Call(`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+  .Call(`_nlmixr2bayes_setMuRef`, 1L)
   .sf <- rstan::sampling(
     .sm,
     data = .code$data,
@@ -185,7 +185,7 @@ test_that("estimated lambda: the assembled target is the untransformed-scale den
     init = list(list(tcl = 1, tv = 3, add_sd = 0.5, lambda = 0.5, sd_eta_cl = sqrt(0.1), z_eta_cl = matrix(0, 4, 1)))
   )
   .bt <- function(theta, e) {
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
+    .Call(`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
   }
   .eta <- matrix(c(-0.1, 0.05, 0.2, -0.15), 4, 1)
   .sJ <- .code$data$sumLogJac_4
@@ -221,7 +221,7 @@ test_that("estimated lambda: the assembled target is the untransformed-scale den
 test_that("estimated lambda on a logit base: statistic on the transformed DV; target exact", {
   skip_on_cran()
   skip_if_not_installed("rstan")
-  skip_if_not(nlmixr2bayes:::.stanHasTbsLambdaSens(), "nlmixr2est lacks the #949 lambda sensitivities")
+  skip_if_not(.stanHasTbsLambdaSens(), "nlmixr2est lacks the #949 lambda sensitivities")
   # logitNorm + yeoJohnson: the lambda acts on t = logit((y-lo)/(hi-lo)),
   # so the Jacobian statistic must be the YJ statistic ON t, not on the raw
   # DV (the review question that prompted this gate); the linked d/dlambda
@@ -269,13 +269,13 @@ test_that("estimated lambda on a logit base: statistic on the transformed DV; ta
   h <- stanLinkSetup(.lgMod, .d, thetaSens = TRUE, cores = 1L)
   on.exit(
     {
-      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      .Call(`_nlmixr2bayes_clearThetaBase`)
       stanLinkFree()
     },
     add = TRUE
   )
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
+  .Call(`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+  .Call(`_nlmixr2bayes_setMuRef`, 1L)
   .sf <- rstan::sampling(
     .sm,
     data = .code$data,
@@ -288,7 +288,7 @@ test_that("estimated lambda on a logit base: statistic on the transformed DV; ta
     init = list(list(tcl = 1, tv = 3, add_sd = 0.5, lambda = 0.5, sd_eta_cl = sqrt(0.1), z_eta_cl = matrix(0, 4, 1)))
   )
   .bt <- function(theta, e) {
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
+    .Call(`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
   }
   .eta <- matrix(c(-0.1, 0.05, 0.2, -0.15), 4, 1)
   .sJ <- .code$data$sumLogJac_4

@@ -38,7 +38,7 @@
   )
 }
 
-.stanHasMixApi <- function() !identical(.Call(nlmixr2bayes:::`_nlmixr2bayes_nMix`), -2L)
+.stanHasMixApi <- function() !identical(.Call(`_nlmixr2bayes_nMix`), -2L)
 
 test_that("mixture codegen: component-major etas + log_sum_exp + membership", {
   skip_on_cran()
@@ -96,18 +96,18 @@ test_that("mixture tier-2 shim: component-conditional value + gradients FD-agree
   h <- stanLinkSetup(.mixMod, .d, thetaSens = TRUE, cores = 1L)
   on.exit(
     {
-      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      .Call(`_nlmixr2bayes_clearThetaBase`)
       stanLinkFree()
     },
     add = TRUE
   )
-  expect_identical(.Call(nlmixr2bayes:::`_nlmixr2bayes_nMix`), 2L)
-  .map <- nlmixr2bayes:::.stanMap(rxode2::rxode2(.mixMod))
+  expect_identical(.Call(`_nlmixr2bayes_nMix`), 2L)
+  .map <- .stanMap(rxode2::rxode2(.mixMod))
   expect_equal(.map$nMix, 2L)
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
+  .Call(`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+  .Call(`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
   .bt <- function(theta, e) {
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
+    .Call(`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
   }
   set.seed(7)
   eta <- matrix(stats::rnorm(8, 0, 0.2), 8, 1) # component-major 2 x 4
@@ -212,14 +212,14 @@ test_that("mixture end to end: assembled gradient + membership + fit contract", 
     h <- stanLinkSetup(.mixMod, .d, thetaSens = TRUE, cores = 1L)
     on.exit(
       {
-        .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+        .Call(`_nlmixr2bayes_clearThetaBase`)
         stanLinkFree()
       },
       add = TRUE
     )
-    .map <- nlmixr2bayes:::.stanMap(rxode2::rxode2(.mixMod))
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
+    .map <- .stanMap(rxode2::rxode2(.mixMod))
+    .Call(`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+    .Call(`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
     .sf <- .fit$env$stanfit
     set.seed(3)
     .pt <- list(

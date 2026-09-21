@@ -101,17 +101,17 @@ test_that("the expansion reproduces linCmt() itself", {
 
   for (mod in list(lin1Oral, lin2Oral)) {
     ui <- rxode2::rxode2(mod)
-    info <- nlmixr2bayes:::.rxsLinCmtInfo(ui)
+    info <- .rxsLinCmtInfo(ui)
     txt <- paste(
       c(
         grep("linCmt\\(", strsplit(rxode2::rxNorm(ui), "\n")[[1]], invert = TRUE, value = TRUE),
-        nlmixr2bayes:::.rxsLinCmtOdes(info),
+        .rxsLinCmtOdes(info),
         sprintf("cp = central / %s;", info$v)
       ),
       collapse = "\n"
     )
     ## Errors if the expansion and the closed form disagree.
-    d <- nlmixr2bayes:::.rxsCheckLinCmt(ui, txt, info)
+    d <- .rxsCheckLinCmt(ui, txt, info)
     expect_lt(d, 1e-8)
   }
 })
@@ -119,11 +119,11 @@ test_that("the expansion reproduces linCmt() itself", {
 test_that("compartment order matches linCmt's, so cmt numbers still line up", {
   skip_if_not_installed("nlmixr2")
   ui <- rxode2::rxode2(lin2Oral)
-  info <- nlmixr2bayes:::.rxsLinCmtInfo(ui)
+  info <- .rxsLinCmtInfo(ui)
   expect_equal(info$states, c("depot", "central", "peripheral1"))
 
   txt <- paste(
-    c("cl <- 4", "v <- 30", "q <- 2", "vp <- 20", "ka <- 1.1", nlmixr2bayes:::.rxsLinCmtOdes(info)),
+    c("cl <- 4", "v <- 30", "q <- 2", "vp <- 20", "ka <- 1.1", .rxsLinCmtOdes(info)),
     collapse = "\n"
   )
   expect_equal(rxode2::rxState(rxode2::rxode2(txt)), c("depot", "central", "peripheral1"))

@@ -66,11 +66,11 @@ cp <- center / v
 }
 
 test_that("expressions translate to Stan or are refused outright", {
-  expect_equal(nlmixr2bayes:::.rxsExprToStan(quote(a + b)), "(a + b)")
-  expect_equal(nlmixr2bayes:::.rxsExprToStan(quote(exp(a))), "exp(a)")
-  expect_equal(nlmixr2bayes:::.rxsExprToStan(quote(a^2)), "pow(a, 2)")
-  expect_equal(nlmixr2bayes:::.rxsExprToStan(quote(eta.ka)), "eta_ka")
-  expect_error(nlmixr2bayes:::.rxsExprToStan(quote(besselJ(a, b))), "unsupported")
+  expect_equal(.rxsExprToStan(quote(a + b)), "(a + b)")
+  expect_equal(.rxsExprToStan(quote(exp(a))), "exp(a)")
+  expect_equal(.rxsExprToStan(quote(a^2)), "pow(a, 2)")
+  expect_equal(.rxsExprToStan(quote(eta.ka)), "eta_ka")
+  expect_error(.rxsExprToStan(quote(besselJ(a, b))), "unsupported")
 })
 
 test_that("codegen produces the layout the model implies", {

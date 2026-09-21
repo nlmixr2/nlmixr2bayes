@@ -138,7 +138,7 @@ test_that("Torsten Friberg-Karlsson port (two endpoints) generates and parses", 
 
 test_that("Torsten pk2cpt port (single patient, no etas) generates and parses", {
   skip_on_cran()
-  skip_if_not(nlmixr2bayes:::.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
+  skip_if_not(.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
   # the single-patient two-compartment example, Torsten's informative
   # lognormal priors verbatim (normal on the log-scale parameters)
   .pk2cpt <- function() {

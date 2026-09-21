@@ -29,16 +29,16 @@ test_that("omega blocks are the connected components of the off-diagonals", {
   diag(om) <- 1
   om[1, 2] <- om[2, 1] <- 0.3
   om[3, 4] <- om[4, 3] <- 0.2
-  expect_equal(nlmixr2bayes:::.rxsOmegaBlocks(om), list(c(1L, 2L), c(3L, 4L)))
+  expect_equal(.rxsOmegaBlocks(om), list(c(1L, 2L), c(3L, 4L)))
 
   diag4 <- diag(4)
-  expect_equal(nlmixr2bayes:::.rxsOmegaBlocks(diag4), list(1L, 2L, 3L, 4L))
+  expect_equal(.rxsOmegaBlocks(diag4), list(1L, 2L, 3L, 4L))
 
   ## A chain 1-2, 2-3 is one block of three, not two of two.
   chain <- diag(3)
   chain[1, 2] <- chain[2, 1] <- 0.1
   chain[2, 3] <- chain[3, 2] <- 0.1
-  expect_equal(nlmixr2bayes:::.rxsOmegaBlocks(chain), list(c(1L, 2L, 3L)))
+  expect_equal(.rxsOmegaBlocks(chain), list(c(1L, 2L, 3L)))
 })
 
 simCor <- function(nsub = 8L, seed = 5) {

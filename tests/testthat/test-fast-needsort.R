@@ -115,13 +115,13 @@ d/dt(center) <-  ka * depot - (cl / v) * center
 })
 
 test_that(".rxsHasDoses fails safe when it cannot read the events", {
-  expect_true(nlmixr2bayes:::.rxsHasDoses("not an event table"))
-  expect_true(nlmixr2bayes:::.rxsHasDoses(data.frame(time = 1:3)))
-  expect_false(nlmixr2bayes:::.rxsHasDoses(data.frame(time = 1:3, evid = c(0, 0, 0))))
-  expect_true(nlmixr2bayes:::.rxsHasDoses(data.frame(time = 1:3, evid = c(1, 0, 0))))
+  expect_true(.rxsHasDoses("not an event table"))
+  expect_true(.rxsHasDoses(data.frame(time = 1:3)))
+  expect_false(.rxsHasDoses(data.frame(time = 1:3, evid = c(0, 0, 0))))
+  expect_true(.rxsHasDoses(data.frame(time = 1:3, evid = c(1, 0, 0))))
 
   ## And on the event tables users actually pass.
   ev <- rxode2::et(amt = 100, cmt = "depot")
-  expect_true(nlmixr2bayes:::.rxsHasDoses(rxode2::et(ev, seq(0.5, 24, by = 1.5))))
-  expect_false(nlmixr2bayes:::.rxsHasDoses(rxode2::et(seq(0.5, 24, by = 1.5))))
+  expect_true(.rxsHasDoses(rxode2::et(ev, seq(0.5, 24, by = 1.5))))
+  expect_false(.rxsHasDoses(rxode2::et(seq(0.5, 24, by = 1.5))))
 })

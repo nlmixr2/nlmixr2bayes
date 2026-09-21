@@ -85,15 +85,15 @@ test_that("tier-2 batch: interleaved theta+eta evaluations are bitwise identical
   h <- stanLinkSetup(.odeDetMod, .odeDetData(), thetaSens = TRUE, cores = 1L)
   on.exit(
     {
-      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      .Call(`_nlmixr2bayes_clearThetaBase`)
       stanLinkFree()
     },
     add = TRUE
   )
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
+  .Call(`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+  .Call(`_nlmixr2bayes_setMuRef`, 1L)
   .bt <- function(theta, e) {
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
+    .Call(`_nlmixr2bayes_condBatchTheta`, as.double(theta), as.matrix(e))
   }
   set.seed(23)
   .eta <- matrix(stats::rnorm(4, 0, 0.2), 4, 1)

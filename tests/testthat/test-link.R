@@ -25,7 +25,7 @@ test_that("stage 0: value matches foceiLikRun(type='cond') exactly", {
   set.seed(7)
   eta <- matrix(stats::rnorm(h$nid * h$neta, 0, 0.2), h$nid, h$neta)
   ref <- nlmixr2est::foceiLikRun(h$initPar, eta, type = "cond")
-  got <- nlmixr2bayes:::.condBatch(eta)
+  got <- .condBatch(eta)
   expect_equal(got$nBad, 0L)
   expect_equal(as.numeric(got$value), as.numeric(ref), tolerance = 1e-12)
 })
@@ -36,8 +36,8 @@ test_that("stage 0: gradient matches central differences (the sign test)", {
   on.exit(stanLinkFree(), add = TRUE)
   set.seed(11)
   eta <- matrix(stats::rnorm(h$nid * h$neta, 0, 0.25), h$nid, h$neta)
-  nlmixr2bayes:::.linkSetTheta(h$initPar)
-  got <- nlmixr2bayes:::.condBatch(eta)
+  .linkSetTheta(h$initPar)
+  got <- .condBatch(eta)
   .h <- 1e-5
   fd <- matrix(0, h$nid, h$neta)
   for (k in seq_len(h$neta)) {
@@ -45,8 +45,8 @@ test_that("stage 0: gradient matches central differences (the sign test)", {
     up[, k] <- up[, k] + .h
     dn <- eta
     dn[, k] <- dn[, k] - .h
-    fd[, k] <- (nlmixr2bayes:::.condBatch(up)$value -
-      nlmixr2bayes:::.condBatch(dn)$value) /
+    fd[, k] <- (.condBatch(up)$value -
+      .condBatch(dn)$value) /
       (2 * .h)
   }
   expect_equal(as.numeric(got$grad), as.numeric(fd), tolerance = 1e-4)
@@ -63,7 +63,7 @@ test_that("stage 0: natural scale means theta is iniDf's est", {
 
 test_that("fused single-solve tier-2 entry (#958) is used and consistent", {
   skip_on_cran()
-  skip_if_not(nlmixr2bayes:::.stanHasCombSens(), "nlmixr2est lacks the combined-sensitivity build (#958)")
+  skip_if_not(.stanHasCombSens(), "nlmixr2est lacks the combined-sensitivity build (#958)")
   .mod <- function() {
     ini({
       tka <- 0.45; tcl <- 1; tv <- 3.45
@@ -83,25 +83,25 @@ test_that("fused single-solve tier-2 entry (#958) is used and consistent", {
   .h <- stanLinkSetup(.mod, .d, thetaSens = TRUE, cores = 1L)
   on.exit(
     {
-      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      .Call(`_nlmixr2bayes_clearThetaBase`)
       stanLinkFree()
     },
     add = TRUE
   )
   # the combined build is loaded: dims flag 0x80
-  .dm <- .Call(nlmixr2bayes:::`_nlmixr2bayes_dims`)
+  .dm <- .Call(`_nlmixr2bayes_dims`)
   expect_true(bitwAnd(.dm[["flags"]], 0x80L) != 0L)
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(.h$initPar))
-  .map <- nlmixr2bayes:::.stanMap(rxode2::rxode2(.mod))
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
+  .Call(`_nlmixr2bayes_setThetaBase`, as.double(.h$initPar))
+  .map <- .stanMap(rxode2::rxode2(.mod))
+  .Call(`_nlmixr2bayes_setMuRef`, as.integer(.map$muRefIdx))
   set.seed(3)
   .eta <- matrix(stats::rnorm(.h$nid * .h$neta, 0, 0.2), .h$nid, .h$neta)
   .th <- .h$initPar[seq_len(.h$ntheta)]
-  .g <- .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(.th), .eta)
+  .g <- .Call(`_nlmixr2bayes_condBatchTheta`, as.double(.th), .eta)
   # value + eta gradient from the fused entry are BITWISE identical to the
   # separate condBatch entry on the same combined load (the fused theta
   # pass reads the very solve the value pass produced)
-  .sep <- nlmixr2bayes:::.condBatch(.eta)
+  .sep <- .condBatch(.eta)
   expect_identical(.g$value, .sep$value)
   expect_identical(.g$gradEta, .sep$grad)
   # assembled theta gradient (fused sens columns + mu-ref scatter) FD-agrees
@@ -111,8 +111,8 @@ test_that("fused single-solve tier-2 entry (#958) is used and consistent", {
     .tp[.jj] <- .tp[.jj] + .hs
     .tm <- .th
     .tm[.jj] <- .tm[.jj] - .hs
-    .vp <- .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(.tp), .eta)$value
-    .vm <- .Call(nlmixr2bayes:::`_nlmixr2bayes_condBatchTheta`, as.double(.tm), .eta)$value
+    .vp <- .Call(`_nlmixr2bayes_condBatchTheta`, as.double(.tp), .eta)$value
+    .vm <- .Call(`_nlmixr2bayes_condBatchTheta`, as.double(.tm), .eta)$value
     .fd <- (.vp - .vm) / (2 * .hs)
     expect_lt(max(abs((.g$gradTheta[, .jj] - .fd) / (abs(.fd) + 1e-8))), 1e-4)
   }

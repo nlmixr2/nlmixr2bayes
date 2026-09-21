@@ -34,7 +34,7 @@
 
 test_that("tier 0 codegen: theta-only program with nlmixr2_pop_ll", {
   skip_on_cran()
-  skip_if_not(nlmixr2bayes:::.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
+  skip_if_not(.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
   .code <- suppressMessages(
     nlmixr2est::nlmixr2(.popMod, .popData(), est = "stan", control = stanControl(run = FALSE))
   )
@@ -51,7 +51,7 @@ test_that("tier 0 codegen: theta-only program with nlmixr2_pop_ll", {
 
 test_that("tier 0 refuses undissolved fixed thetas (theta-length mismatch)", {
   skip_on_cran()
-  skip_if_not(nlmixr2bayes:::.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
+  skip_if_not(.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
   .fixMod <- function() {
     ini({
       tcl <- 1
@@ -89,14 +89,14 @@ test_that("tier 0 refuses undissolved fixed thetas (theta-length mismatch)", {
 
 test_that("tier 0 link: value ties to the hand density; gradient FD-agrees", {
   skip_on_cran()
-  skip_if_not(nlmixr2bayes:::.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
+  skip_if_not(.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
   .d <- .popData()
   h <- stanPopLinkSetup(.popMod, .d)
   on.exit(stanLinkFree(), add = TRUE)
   expect_true(h$pop)
   expect_equal(h$ntheta, 3L)
   .th <- c(1, 3, 0.5)
-  .e <- nlmixr2bayes:::.popEval(.th)
+  .e <- .popEval(.th)
   expect_equal(.e$nBad, 0L)
   # raw nlm convention: value = -logLik with all constants (log p = -value)
   .hand <- sum(vapply(
@@ -117,20 +117,20 @@ test_that("tier 0 link: value ties to the hand density; gradient FD-agrees", {
       .up[k] <- .up[k] + .h
       .dn <- .th
       .dn[k] <- .dn[k] - .h
-      (nlmixr2bayes:::.popEval(.up)$value -
-        nlmixr2bayes:::.popEval(.dn)$value) /
+      (.popEval(.up)$value -
+        .popEval(.dn)$value) /
         (2 * .h)
     },
     numeric(1)
   )
   expect_equal(.e$grad, .fd, tolerance = 1e-6)
-  expect_identical(nlmixr2bayes:::.popEval(.th), nlmixr2bayes:::.popEval(.th))
+  expect_identical(.popEval(.th), .popEval(.th))
 })
 
 test_that("tier 0 end to end: fit, assembled gradient, fit contract", {
   skip_on_cran()
   skip_if_not_installed("rstan")
-  skip_if_not(nlmixr2bayes:::.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
+  skip_if_not(.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
   .d <- .popData()
   .fit <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
     .popMod,
@@ -168,7 +168,7 @@ test_that("tier 0 end to end: fit, assembled gradient, fit contract", {
 test_that("tier 0 + estimated lambda: nlm convention pinned; assembled target exact", {
   skip_on_cran()
   skip_if_not_installed("rstan")
-  skip_if_not(nlmixr2bayes:::.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
+  skip_if_not(.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
   .tbsPop <- function() {
     ini({
       tcl <- 1
@@ -197,7 +197,7 @@ test_that("tier 0 + estimated lambda: nlm convention pinned; assembled target ex
   h <- stanPopLinkSetup(.tbsPop, .d)
   on.exit(stanLinkFree(), add = TRUE)
   .th <- c(1, 3, 0.5, 0.5)
-  .e <- nlmixr2bayes:::.popEval(.th)
+  .e <- .popEval(.th)
   # the nlm convention, PINNED: value = -logLik of the TRANSFORMED-scale
   # density WITHOUT the DV Jacobian (same as the focei conditional) -- the
   # Stan-side (lambda-1)*sJ term is therefore an addition, not a double
@@ -213,8 +213,8 @@ test_that("tier 0 + estimated lambda: nlm convention pinned; assembled target ex
   .up[4] <- .up[4] + .hh
   .dn <- .th
   .dn[4] <- .dn[4] - .hh
-  .fd <- (nlmixr2bayes:::.popEval(.up)$value -
-    nlmixr2bayes:::.popEval(.dn)$value) /
+  .fd <- (.popEval(.up)$value -
+    .popEval(.dn)$value) /
     (2 * .hh)
   expect_equal(.e$grad[4], .fd, tolerance = 1e-4)
   stanLinkFree()
@@ -240,7 +240,7 @@ test_that("tier 0 + estimated lambda: nlm convention pinned; assembled target ex
   .lp <- function(lam) {
     rstan::log_prob(.sf, rstan::unconstrain_pars(.sf, .pt(lam)), adjust_transform = FALSE)
   }
-  .pop <- function(lam) -nlmixr2bayes:::.popEval(c(1, 3, 0.5, lam))$value
+  .pop <- function(lam) -.popEval(c(1, 3, 0.5, lam))$value
   .sJ <- .code$data$sumLogJac_4
   .l1 <- 0.4
   .l2 <- 0.7
@@ -261,7 +261,7 @@ test_that("tier 0 + estimated lambda: nlm convention pinned; assembled target ex
 
 test_that("tier 0 iteration print: rows + nlm parameter history", {
   skip_on_cran()
-  skip_if_not(nlmixr2bayes:::.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
+  skip_if_not(.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
   .d <- .popData()
   # the scale.h table prints via Rprintf (stdout); setup messages go to the
   # message stream -- capture both
@@ -269,7 +269,7 @@ test_that("tier 0 iteration print: rows + nlm parameter history", {
     .msg <- utils::capture.output(type = "message", {
       h <- stanPopLinkSetup(.popMod, .d, print = 2L)
       for (i in 1:5) {
-        invisible(nlmixr2bayes:::.popEval(h$initPar))
+        invisible(.popEval(h$initPar))
       }
       .ph <- nlmixr2est::nlmGetParHist(TRUE)
       stanLinkFree()

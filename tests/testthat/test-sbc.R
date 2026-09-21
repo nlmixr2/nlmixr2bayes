@@ -75,8 +75,8 @@ test_that("simulation-based calibration: ranks are uniform (G5)", {
     .sf <- try(
       {
         h <- stanLinkSetup(.mod, .d, thetaSens = TRUE, cores = 1L)
-        .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
-        .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
+        .Call(`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+        .Call(`_nlmixr2bayes_setMuRef`, 1L)
         suppressWarnings(rstan::sampling(
           .sm,
           data = .stanData,
@@ -94,7 +94,7 @@ test_that("simulation-based calibration: ranks are uniform (G5)", {
       },
       silent = TRUE
     )
-    .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+    .Call(`_nlmixr2bayes_clearThetaBase`)
     stanLinkFree()
     if (inherits(.sf, "try-error")) {
       return(NULL)

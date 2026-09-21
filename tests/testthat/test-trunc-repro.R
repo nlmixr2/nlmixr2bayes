@@ -48,13 +48,13 @@ test_that("half-Cauchy branch (b): explicit T[0,] shifts the target by exactly a
   h <- stanLinkSetup(.g7Mod, .linkData(), thetaSens = TRUE, cores = 1L)
   on.exit(
     {
-      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      .Call(`_nlmixr2bayes_clearThetaBase`)
       stanLinkFree()
     },
     add = TRUE
   )
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
+  .Call(`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+  .Call(`_nlmixr2bayes_setMuRef`, 1L)
   .sfA <- rstan::sampling(
     .smA,
     data = .code$data,
@@ -103,13 +103,13 @@ test_that("fixed seed: bitwise-identical draws within a session (G9)", {
   h <- stanLinkSetup(.g7Mod, .linkData(), thetaSens = TRUE, cores = 1L)
   on.exit(
     {
-      .Call(nlmixr2bayes:::`_nlmixr2bayes_clearThetaBase`)
+      .Call(`_nlmixr2bayes_clearThetaBase`)
       stanLinkFree()
     },
     add = TRUE
   )
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
-  .Call(nlmixr2bayes:::`_nlmixr2bayes_setMuRef`, 1L)
+  .Call(`_nlmixr2bayes_setThetaBase`, as.double(h$initPar))
+  .Call(`_nlmixr2bayes_setMuRef`, 1L)
   .run <- function() {
     rstan::extract(
       rstan::sampling(
@@ -137,8 +137,18 @@ test_that("compile cache: content-keyed hit; code-changing knobs re-key (G9d)", 
   )
   .dir <- file.path(tempdir(), "nlmixr2bayes-cache-test")
   unlink(.dir, recursive = TRUE)
+  # the DISK cache is what is under test.  The G9 test above compiles this
+  # same program, and stanCompile() answers from its in-session memo (keyed by
+  # content, not by cacheDir) before it looks at disk -- so without clearing it
+  # the first call returns without ever writing to .dir, and the second never
+  # reads from it.  Forget the memo before each call.
+  .forget <- function() {
+    rm(list = ls(.stanCompileEnv), envir = .stanCompileEnv)
+  }
+  .forget()
   .t1 <- system.time(stanCompile(.code$code, cacheDir = .dir))[["elapsed"]]
   expect_length(list.files(.dir, pattern = "^stanmodel-.*rds$"), 1L)
+  .forget()
   .t2 <- system.time(stanCompile(.code$code, cacheDir = .dir))[["elapsed"]]
   expect_lt(.t2, max(2, .t1 / 5)) # warm hit, no recompile
   expect_length(list.files(.dir, pattern = "^stanmodel-.*rds$"), 1L)
