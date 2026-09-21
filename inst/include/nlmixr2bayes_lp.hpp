@@ -52,11 +52,27 @@ inline int nlmixr2bayes__batch(const double *eta, int nid, int neta,
   return rc;
 }
 
+// Every external function below is a template on its Eigen argument(s),
+// selected on the argument's scalar type, rather than an exact-type overload
+// on Eigen::Matrix<double> / Eigen::Matrix<var>.  StanHeaders 2.39 (current on
+// CRAN) hands a parameter to user code as an Eigen::Map view, not an owning
+// Eigen::Matrix; converting a Map to either exact-type overload is an equally
+// good user-defined conversion (Eigen's converting constructor is
+// unconstrained), so the call is ambiguous and the model does not compile.
+// Any dense Eigen expression -- Map, Matrix, block -- supports the
+// rows()/cols()/size()/(i, j) access these bodies use, so they are unchanged.
+// Plain enable_if on Eigen's own ::Scalar, because stan::require_st_* is
+// macro-generated and not spelled the same way across StanHeaders versions;
+// <type_traits> is already visible (see "NO #include" above).
+template <typename T, typename S>
+using nlmixr2bayes__scalar_is =
+  typename std::enable_if<std::is_same<typename T::Scalar, S>::value, int>::type;
+
 // --- double overload: log_prob<false,false,double>, write_array, and
 // rstan::log_prob ------------------------------------------------------------
+template <typename TEta, nlmixr2bayes__scalar_is<TEta, double> = 0>
 inline Eigen::Matrix<double, Eigen::Dynamic, 1>
-nlmixr2_cond_all(const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>& eta,
-                 std::ostream* pstream__) {
+nlmixr2_cond_all(const TEta& eta, std::ostream* pstream__) {
   const int nid = static_cast<int>(eta.rows());
   const int neta = static_cast<int>(eta.cols());
   std::vector<double> e(static_cast<size_t>(nid) * neta);
@@ -83,10 +99,9 @@ nlmixr2_cond_all(const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>& et
 // neta partials.  Nothing in nlmixr2est is templated on var; this is the
 // entire autodiff surface, and Stan's own autodiff composes it onward (e.g.
 // through eta = L * z in the transformed parameters block).
+template <typename TEta, nlmixr2bayes__scalar_is<TEta, stan::math::var> = 0>
 inline Eigen::Matrix<stan::math::var, Eigen::Dynamic, 1>
-nlmixr2_cond_all(const Eigen::Matrix<stan::math::var, Eigen::Dynamic,
-                                     Eigen::Dynamic>& eta,
-                 std::ostream* pstream__) {
+nlmixr2_cond_all(const TEta& eta, std::ostream* pstream__) {
   using stan::math::var;
   const int nid = static_cast<int>(eta.rows());
   const int neta = static_cast<int>(eta.cols());
@@ -159,9 +174,11 @@ inline int nlmixr2bayes__batchTheta(const double *theta, int ntheta,
 }
 
 // --- double overload --------------------------------------------------------
+template <typename TEta, typename TTheta,
+          nlmixr2bayes__scalar_is<TEta, double> = 0,
+          nlmixr2bayes__scalar_is<TTheta, double> = 0>
 inline Eigen::Matrix<double, Eigen::Dynamic, 1>
-nlmixr2_cond_all2(const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>& eta,
-                  const Eigen::Matrix<double, Eigen::Dynamic, 1>& theta,
+nlmixr2_cond_all2(const TEta& eta, const TTheta& theta,
                   std::ostream* pstream__) {
   const int nid = static_cast<int>(eta.rows());
   const int neta = static_cast<int>(eta.cols());
@@ -188,10 +205,11 @@ nlmixr2_cond_all2(const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>& e
 }
 
 // --- var overload: one vari per subject carrying neta + ntheta partials -----
+template <typename TEta, typename TTheta,
+          nlmixr2bayes__scalar_is<TEta, stan::math::var> = 0,
+          nlmixr2bayes__scalar_is<TTheta, stan::math::var> = 0>
 inline Eigen::Matrix<stan::math::var, Eigen::Dynamic, 1>
-nlmixr2_cond_all2(const Eigen::Matrix<stan::math::var, Eigen::Dynamic,
-                                      Eigen::Dynamic>& eta,
-                  const Eigen::Matrix<stan::math::var, Eigen::Dynamic, 1>& theta,
+nlmixr2_cond_all2(const TEta& eta, const TTheta& theta,
                   std::ostream* pstream__) {
   using stan::math::var;
   const int nid = static_cast<int>(eta.rows());
@@ -269,9 +287,9 @@ inline int nlmixr2bayes__popEval(const double *theta, int ntheta,
 }
 
 // --- double overload --------------------------------------------------------
+template <typename TTheta, nlmixr2bayes__scalar_is<TTheta, double> = 0>
 inline double
-nlmixr2_pop_ll(const Eigen::Matrix<double, Eigen::Dynamic, 1>& theta,
-               std::ostream* pstream__) {
+nlmixr2_pop_ll(const TTheta& theta, std::ostream* pstream__) {
   const int nth = static_cast<int>(theta.size());
   std::vector<double> th(static_cast<size_t>(nth));
   std::vector<double> g(static_cast<size_t>(nth));
@@ -284,9 +302,9 @@ nlmixr2_pop_ll(const Eigen::Matrix<double, Eigen::Dynamic, 1>& theta,
 }
 
 // --- var overload -----------------------------------------------------------
+template <typename TTheta, nlmixr2bayes__scalar_is<TTheta, stan::math::var> = 0>
 inline stan::math::var
-nlmixr2_pop_ll(const Eigen::Matrix<stan::math::var, Eigen::Dynamic, 1>& theta,
-               std::ostream* pstream__) {
+nlmixr2_pop_ll(const TTheta& theta, std::ostream* pstream__) {
   using stan::math::var;
   const int nth = static_cast<int>(theta.size());
   std::vector<double> th(static_cast<size_t>(nth));
