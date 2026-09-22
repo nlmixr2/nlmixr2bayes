@@ -486,7 +486,7 @@ d <- with(e, data.frame(ID = rep(seq_len(nSubjects),
                         RATE = rate, II = ii, ADDL = addl, SS = ss,
                         DV = NA_real_))
 d$DV[e$iObs] <- e$cObs
-fit <- nlmixr2est::nlmixr2(poppk2cpt, d, est = "nuts",
+fit := nlmixr2est::nlmixr2(poppk2cpt, d, est = "nuts",
                            control = nutsControl(seed = 42))
 ```
 
