@@ -1490,6 +1490,12 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     }
   }
   .stanRestorePriors(.env, .priors)
+  # IOV magnitudes are sampled and reported on the sd, not the variance
+  # ini() declares (issue #16); a warning is how that reaches $runInfo, as
+  # below
+  for (.n in .stanIovScaleNote(ui$iniDf)) {
+    warning(.n, call. = FALSE)
+  }
   if (!is.null(.priors) && identical(control$ofv, "focei")) {
     # a warning raised during the run is how a note reaches the fit's
     # $runInfo (nlmixr2est collects them there rather than re-emitting them).
