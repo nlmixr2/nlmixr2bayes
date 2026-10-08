@@ -235,10 +235,12 @@ test_that("a declared prior(iov.x) lands on the IOV magnitude theta", {
   # ... and both the program and the notes say so, since ini() declared a
   # variance (#16)
   expect_true(any(grepl("real<lower=0> iov_cl;  // occasion sd of 'iov.cl'", .lines, fixed = TRUE)))
+  expect_false(any(grepl("// occasion sd of 'tcl'", .lines, fixed = TRUE)))
+  expect_equal(sum(grepl("// occasion sd of", .lines, fixed = TRUE)), 1L)
   expect_true(any(grepl(
     paste0(
-      "IOV magnitudes (iov.cl) are sampled, given their priors and reported on the sd scale ",
-      "(iovXform=\"sd\"), not as the variance ini() declares"
+      "IOV magnitudes (iov.cl) are on the sd scale (iovXform=\"sd\") in their priors, ",
+      "the Stan program and the fit's estimates, not the variance ini() declares"
     ),
     .code$notes,
     fixed = TRUE
@@ -388,6 +390,10 @@ test_that("several IOV parameters over several occasion variables", {
   expect_true(any(grepl("iov_v ~ cauchy(0, 3);", .lines, fixed = TRUE)))
   expect_true(any(grepl("^\\s*iov_cl ~ cauchy\\(0, 0\\.3535533905932", .lines)))
   expect_false(any(grepl("iov_cl ~ normal|iov_v ~ normal", .lines)))
+  # ... and each declaration names its own scale (#16)
+  expect_true(any(grepl("iov_cl;  // occasion sd of 'iov.cl'", .lines, fixed = TRUE)))
+  expect_true(any(grepl("iov_v;  // occasion sd of 'iov.v'", .lines, fixed = TRUE)))
+  expect_true(any(grepl("IOV magnitudes (iov.cl, iov.v) are on the sd scale", .code$notes, fixed = TRUE)))
   if (requireNamespace("rstan", quietly = TRUE)) {
     expect_silent(rstan::stanc(model_code = .code$code, allow_undefined = TRUE))
   }
@@ -458,8 +464,8 @@ test_that("the IOV prior-scale note names the xform the rewrite recorded", {
   expect_equal(
     .stanIovScaleNote(.iniDf),
     paste0(
-      "IOV magnitudes (iov.cl, iov.v) are sampled, given their priors and reported on the sd scale ",
-      "(iovXform=\"sd\"), not as the variance ini() declares"
+      "IOV magnitudes (iov.cl, iov.v) are on the sd scale (iovXform=\"sd\") in their priors, ",
+      "the Stan program and the fit's estimates, not the variance ini() declares"
     )
   )
   .iniDf$backTransform[2:3] <- "nlmixr2iovLogvarCv"
@@ -481,7 +487,7 @@ test_that("an IOV fit says in $runInfo which scale its priors were on (#16)", {
     )
   ))
   expect_true(any(grepl(
-    "IOV magnitudes (iov.cl) are sampled, given their priors and reported on the sd scale",
+    "IOV magnitudes (iov.cl) are on the sd scale",
     .fit$runInfo,
     fixed = TRUE
   )))

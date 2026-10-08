@@ -276,11 +276,11 @@
   paste0(
     "IOV magnitudes (",
     paste(iniDf$name[.w], collapse = ", "),
-    ") are sampled, given their priors and reported on the ",
+    ") are on the ",
     paste(.xform, collapse = "/"),
     " scale (iovXform=",
     paste0("\"", .xform, "\"", collapse = "/"),
-    "), not as the variance ini() declares"
+    ") in their priors, the Stan program and the fit's estimates, not the variance ini() declares"
   )
 }
 
