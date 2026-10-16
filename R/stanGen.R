@@ -115,6 +115,7 @@
   # ---- parameters: free thetas -------------------------------------------
   .decl <- character(0)
   .mixProbNames <- map$theta$name[stats::na.omit(map$mixProbIdx)]
+  .iovMag <- .stanIovMagnitude(ui$iniDf)
   for (.i in seq_len(nrow(.free))) {
     .r <- .free[.i, ]
     .con <- .stanConstraint(.r$lower, .r$upper)
@@ -130,14 +131,14 @@
       # c(0.1, 0.3, 0.6)) survives, an unbounded one becomes (0,1)
       .con <- .stanConstraint(max(.r$lower, 0), min(.r$upper, 1))
     }
-    .decl <- c(.decl, paste0("  real", .con, " ", .r$par, ";"))
+    .decl <- c(.decl, paste0("  real", .con, " ", .r$par, ";", .stanIovDeclComment(.r$name, .iovMag)))
   }
   # IOV magnitude thetas ARE occasion standard deviations (nlmixr2est's IOV
   # rewrite, see R/stanIov.R); one without a declared prior gets the same
   # default half-Cauchy an ordinary omega diagonal SD gets, rather than being
   # left flat -- the rewrite must not change which prior a random effect ends
   # up with
-  .iovDefault <- setdiff(intersect(.stanIovMagnitude(ui$iniDf), .free$name), pri$pop$name)
+  .iovDefault <- setdiff(intersect(.iovMag, .free$name), pri$pop$name)
   # flat thetas: allowed, but say so loudly
   .flat <- setdiff(.free$name, c(pri$pop$name, .iovDefault, unlist(strsplit(stats::na.omit(pri$pop$members), ","))))
   if (length(.flat) > 0L) {
@@ -333,7 +334,7 @@
   }
   .iovDef <- .stanIovDefaultPriors(.iovDefault, .free, ctl)
   .thPrior <- c(.thPrior, .iovDef$statements)
-  .notes <- c(.notes, .iovDef$notes)
+  .notes <- c(.notes, .iovDef$notes, .stanIovScaleNote(ui$iniDf))
   # ---- estimated transform-both-sides lambda: DV-transform Jacobian ------
   # The linked conditional evaluates the TRANSFORMED-scale density and omits
   # the Jacobian sum(log |dh(y; lambda)/dy|).  For Box-Cox/Yeo-Johnson that

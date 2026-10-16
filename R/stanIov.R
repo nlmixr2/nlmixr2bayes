@@ -247,3 +247,49 @@
 .stanUiPriors <- function(ui) {
   .stanIovRepairPriors(ui$iniDf, rxode2::rxUiPriors(ui))
 }
+
+#' The note saying which scale an IOV magnitude is sampled and reported on
+#'
+#' `iov.x ~ v | OCC` declares a VARIANCE in `ini()`, but the rewrite samples
+#' the magnitude theta on the `iovXform` scale (the sd, by default), and both
+#' a declared `prior(iov.x)` and everything an est="stan" fit reports
+#' (`$theta`, `parFixed`, `$posteriorSummary`) are on that scale too --
+#' nlmixr2est's `.uiFinalizeIov()`, which turns the magnitude back into a
+#' variance, is a post-final-object hook only nlmixr2est's own methods run.
+#' Nothing else in the output says so, so the generator notes it, the
+#' generated program comments it, and the fit carries it in `$runInfo`
+#' (issue #16).  The scale is read from the `backTransform` the rewrite
+#' recorded rather than assumed.
+#'
+#' @param iniDf the REWRITTEN ui's `iniDf`
+#' @return the note, or `character(0)` without IOV
+#' @noRd
+.stanIovScaleNote <- function(iniDf) {
+  if (!is.data.frame(iniDf) || !("backTransform" %in% names(iniDf))) {
+    return(character(0))
+  }
+  .w <- which(!is.na(iniDf$ntheta) & !is.na(iniDf$backTransform) & grepl(.stanIovBackTransform, iniDf$backTransform))
+  if (length(.w) == 0L) {
+    return(character(0))
+  }
+  .xform <- unique(tolower(sub(.stanIovBackTransform, "\\1", iniDf$backTransform[.w])))
+  paste0(
+    "IOV magnitudes (",
+    paste(iniDf$name[.w], collapse = ", "),
+    ") are on the ",
+    paste(.xform, collapse = "/"),
+    " scale (iovXform=",
+    paste0("\"", .xform, "\"", collapse = "/"),
+    ") in their priors, the Stan program and the fit's estimates, not the variance ini() declares"
+  )
+}
+
+#' Trailing Stan comment for a free theta's declaration: names the scale of
+#' an IOV magnitude (see [.stanIovScaleNote()]), empty for anything else
+#' @noRd
+.stanIovDeclComment <- function(name, mag) {
+  if (!(name %in% mag)) {
+    return("")
+  }
+  paste0("  // occasion sd of '", name, "' (iovXform=\"sd\"); ini() declares the variance")
+}
