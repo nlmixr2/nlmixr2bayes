@@ -42,8 +42,8 @@ jobs:
           # signal" or, when the runner is lost outright, as a failure with no
           # log and no artifact at all -- i.e. no signal whatsoever, which is
           # strictly worse than a deliberately narrowed subset.
-          - {os: macos-latest,   r: 'release', cranTests: true}
-          - {os: windows-latest, r: 'release', cranTests: true}
+          - {os: macos-latest,   r: 'release', cranTests: true, platformCompile: true}
+          - {os: windows-latest, r: 'release', cranTests: true, platformCompile: true}
           - {os: ubuntu-latest,  r: 'devel', http-user-agent: 'release', cranTests: true}
           - {os: ubuntu-latest,  r: 'oldrel-1', cranTests: true}
           # The full subset is SHARDED across four jobs.  One job is a lottery:
@@ -64,6 +64,10 @@ jobs:
       # The hand-coded .stan bridge tests (skipUnlessStan() in
       # tests/testthat/helper-rxstan.R) only run where it is set.
       RXSTAN_STAN_TESTS: ${{ matrix.config.stanTests && '1' || '' }}
+      # tests/testthat/test-platform-compile.R: one real Stan compile per
+      # subsystem, so macOS/Windows prove Stan compiles and links there too
+      # (the CRAN-only subset otherwise skips every compiling test).
+      NLMIXR2BAYES_TEST_PLATFORM_COMPILE: ${{ matrix.config.platformCompile && 'true' || 'false' }}
 
     steps:
       - name: Install deps on MacOS

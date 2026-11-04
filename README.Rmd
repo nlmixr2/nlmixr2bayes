@@ -319,7 +319,10 @@ density -- the check to re-run whenever the solver tolerances are loosened:
 rbind(truth = truth,
       posterior = colMeans(as.matrix(fit2, pars = c("lka", "lcl", "lv"))))
 
-rxsCheckGradient(fit2, c(lka = 0.1, lcl = 1.4, lv = 3.4, sigma = 0.2))
+# the cached fit2 keeps its draws but not the compiled model, so check the
+# gradient against a zero-chain sampling() of the live one
+rxsCheckGradient(rstan::sampling(sm, data = standata, chains = 0),
+                 c(lka = 0.1, lcl = 1.4, lv = 3.4, sigma = 0.2))
 ```
 
 ```{r rxstanRelease, include = FALSE}

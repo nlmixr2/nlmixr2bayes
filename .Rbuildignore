@@ -19,3 +19,9 @@
 ^CRAN-SUBMISSION$
 ^revdep$
 ^CLAUDE\.md$
+^README\.html$
+^inst/cache/readme-
+^\.claude$
+^vignettes/.*\.Rmd\.orig$
+^vignettes/cacheSetup\.R$
+^inst/cache$

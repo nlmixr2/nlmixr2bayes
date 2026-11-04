@@ -157,12 +157,6 @@ one.cmt <- function() {
 fit := nlmixr2est::nlmixr2(one.cmt, theo_sd, est = "nuts",
                            control = nutsControl(seed = 42, chains = 2,
                                                  iter = 1000))
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
 ```
 
 (`:=` is nlmixr2save’s caching assignment – it runs the fit once, caches
@@ -177,7 +171,8 @@ table:
 
 ``` r
 print(fit)
-#> ── nlmixr² Stan (HMC) (2 chains x 500 draws; max Rhat 1.004; min ESS 358; Wald CI from posterior cov) ──
+#> ── nlmixr² Stan (HMC) (2 chains x 500 draws; max Rhat 1.004; min ESS 358; Wald
+#> CI from posterior cov) ──
 #> 
 #>                                  OBJF      AIC      BIC Log-likelihood
 #> FOCEi                       127.77345 384.3732 404.5528      -185.1866
@@ -219,7 +214,7 @@ print(fit)
 #> 3 1      0.57  6.57  5.90  0.670  6.78 -0.208 -0.294 0.0875 -0.491 -0.0768  119.
 #> # ℹ 129 more rows
 #> # ℹ 6 more variables: central <dbl>, ka <dbl>, cl <dbl>, v <dbl>, tad <dbl>,
-#> #   dosenum <dbl>
+#> #   dosenum <int>
 ```
 
 On top of the usual fit contents it carries `$stanfit`,
@@ -680,7 +675,10 @@ rbind(truth = truth,
 #> truth     0.09531018 1.386294 3.401197
 #> posterior 0.14477675 1.253490 3.364142
 
-rxsCheckGradient(fit2, c(lka = 0.1, lcl = 1.4, lv = 3.4, sigma = 0.2))
+# the cached fit2 keeps its draws but not the compiled model, so check the
+# gradient against a zero-chain sampling() of the live one
+rxsCheckGradient(rstan::sampling(sm, data = standata, chains = 0),
+                 c(lka = 0.1, lcl = 1.4, lv = 3.4, sigma = 0.2))
 #>   par     analytic      numeric      relDiff
 #> 1   1  -0.07123147  -0.07123147 2.180990e-10
 #> 2   2  -1.40451837  -1.40451837 7.261012e-10

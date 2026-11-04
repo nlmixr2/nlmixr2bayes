@@ -129,6 +129,39 @@ test_that("fixed seed: bitwise-identical draws within a session (G9)", {
   expect_identical(.run(), .run())
 })
 
+test_that("compile cache: a saved model is reused only if its compiled module loads", {
+  skip_if_not_installed("rstan")
+  skip_on_cran()
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.g7Mod, .linkData(), est = "stan", control = stanControl(run = FALSE))
+  )
+  .dir <- file.path(tempdir(), "nlmixr2bayes-usable-test")
+  unlink(.dir, recursive = TRUE)
+  on.exit(unlink(.dir, recursive = TRUE), add = TRUE)
+  # forget the in-session memo, or an earlier test's compile of this same
+  # program answers before anything is written to .dir (see the G9d test)
+  rm(list = ls(.stanCompileEnv), envir = .stanCompileEnv)
+  suppressMessages(stanCompile(.code$code, cacheDir = .dir))
+  .rds <- list.files(.dir, pattern = "^stanmodel-.*rds$", full.names = TRUE)
+  expect_length(.rds, 1L)
+  # read back, as a later session would: the external module pointer is dead,
+  # but the embedded DSO bytes rstan reloads from are there
+  .m <- readRDS(.rds)
+  expect_true(.stanModelUsable(.m))
+  # what .stanTrimStanfit() does to a saved fit's model: bytes gone
+  .trim <- .m
+  .trim@dso@.CXXDSOMISC <- new.env(parent = emptyenv())
+  .trim@dso@dso_saved <- FALSE
+  expect_false(.stanModelUsable(.trim))
+  expect_false(.stanModelUsable(NULL))
+  expect_false(.stanModelUsable(list()))
+  # an unusable entry on disk is recompiled, not handed back
+  saveRDS(.trim, .rds)
+  rm(list = ls(.stanCompileEnv), envir = .stanCompileEnv)
+  expect_message(.m2 <- stanCompile(.code$code, cacheDir = .dir), "compiling Stan model")
+  expect_true(.stanModelUsable(.m2))
+})
+
 test_that("compile cache: content-keyed hit; code-changing knobs re-key (G9d)", {
   skip_if_not_installed("rstan")
   skip_on_cran()

@@ -39,8 +39,9 @@ jobs:
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           cache-version: 1
-          # nlmixr2save is what the vignettes' `:=` cache is built on
-          # (vignettes/cacheSetup.R); without it every article would refit.
+          # The vignettes ship precomputed (vignettes/precompute.R knits
+          # *.Rmd.orig -> static *.Rmd), so the articles evaluate no code;
+          # nlmixr2save is kept for the README and local re-knits.
           extra-packages: |
             any::pkgdown
             nlmixr2/n1qn1c
@@ -70,10 +71,9 @@ jobs:
           key: pkgdown-assets-${{ runner.os }}-${{ hashFiles('_pkgdown.yml') }}
           restore-keys: pkgdown-assets-${{ runner.os }}-
 
-      # The articles render from the committed inst/cache fits (nlmixr2save
-      # `:=`), so nothing here resamples -- but a cache miss on a NEW chunk
-      # falls through to a real fit, and that fit's Stan program still has to
-      # compile.  See R-CMD-check.yaml.
+      # The articles are precomputed static markdown, so nothing here compiles
+      # or samples; this cache only matters if a future article evaluates a
+      # chunk that compiles a Stan program.  See R-CMD-check.yaml.
       - name: Cache compiled Stan models
         uses: actions/cache@v4
         with:

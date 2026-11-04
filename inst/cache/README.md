@@ -6,13 +6,15 @@ document runs its code for real and caches the expensive results here with
 rendered pages show live output without re-running an hour of Stan sampling on
 every build.
 
-The cache lives under `inst/`, so it is **installed with the package**: if you
-re-render a vignette from an installed nlmixr2bayes you get these fits back
-instead of refitting.
+This directory is `.Rbuildignore`d and is **not** shipped in the package.  The
+vignettes are precomputed: `vignettes/precompute.R` knits each
+`vignettes/*.Rmd.orig` to the static `vignettes/*.Rmd` that ships, so CRAN never
+compiles or samples anything.  The cache only makes those re-knits (and the
+README render) fast.
 
 - `../../vignettes/cacheSetup.R` points `:=` here (`bayesCache("<prefix>-")`).
-- `../../vignettes/precompute.R` (re)populates this directory by rendering the
-  documents:
+- `../../vignettes/precompute.R` (re)populates this directory while knitting the
+  vignettes and rendering the README:
 
   ```sh
   Rscript vignettes/precompute.R           # fit only what is missing

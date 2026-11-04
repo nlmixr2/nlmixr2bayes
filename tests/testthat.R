@@ -26,6 +26,9 @@ library(nlmixr2bayes)
 # .github/workflows/slow-tests.yaml) are RXSTAN_STAN_TESTS (the hand-coded
 # .stan compile suite, via skipUnlessStan() in helper-rxstan.R) and
 # NLMIXR2STAN_SLOW (G5 simulation-based calibration, G6 FOCEi agreement).
+# NLMIXR2BAYES_TEST_PLATFORM_COMPILE (set by the macOS/Windows jobs) opts
+# test-platform-compile.R back in under the CRAN-only subset: one real Stan
+# compile per subsystem, so those platforms prove Stan builds there at all.
 # -------------------------------------------------------------------------
 if (isTRUE(as.logical(Sys.getenv("NLMIXR2BAYES_TEST_CRAN_ONLY", "false")))) {
   Sys.setenv("NOT_CRAN" = "false") # nolint
