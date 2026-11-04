@@ -1,0 +1,54 @@
+# Compare a Stan model's gradient against finite differences of its log density
+
+The core correctness check for the bridge: if rxode2's analytic
+sensitivities are wired onto the tape correctly, \`grad_log_prob()\` and
+a central difference of \`log_prob()\` agree.
+
+## Usage
+
+``` r
+rxsCheckGradient(fit, upars, h = 1e-05)
+```
+
+## Arguments
+
+- fit:
+
+  a \`stanfit\` (one from \`sampling(..., chains = 0)\` is enough)
+
+- upars:
+
+  unconstrained parameter vector to test at
+
+- h:
+
+  finite-difference step. Differencing a solve amplifies solver noise by
+  \`1/h\`, so very small steps make the check worse, not better.
+
+## Value
+
+a data frame with the analytic gradient, the numeric gradient and their
+relative difference
+
+## Details
+
+It is also the only guard against a subtler failure. The value and the
+gradient come from two \*different\* integrations – the state equations
+and the sensitivity equations – so they agree only as far as the solver
+tolerances make them. Stan's own ODE solvers differentiate the actual
+numerical trajectory, so there value and gradient are consistent by
+construction even when both are inaccurate; here they are not. An
+inconsistency acts like a non-conservative force in the leapfrog
+integrator: the Hamiltonian drifts, acceptance falls and the posterior
+can be biased with nothing visibly wrong. This function catches exactly
+that, because \`log_prob()\` walks the value path and
+\`grad_log_prob()\` the sensitivity one.
+
+So re-run it whenever \`atol\`/\`rtol\` are loosened from the
+\[rxsRegister()\] defaults, and treat a relative difference much worse
+than about \`1e-6\` as a reason to tighten them again rather than as
+noise.
+
+## Author
+
+Lukas A. Widmer

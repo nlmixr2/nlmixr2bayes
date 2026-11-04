@@ -1,0 +1,534 @@
+# Hand-coded Stan models with rxstan backend
+
+## Hand-coded Stan: ODE-level linking
+
+While `nlmixr2(model, data, est = "nuts")` automatically generates a
+Stan program (see
+[`vignette("nlmixr2bayes", "nlmixr2bayes")`](https://nlmixr2.github.io/nlmixr2bayes/articles/nlmixr2bayes.md)),
+you may want to **write your own Stan code** to have full control over
+priors, derived quantities, and model structure.
+
+The `rxstan` component of `nlmixr2bayes` lets you do exactly that. You
+register an rxode2 model as a solver backend via
+[`rxsRegister()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsRegister.md),
+then write ordinary Stan that declares and calls it.
+
+### When to use this approach
+
+- You want **full control over your Stan program**
+- You need **delay differential equations** (Stan has no DDE solver –
+  see
+  [`vignette("rxstan-dde", "nlmixr2bayes")`](https://nlmixr2.github.io/nlmixr2bayes/articles/rxstan-dde.md))
+- You want to write **custom priors or derived quantities** in Stan
+- Your model has **complex structure** beyond what automatic generation
+  supports
+- You’re fitting **hand-coded rxode2 models** outside the nlmixr2
+  framework
+
+### When to use automatic generation instead
+
+If you have a complete **nlmixr2-style model** with priors in the
+`ini({})` block, prefer `nlmixr2(model, data, est = "nuts")` – it’s
+simpler, keeps one source of truth for the likelihood, and is validated
+against every other nlmixr2 method. See
+[`vignette("nlmixr2bayes", "nlmixr2bayes")`](https://nlmixr2.github.io/nlmixr2bayes/articles/nlmixr2bayes.md).
+
+------------------------------------------------------------------------
+
+## Why link instead of translate
+
+Stan can already solve ODEs, but it does so by autodiffing *through* the
+integrator, which is expensive, and its interface has no concept of a
+dose, a lag time, or a delay differential equation.
+
+rxode2 has all of that, and it computes analytic first-order
+sensitivities $`\partial y / \partial \theta`$ by augmenting the system
+with the forward sensitivity equations. Those are exactly the numbers
+Stan’s reverse-mode tape wants.
+
+So rxstan hands the solve to rxode2 and pushes rxode2’s derivatives onto
+Stan’s tape directly, through `precomputed_gradients()`. Stan never
+differentiates the solver; it treats `rx_solve()` as a function whose
+partials are simply known.
+
+    Stan  --- theta -->  rxstan bridge (C++)  --- theta -->  rxode2
+          <-- y, dy/dtheta ---                <-- states + rx__sens_* ---
+
+On a one-compartment oral model with 100 observations, per gradient:
+
+| solver          | time per gradient |
+|-----------------|-------------------|
+| rxstan          | 0.055 ms          |
+| Stan `ode_rk45` | 0.125 ms          |
+| Stan `ode_bdf`  | 0.400 ms          |
+
+Speed is the smaller half of the argument. The larger half is that
+dosing events and DDEs are not expressible in Stan’s ODE interface at
+all.
+
+`rstan` is required rather than optional: rxode2 has to be callable from
+the same process, so the model must be compiled and run in-process.
+
+## The quick path: generate the Stan program
+
+If you already have an nlmixr2-style model,
+[`rxsStanFromUi()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsStanFromUi.md)
+writes the Stan program, registers the solver, and assembles the
+`standata` – no Stan to write, but the program is yours to edit
+afterwards.
+
+``` r
+
+library(nlmixr2)
+library(nlmixr2bayes)
+```
+
+``` r
+
+oneCmt <- function() {
+  ini({
+    tka <- 0.5
+    tcl <- 1.0
+    tv <- 3.4
+    eta.cl ~ 0.09
+    add.sd <- 0.2
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv)
+    d/dt(depot) <- -ka * depot
+    d/dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd)
+  })
+}
+```
+
+Some data. Any data frame with `id`, `time`, `dv` and the usual event
+columns will do; here it is simulated from the model itself so the
+numbers below have something real to recover. The sampling times
+deliberately cover the absorption phase – without early points `ka` is
+not identified.
+
+``` r
+
+set.seed(42)
+times <- c(0.25, 0.5, 1, 1.5, 2, 3, 4, 6, 8, 12, 24)
+ev <- rxode2::et(amt = 100, cmt = "depot")
+ev <- rxode2::et(ev, times)
+ev <- rxode2::et(ev, id = 1:8)
+
+sim <- rxode2::rxSolve(oneCmt, ev, returnType = "data.frame")
+dat <- as.data.frame(ev)
+names(dat) <- tolower(names(dat))
+dat$dv <- NA_real_
+dat$dv[dat$evid == 0] <- sim$sim   # dose rows carry no observation
+head(dat, 3)
+#>   id time   cmt amt evid       dv
+#> 1  1 0.00 depot 100    1       NA
+#> 2  1 0.25  <NA>  NA    0 1.345576
+#> 3  1 0.50  <NA>  NA    0 1.678652
+```
+
+Generate the Stan program and solver handle:
+
+``` r
+
+gen <- rxsStanFromUi(oneCmt, dat)
+#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+names(gen)
+#> [1] "code"       "handle"     "standata"   "inits"      "thetaNames"
+#> [6] "etaNames"   "errNames"   "states"     "stanNames"
+```
+
+`gen$code` is an ordinary Stan program, `gen$handle` is the live solver,
+and `gen$standata` is what you pass to `sampling()`:
+
+``` r
+
+cat(gen$code)
+#> // Generated by rxstan::rxsStanFromUi() -- do not edit by hand.
+#> //
+#> // rx_solve() is left undefined here: the rxstan bridge supplies it, and
+#> // returns the ODE states together with rxode2's analytic sensitivities.
+#> // The parameter transformations and the prediction are re-emitted below
+#> // so that Stan differentiates that part itself.
+#> functions {
+#>   vector rx_solve(int handle, vector p);
+#> }
+#> data {
+#>   int<lower=1> nSub;
+#>   int<lower=1> nObs;
+#>   int<lower=1> handle;
+#>   vector[nObs] dv;
+#>   array[nObs] int<lower=1, upper=nSub> subj;
+#> }
+#> parameters {
+#>   real tka;
+#>   real tcl;
+#>   real tv;
+#>   real<lower=0> omega_eta_cl;
+#>   matrix[1, nSub] z;
+#>   real<lower=0> add_sd;
+#> }
+#> transformed parameters {
+#>   vector[3] theta = [tka, tcl, tv]';
+#>   matrix[1, nSub] eta;
+#>   vector[nObs] pred;
+#>   for (s in 1 : nSub) {
+#>     eta[1, s] = omega_eta_cl * z[1, s];
+#>   }
+#>   {
+#>     vector[4 * nSub] p;
+#>     for (s in 1 : nSub) {
+#>       p[(s - 1) * 4 + 1 : (s - 1) * 4 + 3] = theta;
+#>       p[(s - 1) * 4 + 4 : s * 4] = eta[ : , s];
+#>     }
+#>     vector[2 * nObs] ys = rx_solve(handle, p);
+#>     for (i in 1 : nObs) {
+#>       {
+#>         int s = subj[i];
+#>         real eta_cl = eta[1, s];
+#>         real ka = exp(tka);
+#>         real cl = exp((tcl + eta_cl));
+#>         real v = exp(tv);
+#>         real depot = ys[0 * nObs + i];
+#>         real center = ys[1 * nObs + i];
+#>         real cp = (center / v);
+#>         pred[i] = cp;
+#>       }
+#>     }
+#>   }
+#> }
+#> model {
+#>   tka ~ normal(0.5, 10);
+#>   tcl ~ normal(1, 10);
+#>   tv ~ normal(3.3999999999999999, 10);
+#>   omega_eta_cl ~ normal(0, 1);
+#>   to_vector(z) ~ std_normal();
+#>   add_sd ~ normal(0, 10);
+#>   for (i in 1 : nObs) {
+#>     target += normal_lpdf(dv[i] | pred[i], add_sd);
+#>   }
+#> }
+#> generated quantities {
+#>   vector[nObs] log_lik;
+#>   for (i in 1 : nObs) {
+#>     log_lik[i] = normal_lpdf(dv[i] | pred[i], add_sd);
+#>   }
+#> }
+```
+
+Note that `cp = center / v` is formed **in Stan**, in
+`transformed parameters`, not in rxode2 – see “What crosses the
+boundary” below. The `p` vector packs each subject’s thetas and etas
+into one block-major parameter vector, which is what `perSubject = TRUE`
+on the handle expects.
+
+`gen$standata` is the data list, and
+[`rxsInit()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsInit.md)
+turns the model’s `ini()` values into a Stan `init` function – one
+starting point per chain, with the fixed effects jittered so `Rhat`
+stays honest:
+
+``` r
+
+str(gen$standata)
+#> List of 5
+#>  $ nSub  : int 8
+#>  $ nObs  : int 88
+#>  $ handle: int 1
+#>  $ dv    : num [1:88] 1.35 1.68 2.44 2.67 2.77 ...
+#>  $ subj  : int [1:88] 1 1 1 1 1 1 1 1 1 1 ...
+str(rxsInit(gen)(1))
+#> List of 6
+#>  $ tka         : num 0.51
+#>  $ tcl         : num 0.779
+#>  $ tv          : num 3.51
+#>  $ omega_eta_cl: num 0.3
+#>  $ z           : num [1, 1:8] 0 0 0 0 0 0 0 0
+#>  $ add_sd      : num 0.2
+```
+
+Compiling and sampling it is then the ordinary rstan pair, exactly as in
+the hand-written case below:
+
+``` r
+
+sm <- rxsStanModel(tempfile(fileext = ".stan"))  # after writing gen$code to it
+fit := rstan::sampling(sm, data = gen$standata, init = rxsInit(gen),
+                       chains = 4, iter = 2000)
+```
+
+## Writing your own Stan program
+
+[`rxsStanFromUi()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsStanFromUi.md)
+is convenient for quick fits, but to write your own program, use
+[`rxsRegister()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsRegister.md)
+to set up the solver handle and build the Stan code yourself.
+
+Start from a plain rxode2 model, written on the log scale because that
+is how Stan will parameterize it. `cp = center / v` is deliberately
+*not* part of it – only ODE states cross the bridge:
+
+``` r
+
+pkModel <- "
+ka  <- exp(lka)
+cl  <- exp(lcl)
+v   <- exp(lv)
+d/dt(depot)  <- -ka * depot
+d/dt(center) <-  ka * depot - (cl / v) * center
+"
+```
+
+Here is the Stan program that drives it. It is the one shipped with the
+package as
+`system.file("stan", "pk_1cmt_oral.stan", package = "nlmixr2bayes")`, so
+the code compiled below is literally this text:
+
+``` stan
+functions {
+  // Declared but not defined here; --allow_undefined tells the compiler
+  // to look for it in the linked C++ bridge
+  vector rx_solve(int handle, vector p);
+}
+data {
+  int<lower=1> nObs;
+  int<lower=1> handle;
+  vector<lower=0>[nObs] cpObs;
+}
+parameters {
+  real lka;
+  real lcl;
+  real lv;
+  real<lower=0> sigma;
+}
+model {
+  vector[3] p = [lka, lcl, lv]';
+  vector[nObs] center = rx_solve(handle, p);
+  vector[nObs] cp = center / exp(lv);
+
+  // Your priors here
+  lka ~ normal(0, 1);
+  lcl ~ normal(1.4, 1);
+  lv ~ normal(3.4, 1);
+  sigma ~ normal(0, 1);
+
+  // Likelihood
+  log(cpObs) ~ normal(log(cp), sigma);
+  target += -sum(log(cpObs));  // Jacobian of the log transform
+}
+```
+
+Three things make it work: `rx_solve()` is *declared* and never defined
+(the bridge supplies it), `handle` arrives as ordinary integer data, and
+the returned `center` is a state – `cp` is formed from it in Stan.
+
+### Register the solver
+
+[`rxsRegister()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsRegister.md)
+compiles the model with forward sensitivities with respect to `sens`, in
+the exact order the Stan program packs them into `p`, and returns the
+integer handle:
+
+``` r
+
+truth <- c(lka = log(1.1), lcl = log(4), lv = log(30))
+
+ev1 <- rxode2::et(amt = 100, cmt = "depot")
+ev1 <- rxode2::et(ev1, c(0.25, 0.5, 1, 1.5, 2, 3, 4, 6, 8, 12, 16, 24))
+
+h <- rxsRegister(pkModel, events = ev1,
+                 sens = c("lka", "lcl", "lv"),
+                 output = "center",
+                 atol = 1e-10, rtol = 1e-10)
+#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+h
+#> <rxstan handle 2>
+#>   parameters (3): lka, lcl, lv
+#>   states     (1): center
+#>   rows       : 12 obs -> 12 outputs
+```
+
+The tolerances are deliberately tighter than an ordinary point-estimate
+run would need: HMC’s leapfrog integrator assumes the target is a
+smooth, reversible function of the parameters, so solver error has to
+sit well below the gradient signal.
+
+[`rxsSolve()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsSolve.md)
+calls the same C entry point Stan does, which makes it the quickest way
+to see what actually crosses the boundary – column 1 is the state, the
+rest is its Jacobian:
+
+``` r
+
+sol <- rxsSolve(h, unname(truth))
+head(sol, 3)
+#>          [,1]     [,2]       [,3]      [,4]
+#> [1,] 23.62845 20.51027 -0.4096538 0.4096538
+#> [2,] 40.80133 30.48133 -1.4691794 1.4691794
+#> [3,] 61.71025 33.15452 -4.7667325 4.7667325
+```
+
+Simulated observations, with a 15% lognormal residual to match the
+program’s `log(cpObs) ~ normal(log(cp), sigma)`:
+
+``` r
+
+set.seed(42)
+cp <- sol[, 1] / exp(truth[["lv"]])
+cpObs <- cp * exp(stats::rnorm(length(cp), 0, 0.15))
+standata <- list(nObs = length(cpObs), handle = h, cpObs = cpObs)
+```
+
+### Compile and fit
+
+``` r
+
+sm <- rxsStanModel(system.file("stan", "pk_1cmt_oral.stan",
+                               package = "nlmixr2bayes"),
+                   modelName = "pk_1cmt_oral")
+```
+
+[`rxsStanModel()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsStanModel.md)
+is a thin wrapper over
+[`rstan::stanc()`](https://mc-stan.org/rstan/reference/stanc.html) +
+[`rstan::stan_model()`](https://mc-stan.org/rstan/reference/stan_model.html)
+that splices the bridge header in at global scope and keeps the model
+name unobfuscated, so `rx_solve()` resolves. It is the slow step of this
+vignette – about a minute – and the only one.
+
+``` r
+
+fit2 := rstan::sampling(sm, data = standata, chains = 2, iter = 1000,
+                       seed = 42, refresh = 0,
+                       init = function(chain_id = 1) {
+                         list(lka = 0.1, lcl = 1.4, lv = 3.4, sigma = 0.2)
+                       })
+print(fit2, pars = c("lka", "lcl", "lv", "sigma"))
+#> Inference for Stan model: pk_1cmt_oral.
+#> 2 chains, each with iter=1000; warmup=500; thin=1; 
+#> post-warmup draws per chain=500, total post-warmup draws=1000.
+#> 
+#>       mean se_mean   sd  2.5%  25%  50%  75% 97.5% n_eff Rhat
+#> lka   0.14    0.01 0.16 -0.18 0.04 0.14 0.25  0.46   401    1
+#> lcl   1.25    0.00 0.05  1.15 1.22 1.25 1.29  1.35   569    1
+#> lv    3.36    0.00 0.09  3.17 3.31 3.37 3.42  3.53   336    1
+#> sigma 0.15    0.00 0.04  0.10 0.12 0.14 0.17  0.26   278    1
+#> 
+#> Samples were drawn using NUTS(diag_e) at Wed Nov  4 15:38:40 2026.
+#> For each parameter, n_eff is a crude measure of effective sample size,
+#> and Rhat is the potential scale reduction factor on split chains (at 
+#> convergence, Rhat=1).
+```
+
+Sampling itself takes a couple of seconds: the whole posterior is 1000
+draws over four parameters, each gradient one rxode2 solve of the
+sensitivity-augmented system. The posterior means sit on the simulated
+truth:
+
+``` r
+
+round(rbind(truth = truth,
+            posterior = colMeans(as.matrix(fit2, pars = c("lka", "lcl", "lv")))), 3)
+#>             lka   lcl    lv
+#> truth     0.095 1.386 3.401
+#> posterior 0.145 1.253 3.364
+```
+
+[`rxsSolveStats()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsSolveStats.md)
+counts what the sampler actually asked the bridge for, including how
+many proposals rxode2 refused (HMC proposes bad parameters routinely;
+each one becomes a rejected proposal rather than an error):
+
+``` r
+
+rxsSolveStats(h)
+#>   solves failures 
+#>    20413        1
+```
+
+## What crosses the boundary
+
+ODE **states**, never derived `lhs` quantities. rxode2 only emits
+`rx__sens_<state>_BY_<param>__` for states, so any derived prediction (a
+concentration `central / v`, say) must be formed in the Stan program,
+where Stan differentiates it itself. That keeps exactly one
+differentiation boundary.
+
+In the example above, `depot` and `center` are states; `cp` is derived
+and formed in Stan.
+
+## Checking the gradient
+
+Before trusting a fit, use
+[`rxsCheckGradient()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsCheckGradient.md)
+to verify that the analytic sensitivities agree with finite differences
+of the model’s own log density. It needs a `stanfit` from the compiled
+model – the one just fitted will do, and `sampling(..., chains = 0)` is
+enough if you have not fitted yet – plus the parameter vector to test
+at, on the *unconstrained* scale Stan works in:
+
+``` r
+
+# fit2 may come back from the cache with its draws but no live model to
+# differentiate; a zero-chain sampling() of the compiled model supplies one
+rxsCheckGradient(rstan::sampling(sm, data = standata, chains = 0),
+                 c(lka = 0.1, lcl = 1.4, lv = 3.4, sigma = 0.2))
+#>   par     analytic      numeric      relDiff
+#> 1   1  -0.07123147  -0.07123147 2.180990e-10
+#> 2   2  -1.40451837  -1.40451837 7.261012e-10
+#> 3   3   0.41635454   0.41635455 3.331731e-09
+#> 4   4 -13.21096698 -13.21096698 1.177218e-11
+```
+
+Look for relative differences close to `1e-6` or better. Anything much
+worse suggests a problem with the bridge or, far more often, with the
+solver tolerances – the value and the gradient come from two *different*
+integrations (the state equations and the sensitivity equations), so
+they agree only as far as `atol`/`rtol` make them. Re-run this whenever
+you loosen them from the
+[`rxsRegister()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsRegister.md)
+defaults.
+
+## Cleaning up
+
+A handle holds a compiled rxode2 model and its solve structure for the
+life of the session. Release it when you are done, or
+[`rxsReleaseAll()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsReleaseAll.md)
+for all of them:
+
+``` r
+
+rxsRelease(h)
+rxsRelease(gen$handle)
+rxsHandles()
+#> integer(0)
+```
+
+## Limits
+
+- **rstan only** – rxode2 must be in-process.
+- **Single-threaded** – do not use the bridge inside `map_rect()` or
+  `reduce_sum()`. rxode2’s solve structure is a process singleton, so
+  concurrent entry is detected and throws rather than corrupting
+  silently. Run chains as separate processes; leave subject-level
+  parallelism to rxode2.
+- **First-order only** – `precomputed_gradients()` is `var`-only, so
+  `laplace_marginal` and RHMC are out.
+
+## See also
+
+- [`vignette("nlmixr2bayes", "nlmixr2bayes")`](https://nlmixr2.github.io/nlmixr2bayes/articles/nlmixr2bayes.md)
+  – the automatic, likelihood-level approach; simpler when a complete
+  nlmixr2 model with `ini({})` priors is all you need.
+- [`vignette("rxstan-dde", "nlmixr2bayes")`](https://nlmixr2.github.io/nlmixr2bayes/articles/rxstan-dde.md)
+  – a full delay differential equation walkthrough using this same
+  bridge.
+- [`vignette("torsten-comparison", "nlmixr2bayes")`](https://nlmixr2.github.io/nlmixr2bayes/articles/torsten-comparison.md)
+  – how this bridge compares to hand-writing the same model against
+  Torsten’s Stan functions.

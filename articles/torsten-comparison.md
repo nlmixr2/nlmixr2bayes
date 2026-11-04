@@ -1,0 +1,552 @@
+# nlmixr2bayes and Torsten
+
+[Torsten](https://github.com/metrumresearchgroup/Torsten) (Metrum
+Research Group) and nlmixr2bayes both bring Stan’s NUTS sampler to
+pharmacometric models, from opposite directions:
+
+- **Torsten** is a *library of Stan functions* (`pmx_solve_onecpt`,
+  `pmx_solve_twocpt`, `pmx_solve_linode`, `pmx_solve_rk45/bdf/adams`,
+  coupled PK-forced-PD solvers) with NONMEM-convention event handling
+  (AMT/EVID/CMT/RATE/ADDL/II/SS). You write the full Stan program by
+  hand: data block, parameter transforms, the eta hierarchy, the
+  residual model, generated quantities. Total control, and total
+  responsibility.
+
+- **nlmixr2bayes** is a *full nlmixr2 estimation method*: the model is
+  the same `ini({})`/`model({})` function every other nlmixr2 method
+  fits, the Stan program is generated, and Stan is **linked** to the
+  compiled rxode2/nlmixr2est likelihood (with analytic gradients) rather
+  than the model being re-expressed in Stan’s language. The fit comes
+  back as a standard `nlmixr2FitData` with GOF tables, plus the full
+  `stanfit`. For programs you write yourself, the same package also
+  ships the **rxstan** bridge
+  ([`vignette("rxstan-handcoded", "nlmixr2bayes")`](https://nlmixr2.github.io/nlmixr2bayes/articles/rxstan-handcoded.md)):
+  Torsten-style hand-written Stan, but with rxode2 as the solver instead
+  of Stan’s own `ode_*` functions or Torsten’s `pmx_solve_*`.
+
+The practical consequence: a Torsten model is ~100-200 lines of Stan;
+the same model in nlmixr2bayes is the ~20-line nlmixr2 function you may
+already have from a FOCEi/SAEM run, and the posterior is sampled against
+the *identical* likelihood code those methods used.
+
+## Capability comparison
+
+| capability | Torsten | nlmixr2bayes |
+|----|----|----|
+| 1/2-cmt analytic models | `pmx_solve_onecpt/twocpt` | `linCmt()` (1/2/3-cmt + absorption) |
+| general linear ODE | matrix exponential (`pmx_solve_linode`) | rxode2 solvers |
+| general (stiff) ODE | `pmx_solve_rk45/bdf/adams` | rxode2 (lsoda/liblsoda/dop853, …) |
+| delay differential equations | – | rxode2 `delay()` / `past()`, through both the automatic `est="stan"` path and the rxstan hand-coded bridge |
+| NONMEM-convention events (AMT/EVID/ADDL/SS/RATE) | yes | yes (rxode2 event table) |
+| estimated `alag`/`f`/`dur`/`rate` | parameters of the solve (Torsten notes an open adjoint issue at `tlag = 0`) | yes; jump-condition sensitivities, FD-verified |
+| residual models | hand-written (anything Stan can express) | nlmixr2 catalog (add/prop/combined, lnorm, …), censoring M2/M3/M4, user `ll()` |
+| eta structure | hand-written (any structure, incl. IOV by hand) | lotri blocks; non-centered or centered; fixed-variance etas (constant Cholesky factor); first-class IOV (`iov.x ~ v \| OCC` through nlmixr2est’s iov hook: per-occasion fixed unit-variance etas scaled by an estimated magnitude theta, FD-verified) |
+| finite mixtures | hand-written | `mix()` (2 components): log-sum-exp marginalization, membership posteriors in `fit$env$mixProb` |
+| priors | any Stan distribution, hand-written | the 39-distribution lotri catalog via `prior()` in `ini({})`, LKJ/inv-Wishart on omega |
+| single-subject (no etas) | yes | yes (“tier 0”: the nlm path’s likelihood + analytic theta gradients, one external scalar `nlmixr2_pop_ll(theta)`) |
+| gradients | Stan autodiff through the solvers | analytic forward sensitivities via `precomputed_gradients` |
+| within-chain parallelism | MPI (`map_rect`-style population solvers) | subject-parallel OpenMP inside each likelihood evaluation (`cores`) |
+| interface | cmdstan / cmdstanr | rstan, `nlmixr2(..., est = "stan")` |
+| output | cmdstan CSV; roll your own diagnostics/GOF | `nlmixr2FitData` (IPRED/CWRES tables, `$objDf` with FOCEi/WAIC/LOO rows) + the `stanfit` |
+| model reuse across estimation methods | Stan-only | the same function fits with focei/saem/bobyqa/… |
+
+Where Torsten is the right tool: hand-tuned Stan programs, structures
+outside the nlmixr2 ui (e.g. exotic hierarchies), and cmdstan-ecosystem
+workflows. Where nlmixr2bayes is the right tool: standard population
+PK/PD where the model already exists in nlmixr2 form, and the Bayesian
+run should be comparable line-for-line with the frequentist ones.
+
+There is also a middle ground: an **rxode2 sensitivity linkage** for
+hand-written Stan programs (the rxstan bridge covered in
+[`vignette("rxstan-handcoded", "nlmixr2bayes")`](https://nlmixr2.github.io/nlmixr2bayes/articles/rxstan-handcoded.md))
+– write your own Stan code (any hierarchy, any prior structure) while
+the ODE system, dosing events, and their analytic sensitivities come
+from a compiled rxode2 model (including event-time “jump” sensitivities
+and delay differential equations, which no Stan-native solver provides).
+It shares the same no-Stan-code-in-the-linked-`.so` architecture as the
+automatic path, just at the ODE level instead of the likelihood level.
+
+## How the ports below are checked
+
+Each port is a real nlmixr2 model, and each one is put through
+`est = "stan"` code generation with `run = FALSE` – which builds the
+complete Stan program and its data list without touching the sampler –
+and the result is handed to
+[`rstan::stanc()`](https://mc-stan.org/rstan/reference/stanc.html). A
+program that stanc accepts is a program that would have compiled and
+sampled; that is what keeps these ports honest without needing cmdstan
+and Torsten installed. (The same checks run in the package’s own
+`test-torsten-port.R`.)
+
+``` r
+
+library(nlmixr2)
+library(nlmixr2bayes)
+
+## generate the Stan program for a model + data, and assert stanc accepts it
+portCheck <- function(model, data) {
+  code <- nlmixr2est::nlmixr2(model, data, est = "stan",
+                              control = stanControl(run = FALSE))
+  stopifnot(rstan::stanc(model_code = code$code,
+                         allow_undefined = TRUE)$status)
+  code
+}
+```
+
+The datasets below are small synthetic event tables in the NONMEM
+convention, enough to exercise generation. Sampling-level agreement with
+Torsten itself would need cmdstan plus Torsten’s own example data; see
+“A note on completeness” at the end.
+
+## Port: `poppk2cpt` (two-compartment population model)
+
+Torsten’s `example-models/poppk2cpt` is ~150 lines of Stan: NONMEM-style
+arrays in `data`, `pmx_solve_twocpt` per subject, Matt’s trick (Matt
+Hoffman) for the etas, lognormal priors, lognormal residual. The same
+model in nlmixr2bayes:
+
+``` r
+
+poppk2cpt <- function() {
+  ini({
+    lcl <- log(10)
+    lq <- log(15)
+    lv1 <- log(35)
+    lv2 <- log(105)
+    lka <- log(2.5)
+    # Torsten's lognormal priors on the natural scale are normal priors on
+    # the log-scale parameters
+    prior(lcl) ~ dnorm(log(10), 0.25)
+    prior(lq) ~ dnorm(log(15), 0.5)
+    prior(lv1) ~ dnorm(log(35), 0.25)
+    prior(lv2) ~ dnorm(log(105), 0.5)
+    prior(lka) ~ dnorm(log(2.5), 1)
+    lnorm.sd <- c(0, 0.2)
+    prior(lnorm.sd) ~ dcauchy(0, 1)
+    # IIV block; the default omega prior is announced as
+    # lkj_corr_cholesky(2) + half-Cauchy SDs -- the same shape Torsten's
+    # examples hand-code
+    eta.cl + eta.q + eta.v1 + eta.v2 + eta.ka ~
+      c(0.06,
+        0.01, 0.06,
+        0.01, 0.01, 0.06,
+        0.01, 0.01, 0.01, 0.06,
+        0.01, 0.01, 0.01, 0.01, 0.06)
+  })
+  model({
+    cl <- exp(lcl + eta.cl)
+    q <- exp(lq + eta.q)
+    v <- exp(lv1 + eta.v1)    # central volume (Torsten's V1)
+    vp <- exp(lv2 + eta.v2)   # peripheral volume (Torsten's V2)
+    ka <- exp(lka + eta.ka)
+    # pmx_solve_twocpt's analytic solution == linCmt() with these params
+    cp <- linCmt()
+    # logCObs ~ normal(log(cHat), sigma) == a lognormal residual
+    cp ~ lnorm(lnorm.sd)
+  })
+}
+```
+
+The event table is the same NONMEM-convention data both tools consume –
+no `iObs`/`start`/`end` index bookkeeping; rxode2 derives it:
+
+``` r
+
+d <- do.call(rbind, lapply(1:4, function(id) {
+  rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 1000, EVID = 1),
+        data.frame(ID = id, TIME = c(1, 2, 4, 8, 12, 24),
+                   DV = c(20, 25, 18, 10, 6, 2), AMT = 0, EVID = 0))
+}))
+codePop <- portCheck(poppk2cpt, d)
+```
+
+A real run is then `nlmixr2(poppk2cpt, d, est = "nuts")`. The generated
+program is what it would sample; the correlated five-eta block is where
+Torsten’s hand-coded Matt’s trick shows up, emitted rather than written:
+
+``` r
+
+cat(grep("Lcorr|lkj|^\\s*z\\b|eta\\[|matrix", strsplit(codePop$code, "\n")[[1]],
+         value = TRUE), sep = "\n")
+#>   vector nlmixr2_cond_all2(matrix etaMat, vector theta);
+#>   cholesky_factor_corr[5] Lcorr_eta_cl_eta_q_eta_v1_eta_v2_eta_ka;
+#>   matrix[N, 5] z_eta_cl_eta_q_eta_v1_eta_v2_eta_ka;
+#>   matrix[N, 5] eta;
+#>   theta[1] = lcl;
+#>   theta[2] = lq;
+#>   theta[3] = lv1;
+#>   theta[4] = lv2;
+#>   theta[5] = lka;
+#>   theta[6] = lnorm_sd;
+#>   matrix[5,5] L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka = diag_pre_multiply(sd_eta_cl_eta_q_eta_v1_eta_v2_eta_ka, Lcorr_eta_cl_eta_q_eta_v1_eta_v2_eta_ka);
+#>   eta[, 1:5] = z_eta_cl_eta_q_eta_v1_eta_v2_eta_ka * L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka';
+#>   Lcorr_eta_cl_eta_q_eta_v1_eta_v2_eta_ka ~ lkj_corr_cholesky(2);
+#>       matrix[5,5] Od_eta_cl_eta_q_eta_v1_eta_v2_eta_ka = L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka * L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka';
+#>   matrix[5,5] omegaOut = rep_matrix(0, 5,5);
+```
+
+A note on the eta parameterization: nlmixr2bayes’s generated program
+uses **the same Matt’s trick** Torsten’s examples hand-code – by default
+the etas are non-centered, with `z ~ std_normal()` sampled and
+`eta = z * L'` assembled from the omega Cholesky factor in
+`transformed parameters` – it is just emitted for you rather than
+written by hand. `stanControl(etaParam = "centered")` switches to the
+centered form (`eta[i] ~ multi_normal_cholesky(0, L)`); the two are
+verified to target the identical posterior.
+
+``` r
+
+codeCentered <- nlmixr2est::nlmixr2(
+  poppk2cpt, d, est = "stan",
+  control = stanControl(run = FALSE, etaParam = "centered"))
+cat(grep("multi_normal_cholesky|std_normal",
+         strsplit(codeCentered$code, "\n")[[1]], value = TRUE), sep = "\n")
+#>   for (i in 1:N) etaP_eta_cl_eta_q_eta_v1_eta_v2_eta_ka[i] ~ multi_normal_cholesky(rep_vector(0, 5), L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka);
+```
+
+## Port: Friberg-Karlsson neutropenia (population PK/PD, two endpoints)
+
+Torsten’s `FribergKarlsson` example: a two-compartment PK driving the
+classic proliferation/transit/circulation myelosuppression chain, ~200
+lines with a hand-written 8-state ODE function and separate PK/PD
+observation indexing. In nlmixr2 syntax:
+
+``` r
+
+fk <- function() {
+  ini({
+    lcl <- log(10); lq <- log(15); lv1 <- log(35); lv2 <- log(105)
+    lka <- log(2)
+    lmtt <- log(125)
+    lcirc0 <- log(5)
+    lalpha <- log(3e-4)
+    lgamma <- log(0.17)
+    prior(lcl) ~ dnorm(log(10), 0.25)
+    prior(lmtt) ~ dnorm(log(125), 0.25)
+    prior(lcirc0) ~ dnorm(log(5), 0.25)
+    prior(lalpha) ~ dnorm(log(3e-4), 1)
+    prior(lgamma) ~ dnorm(log(0.17), 0.5)
+    lnorm.sd <- c(0, 0.2)
+    lnormNeut.sd <- c(0, 0.3)
+    prior(lnorm.sd) ~ dcauchy(0, 1)
+    prior(lnormNeut.sd) ~ dcauchy(0, 1)
+    eta.cl ~ 0.06
+    eta.mtt ~ 0.04
+    eta.circ0 ~ 0.04
+  })
+  model({
+    cl <- exp(lcl + eta.cl)
+    q <- exp(lq); v1 <- exp(lv1); v2 <- exp(lv2); ka <- exp(lka)
+    mtt <- exp(lmtt + eta.mtt)
+    circ0 <- exp(lcirc0 + eta.circ0)
+    alpha <- exp(lalpha)
+    gamma <- exp(lgamma)
+    k10 <- cl / v1; k12 <- q / v1; k21 <- q / v2
+    ktr <- 4 / mtt
+    d/dt(depot) <- -ka * depot
+    d/dt(cent) <- ka * depot - (k10 + k12) * cent + k21 * peri
+    d/dt(peri) <- k12 * cent - k21 * peri
+    conc <- cent / v1
+    edrug <- alpha * conc
+    d/dt(prol) <- ktr * prol * (1 - edrug) * (circ0 / circ)^gamma - ktr * prol
+    d/dt(tr1) <- ktr * (prol - tr1)
+    d/dt(tr2) <- ktr * (tr1 - tr2)
+    d/dt(tr3) <- ktr * (tr2 - tr3)
+    d/dt(circ) <- ktr * tr3 - ktr * circ
+    prol(0) <- circ0; tr1(0) <- circ0; tr2(0) <- circ0; tr3(0) <- circ0
+    circ(0) <- circ0
+    # two endpoints, distinguished by CMT/DVID in the data -- Torsten does
+    # this with separate iObsPK/iObsPD index arrays
+    conc ~ lnorm(lnorm.sd)
+    circ ~ lnorm(lnormNeut.sd)
+  })
+}
+```
+
+The two endpoints are told apart by `CMT`, and nothing else about the
+data changes:
+
+``` r
+
+dFk <- do.call(rbind, lapply(1:3, function(id) {
+  rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 80, EVID = 1,
+                   CMT = "depot"),
+        data.frame(ID = id, TIME = c(1, 4, 12, 24),
+                   DV = c(1.5, 1.1, 0.5, 0.2), AMT = 0, EVID = 0,
+                   CMT = "conc"),
+        data.frame(ID = id, TIME = c(24, 96, 168, 336),
+                   DV = c(4.9, 3.2, 2.1, 4.4), AMT = 0, EVID = 0,
+                   CMT = "circ"))
+}))
+codeFk <- portCheck(fk, dFk)
+```
+
+Multi-endpoint likelihoods, initial conditions, and the stiff ODE solve
+are all standard rxode2/nlmixr2est machinery; `likInner0` sums the
+per-endpoint terms and the analytic gradients flow through the same
+linkage. None of that shows up in the Stan program, which is the point –
+the whole 8-state system, both residual models and both endpoints reduce
+to one external call:
+
+``` r
+
+cat(grep("nlmixr2_cond_all2|^\\s*(vector|matrix|real|array)",
+         strsplit(codeFk$code, "\n")[[1]], value = TRUE)[1:12], sep = "\n")
+#>   vector nlmixr2_cond_all2(matrix etaMat, vector theta);
+#>   real nlmixr2_iter_tick(vector par, real objf);
+#>   real lcl;
+#>   real lq;
+#>   real lv1;
+#>   real lv2;
+#>   real lka;
+#>   real lmtt;
+#>   real lcirc0;
+#>   real lalpha;
+#>   real lgamma;
+#>   real<lower=0> lnorm_sd;
+```
+
+## Port: `effCpt` (effect-compartment population PK/PD)
+
+Torsten’s `effCpt` example: a two-compartment oral PK linked to an
+effect compartment (`ke0`) driving an Emax response, fit to
+concentration and response observations simultaneously (~250 lines of
+Stan with a hand-built rate matrix and separate PK/PD indexing):
+
+``` r
+
+effCpt <- function() {
+  ini({
+    lcl <- log(10); lq <- log(15); lv1 <- log(35); lv2 <- log(105)
+    lka <- log(2)
+    lke0 <- log(1)
+    lec50 <- log(100)
+    prior(lcl) ~ dnorm(log(10), 0.25)
+    prior(lke0) ~ dnorm(log(1), 0.25)
+    prior(lec50) ~ dnorm(log(100), 0.5)
+    lnorm.sd <- c(0, 0.2)
+    resp.sd <- c(0, 5)
+    prior(lnorm.sd) ~ dcauchy(0, 1)
+    prior(resp.sd) ~ dcauchy(0, 5)
+    eta.cl ~ 0.06
+    eta.v1 ~ 0.06
+    eta.ke0 ~ 0.04
+    eta.ec50 ~ 0.04
+  })
+  model({
+    cl <- exp(lcl + eta.cl)
+    q <- exp(lq)
+    v1 <- exp(lv1 + eta.v1)
+    v2 <- exp(lv2)
+    ka <- exp(lka)
+    ke0 <- exp(lke0 + eta.ke0)
+    ec50 <- exp(lec50 + eta.ec50)
+    k10 <- cl / v1
+    k12 <- q / v1
+    k21 <- q / v2
+    d/dt(depot) <- -ka * depot
+    d/dt(cent) <- ka * depot - (k10 + k12) * cent + k21 * peri
+    d/dt(peri) <- k12 * cent - k21 * peri
+    cp <- 1000 * cent / v1
+    d/dt(ce) <- ke0 * (cp - ce)          # effect compartment
+    resp <- 100 * ce / (ec50 + ce)       # Emax(100) response
+    cp ~ lnorm(lnorm.sd)
+    resp ~ add(resp.sd)
+  })
+}
+
+dEff <- do.call(rbind, lapply(1:3, function(id) {
+  rbind(data.frame(ID = id, TIME = 0, DV = NA_real_, AMT = 100, EVID = 1,
+                   CMT = "depot"),
+        data.frame(ID = id, TIME = c(0.5, 1, 2, 4, 8, 12),
+                   DV = c(15, 22, 24, 18, 12, 8), AMT = 0, EVID = 0,
+                   CMT = "cp"),
+        data.frame(ID = id, TIME = c(1, 2, 4, 8, 12, 24),
+                   DV = c(10, 25, 40, 35, 25, 12), AMT = 0, EVID = 0,
+                   CMT = "resp"))
+}))
+codeEff <- portCheck(effCpt, dEff)
+```
+
+Both endpoints ride the same solve; `likInner0` sums the per-endpoint
+terms, and the analytic gradients flow through the same linkage. Note
+that the two residual models are *different* families (lognormal on
+concentration, additive on response) and both are ordinary `ini({})`
+parameters with their own priors:
+
+``` r
+
+cat(grep("lnorm_sd|resp_sd", strsplit(codeEff$code, "\n")[[1]], value = TRUE),
+    sep = "\n")
+#>   real<lower=0> lnorm_sd;
+#>   real<lower=0> resp_sd;
+#>   theta[8] = lnorm_sd;
+#>   theta[9] = resp_sd;
+#>   lnorm_sd ~ cauchy(0, 1);
+#>   resp_sd ~ cauchy(0, 5);
+```
+
+## IOV
+
+Torsten “supports” IOV the way it supports everything: you write it –
+occasion-level etas declared as extra parameters, constrained by hand to
+share one variance, and added into the occasion’s parameters.
+nlmixr2bayes has first-class syntax for the same structure –
+`iov.x ~ v | occ` declares one shared IOV magnitude across occasions:
+
+``` r
+
+iov <- function() {
+  ini({
+    lcl <- log(10)
+    lv <- log(35)
+    prior(lcl) ~ dnorm(log(10), 0.5)
+    lnorm.sd <- c(0, 0.2)
+    prior(lnorm.sd) ~ dcauchy(0, 1)
+    eta.cl ~ 0.06       # IIV
+    iov.cl ~ 0.02 | OCC # IOV: one shared magnitude across occasions
+  })
+  model({
+    cl <- exp(lcl + eta.cl + iov.cl)
+    v <- exp(lv)
+    cp <- linCmt()
+    cp ~ lnorm(lnorm.sd)
+  })
+}
+
+dIov <- do.call(rbind, lapply(1:4, function(id) {
+  do.call(rbind, lapply(1:2, function(occ) {
+    t0 <- (occ - 1) * 24
+    rbind(data.frame(ID = id, TIME = t0, DV = NA_real_, AMT = 1000, EVID = 1,
+                     OCC = occ),
+          data.frame(ID = id, TIME = t0 + c(1, 2, 4, 8, 12),
+                     DV = c(20, 25, 18, 10, 6), AMT = 0, EVID = 0, OCC = occ))
+  }))
+}))
+codeIov <- portCheck(iov, dIov)
+```
+
+Under the hood, nlmixr2est’s preprocessing hook expands `iov.cl` into
+per-occasion etas with variance **fixed to one**, and a single estimated
+`sd` theta carries the IOV magnitude – the same construction a Torsten
+user would otherwise hand-write (a unit-variance parameter scaled by a
+shared SD), except emitted for you and FD-verified end to end. The
+expansion is visible in the generated parameter block, where the IOV
+magnitude appears as an ordinary theta:
+
+``` r
+
+cat(grep("iov", strsplit(codeIov$code, "\n")[[1]], value = TRUE,
+         ignore.case = TRUE), sep = "\n")
+#>   real<lower=0> iov_cl;
+#>   matrix[N, 1] z_rx_iov_cl_1;
+#>   matrix[N, 1] z_rx_iov_cl_2;
+#>   theta[4] = iov_cl;
+#>   matrix[1,1] L_rx_iov_cl_1 = [[1]];
+#>   eta[, 2:2] = z_rx_iov_cl_1 * L_rx_iov_cl_1';
+#>   matrix[1,1] L_rx_iov_cl_2 = [[1]];
+#>   eta[, 3:3] = z_rx_iov_cl_2 * L_rx_iov_cl_2';
+#>   iov_cl ~ cauchy(0, 0.353553390593275);
+#>   to_vector(z_rx_iov_cl_1) ~ std_normal();
+#>   to_vector(z_rx_iov_cl_2) ~ std_normal();
+#>   omegaOut[2:2, 2:2] = L_rx_iov_cl_1 * L_rx_iov_cl_1';
+#>   omegaOut[3:3, 3:3] = L_rx_iov_cl_2 * L_rx_iov_cl_2';
+```
+
+The linked likelihood never sees anything but ordinary subject-level
+etas: the expansion happens before the Stan program is generated, so no
+upstream likelihood change was needed to support it.
+
+## What does not carry over
+
+- Torsten’s **single-patient** examples (`pk2cpt` and friends) carry
+  over directly: a no-eta model generates a theta-only program with
+  `target += nlmixr2_pop_ll(theta)` (nlmixr2est’s nlm path – the
+  likelihood and analytic theta gradients on the natural scale). The
+  pk2cpt port is the population port above minus the etas, with
+  Torsten’s lognormal priors verbatim:
+
+``` r
+
+pk2cpt <- function() {
+  ini({
+    lcl <- log(10); lq <- log(15); lv1 <- log(35); lv2 <- log(105)
+    lka <- log(2.5)
+    prior(lcl) ~ dnorm(log(10), 0.25)
+    prior(lq) ~ dnorm(log(15), 0.5)
+    prior(lv1) ~ dnorm(log(35), 0.25)
+    prior(lv2) ~ dnorm(log(105), 0.5)
+    prior(lka) ~ dnorm(log(2.5), 1)
+    lnorm.sd <- c(0, 0.2)
+    prior(lnorm.sd) ~ dcauchy(0, 1)
+  })
+  model({
+    cl <- exp(lcl); q <- exp(lq); v <- exp(lv1); vp <- exp(lv2)
+    ka <- exp(lka)
+    cp <- linCmt()
+    cp ~ lnorm(lnorm.sd)
+  })
+}
+
+d1 <- rbind(data.frame(ID = 1, TIME = 0, DV = NA_real_, AMT = 1000, EVID = 1),
+            data.frame(ID = 1, TIME = c(0.5, 1, 2, 4, 8, 12, 24),
+                       DV = c(15, 22, 24, 18, 12, 8, 3), AMT = 0, EVID = 0))
+code1 <- portCheck(pk2cpt, d1)
+cat(grep("nlmixr2_pop_ll", strsplit(code1$code, "\n")[[1]], value = TRUE),
+    sep = "\n")
+#>   real nlmixr2_pop_ll(vector theta);
+#>   target += nlmixr2_pop_ll(theta);
+```
+
+That single external scalar is the whole difference: with no etas there
+is nothing to marginalize, so nlmixr2est’s nlm path hands Stan the
+complete data log-likelihood and its analytic theta gradient in one
+call. The tier-0 target is verified against a hand-written density with
+FD-checked gradients.
+
+- Torsten’s `pmx_solve_group_*` **MPI parallelism** distributes subjects
+  across processes; nlmixr2bayes parallelizes subjects with OpenMP
+  threads inside each likelihood call (`cores`) – same axis, different
+  mechanics, no user-visible model difference.
+
+- Conversely, rxode2 capabilities with no Torsten equivalent flow
+  through `est="stan"` unchanged: the censoring machinery (M2/M3/M4),
+  the residual-error catalog, transit-compartment helpers, mu-referenced
+  covariate handling, and **delay differential equations** – `delay()` /
+  `past()` need no special handling here, because the Stan program only
+  ever sees the linked likelihood, and rxode2 has already switched to a
+  dense solver behind it
+  ([`vignette("rxstan-dde", "nlmixr2bayes")`](https://nlmixr2.github.io/nlmixr2bayes/articles/rxstan-dde.md)
+  works the same example both ways).
+
+## A note on completeness
+
+These ports are verified at the code level – each generates a program
+stanc accepts, which is exactly what the chunks above did – but they
+have **not** been run against Torsten’s own example datasets, which ship
+inside the Torsten repository as R dump files rather than in any R
+package. The synthetic event tables above exercise generation, not
+agreement.
+
+To reproduce a port against the original data, load Torsten’s dump and
+reshape the NONMEM-style vectors into the event-table columns nlmixr2
+expects:
+
+``` r
+
+e <- new.env()
+source(file.path(torstenDir, "example-models/poppk2cpt/poppk2cpt.data.R"),
+       local = e)
+d <- with(e, data.frame(ID = rep(seq_len(nSubjects),
+                                 times = end - start + 1),
+                        TIME = time, AMT = amt, EVID = evid, CMT = cmt,
+                        RATE = rate, II = ii, ADDL = addl, SS = ss,
+                        DV = NA_real_))
+d$DV[e$iObs] <- e$cObs
+fit := nlmixr2est::nlmixr2(poppk2cpt, d, est = "nuts",
+                           control = nutsControl(seed = 42))
+```
+
+That chunk is the only one on this page that does not run when the
+vignette is built – `torstenDir` has to point at a clone of the Torsten
+repository.

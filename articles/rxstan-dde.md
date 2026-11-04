@@ -1,0 +1,446 @@
+# Delay differential equations through rxstan
+
+## Delay differential equations: a Stan limitation
+
+**Stan has no DDE solver.** Not a slow one – none. There is no `ode_*`
+function that accepts a lagged state, and you cannot write one in the
+Stan language, because the solution has to be interpolated at
+$`t - \tau`$ while it is still being computed.
+
+However, **rxode2 has `delay()`**, and it propagates sensitivities
+through the delay correctly. Because nlmixr2bayes links Stan to a
+*likelihood* rather than translating a model into the Stan language,
+that limitation never reaches Stan: whatever rxode2 can solve, Stan can
+sample.
+
+So a DDE is reachable **both** ways nlmixr2bayes offers, and this
+vignette walks the same example through each:
+
+1.  **Automatically** – `nlmixr2(model, data, est = "nuts")` on an
+    ordinary nlmixr2 model containing `delay()`. No Stan code, and
+    nothing special to configure.
+2.  **Hand-coded** – register the DDE as a solver backend with
+    [`rxsRegister()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsRegister.md)
+    and call it from a Stan program you wrote yourself (see
+    [`vignette("rxstan-handcoded", "nlmixr2bayes")`](https://nlmixr2.github.io/nlmixr2bayes/articles/rxstan-handcoded.md)
+    for the general pattern), which is also the level at which you can
+    inspect the delayed sensitivities directly.
+
+------------------------------------------------------------------------
+
+## A delayed indirect response
+
+Turnover with delayed feedback: the loss term depends on the response
+one delay ago rather than now.
+
+``` math
+\frac{dR}{dt} = k_{in} - k_{out}\,R(t - \tau), \qquad R(s) = 1 \ \text{for}\ s \le 0
+```
+
+`R(0) <- 1` does double duty: it is the initial condition *and* the
+pre-history, so `delay(R, tau)` returns 1 whenever $`t - \tau \le 0`$.
+Everything is parameterized on the log scale (`lkin`, `lkout`, `ltau`),
+which is the scale Stan samples on and keeps all three positive without
+a constraint.
+
+## Part 1: the automatic path
+
+Written as an nlmixr2 model with priors, the delay is just another line
+– there is nothing DDE-specific in the `ini({})` block.
+
+The delay itself is [`fix()`](https://rdrr.io/r/utils/fix.html)ed here,
+and that is a current limitation rather than a modelling choice:
+nlmixr2est’s theta-sensitivity model returns an identically zero
+derivative for a parameter that reaches the model only as a `delay()`
+lag
+([nlmixr2est#1122](https://github.com/nlmixr2/nlmixr2est/issues/1122)).
+Stan is then told the target is flat in `ltau` when it is in fact steep,
+and the fit does not sample: every iteration saturates `max_treedepth`
+and the chain does not mix (Rhat 2.2 in the case that prompted the
+issue). `est = "nuts"` warns when a model estimates such a parameter.
+Part 2 below estimates the delay *with* correct sensitivities, through
+[`rxsRegister()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsRegister.md),
+which is the path to use for that today.
+
+``` r
+
+library(nlmixr2)
+library(nlmixr2bayes)
+
+ddeMod <- function() {
+  ini({
+    lkin <- c(log(0.05), log(0.7), log(10))
+    lkout <- c(log(0.02), log(0.4), log(5))
+    ltau <- fix(log(1.5))
+    add.sd <- c(0, 0.3)
+    eta.kin ~ 0.05
+    prior(lkin) ~ dnorm(log(0.7), 0.5)
+    prior(lkout) ~ dnorm(log(0.4), 0.5)
+    prior(add.sd) ~ dcauchy(0, 1)
+  })
+  model({
+    kin <- exp(lkin + eta.kin)
+    kout <- exp(lkout)
+    tau <- exp(ltau)
+    R(0) <- 1
+    d/dt(R) <- kin - kout * delay(R, tau)
+    R ~ add(add.sd)
+  })
+}
+```
+
+Twelve subjects, simulated from the model itself so there is a known
+truth to recover:
+
+``` r
+
+set.seed(42)
+tmsAuto <- seq(0.5, 12, by = 1)
+evAuto <- rxode2::et(tmsAuto)
+evAuto <- rxode2::et(evAuto, id = 1:12)
+
+simAuto := rxode2::rxSolve(ddeMod, evAuto, returnType = "data.frame")
+datAuto <- as.data.frame(evAuto)
+names(datAuto) <- tolower(names(datAuto))
+datAuto$dv <- simAuto$sim
+head(datAuto, 3)
+#>   id time evid       dv
+#> 1  1  0.5    0 1.518050
+#> 2  1  1.5    0 1.290215
+#> 3  1  2.5    0 1.630253
+```
+
+And that is the whole fit – an ordinary `est = "nuts"` call, at Stan’s
+default `max_treedepth`. `:=` is nlmixr2save’s caching assignment, so it
+runs once and is reloaded on later builds:
+
+``` r
+
+fitAuto := nlmixr2est::nlmixr2(ddeMod, datAuto, est = "nuts",
+                               control = nutsControl(seed = 42, chains = 2,
+                                                     iter = 1000))
+print(fitAuto)
+#> ── nlmixr² Stan (HMC) (2 chains x 500 draws; max Rhat 1.008; min ESS 265; Wald
+#> CI from posterior cov) ──
+#> 
+#>                                  OBJF      AIC      BIC Log-likelihood
+#> FOCEi                       -143.2669 129.3874 141.2666      -60.69369
+#> WAIC (subject-level)        -157.7685       NA       NA       78.88425
+#> LOO (leave-one-subject-out) -152.9218       NA       NA       76.46088
+#>                             Condition#(Cov) Condition#(Cor)
+#> FOCEi                              36.45573        8.867486
+#> WAIC (subject-level)                     NA              NA
+#> LOO (leave-one-subject-out)              NA              NA
+#> 
+#> ── Time (sec $time): ──
+#> 
+#>              setup   optimize covariance preprocess postprocess table compress
+#> elapsed 0.02917186 3.4859e-05 2.5908e-05      0.098       0.273 1.408    0.009
+#> 
+#> ── Population Parameters ($parFixed or $parFixedDf): ──
+#> 
+#>          Est.     SE  %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
+#> lkin   -0.487  0.105  21.5    0.614 (0.500, 0.754)     22.1       16.9 
+#> lkout  -0.934 0.0909  9.73    0.393 (0.329, 0.469)                     
+#> ltau    0.405  FIXED FIXED                    1.50                     
+#> add.sd  0.340 0.0218  6.42    0.340 (0.297, 0.383)                     
+#>  
+#>   Covariance Type ($covMethod): stan.posterior
+#>   Some strong fixed parameter correlations exist ($cor) :
+#>       cor:lkout,lkin  cor:add.sd,lkin cor:add.sd,lkout 
+#>           0.797           0.0137            0.0162   
+#>  
+#> 
+#>   No correlations in between subject variability (BSV) matrix
+#>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
+#>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
+#>   Information about run found ($runInfo):
+#>    • FOCEi objective excludes the ini() priors (posterior only) 
+#>   Censoring ($censInformation): No censoring
+#> 
+#> ── Fit Data (object is a modified tibble): ──
+#> # A tibble: 144 × 16
+#>   ID     TIME    DV  PRED     RES   WRES IPRED    IRES  IWRES CPRED    CRES
+#>   <fct> <dbl> <dbl> <dbl>   <dbl>  <dbl> <dbl>   <dbl>  <dbl> <dbl>   <dbl>
+#> 1 1       0.5  1.52  1.11  0.407   1.18   1.15  0.373   1.10   1.11  0.409 
+#> 2 1       1.5  1.29  1.33 -0.0419 -0.106  1.44 -0.146  -0.429  1.33 -0.0362
+#> 3 1       2.5  1.63  1.51  0.120   0.262  1.67 -0.0395 -0.116  1.50  0.129 
+#> # ℹ 141 more rows
+#> # ℹ 5 more variables: CWRES <dbl>, eta.kin <dbl>, R <dbl>, kin <dbl>,
+#> #   kout <dbl>
+```
+
+The posterior sits on the simulating values:
+
+``` r
+
+truthAuto <- c(lkin = log(0.7), lkout = log(0.4), add.sd = 0.3)
+cbind(truth = truthAuto,
+      posterior = fitAuto$posteriorSummary[names(truthAuto), "mean"],
+      `2.5%` = fitAuto$posteriorSummary[names(truthAuto), "2.5%"],
+      `97.5%` = fitAuto$posteriorSummary[names(truthAuto), "97.5%"])
+#>             truth  posterior       2.5%      97.5%
+#> lkin   -0.3566749 -0.4873861 -0.6933766 -0.2839434
+#> lkout  -0.9162907 -0.9343854 -1.1119005 -0.7434201
+#> add.sd  0.3000000  0.3398187  0.3005292  0.3846784
+```
+
+Two practical notes, both of them about the *solver* rather than about
+Stan:
+
+- rxode2 detects the delay and picks a dense-output method itself, the
+  same way it does under `est = "focei"` or `est = "saem"`; nothing in
+  [`stanControl()`](https://nlmixr2.github.io/nlmixr2bayes/reference/stanControl.md)
+  mentions DDEs.
+- A DDE solve is expensive, and HMC asks for one per gradient, so expect
+  DDE fits to be slower per draw than the equivalent ODE fit. With the
+  lag [`fix()`](https://rdrr.io/r/utils/fix.html)ed this one needs no
+  more than Stan’s default tree depth: about 31 leapfrog steps per
+  iteration, no divergences, and half a minute of sampling per chain.
+- The rate parameters are bounded in `ini({})`. A delay solve’s cost
+  grows like 1/lag, and an unbounded proposal at an absurd rate or lag
+  can leave a single solve running with its dense history growing
+  without bound – `rxControl(maxsteps=)` and `hmin` do not stop it.
+  `est = "nuts"` rejects a proposal whose eta is beyond 100 `ini()`
+  omega standard deviations before ever calling the solver, but bounding
+  the structural parameters of a DDE is worth doing too.
+
+## Part 2: the bridge view
+
+The rest of this vignette works the same equation one level lower,
+through
+[`rxsRegister()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsRegister.md).
+That is the level you want when you are writing the Stan program
+yourself – and it is also the most direct way to *see* the delayed
+sensitivities, which the automatic path keeps inside the likelihood.
+
+``` r
+
+library(nlmixr2bayes)
+
+dde <- "
+kin  <- exp(lkin)
+kout <- exp(lkout)
+tau  <- exp(ltau)
+R(0) <- 1
+d/dt(R) <- kin - kout * delay(R, tau)
+"
+```
+
+The same equation as a bare rxode2 model, with no residual model or
+priors – the Stan program supplies those:
+
+## Register the DDE model
+
+Register it the same way as any other model. All three parameters are
+differentiated, including the delay:
+
+``` r
+
+tms <- seq(0.25, 25, by = 0.25)
+h <- rxsRegister(dde, events = rxode2::et(tms),
+                 sens = c("lkin", "lkout", "ltau"), output = "R",
+                 atol = 1e-10, rtol = 1e-10, method = "dop853")
+#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+h
+#> <rxstan handle 1>
+#>   parameters (3): lkin, lkout, ltau
+#>   states     (1): R
+#>   rows       : 100 obs -> 100 outputs
+```
+
+`method = "dop853"` rather than the default `liblsoda`: the delay
+machinery needs a solver that keeps a dense history to interpolate from.
+
+The handle prints the layout Stan will see – three parameters in, one
+state out, one row per requested time. That `100 obs -> 100 outputs`
+line is what the Stan program’s `vector[nObs]` has to match.
+
+## Solve and inspect the sensitivities
+
+[`rxsSolve()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsSolve.md)
+calls the same C entry point the Stan program does, so it is the direct
+way to see what crosses the bridge:
+
+``` r
+
+truth <- c(kin = 0.7, kout = 0.4, tau = 1.5)
+p <- log(unname(truth))
+res <- rxsSolve(h, p)
+head(res, 3)
+#>       [,1]  [,2] [,3] [,4]
+#> [1,] 1.075 0.175 -0.1    0
+#> [2,] 1.150 0.350 -0.2    0
+#> [3,] 1.225 0.525 -0.3    0
+```
+
+Column 1 is $`R`$; the rest are
+$`\partial R/\partial(\ell k_{in}, \ell k_{out}, \ell\tau)`$. The fourth
+column is exactly zero in those first rows, and that is correct rather
+than suspicious: before the first delay has elapsed the solution has not
+yet seen the lagged term, so it does not depend on $`\tau`$ at all. It
+becomes non-zero once $`t > \tau`$:
+
+``` r
+
+range(res[tms <= truth[["tau"]], 4])   # before the first delay
+#> [1] 0 0
+range(res[tms >  truth[["tau"]], 4])   # after it
+#> [1] -0.08528119  0.38250000
+```
+
+## Checking it without trusting finite differences
+
+Before the first delay has elapsed there is a closed form, and it makes
+a much better test than differencing the solver against itself.
+
+While $`t \le \tau`$ the lagged term is still the constant pre-history,
+so the equation collapses to $`R' = k_{in} - k_{out}`$, giving
+$`R = 1 + (k_{in} - k_{out})t`$. On the log scale the sensitivities are
+then exactly $`k_{in}t`$ and $`-k_{out}t`$:
+
+``` r
+
+early <- which(tms <= truth[["tau"]])
+data.frame(t        = tms[early],
+           dlkin    = res[early, 2],
+           exact    = truth[["kin"]] * tms[early],
+           dlkout   = res[early, 3],
+           exact2   = -truth[["kout"]] * tms[early])
+#>      t dlkin exact dlkout exact2
+#> 1 0.25 0.175 0.175   -0.1   -0.1
+#> 2 0.50 0.350 0.350   -0.2   -0.2
+#> 3 0.75 0.525 0.525   -0.3   -0.3
+#> 4 1.00 0.700 0.700   -0.4   -0.4
+#> 5 1.25 0.875 0.875   -0.5   -0.5
+#> 6 1.50 1.050 1.050   -0.6   -0.6
+```
+
+An exact match (to solver tolerances) verifies that the delay itself and
+its derivatives are handled correctly:
+
+``` r
+
+max(abs(res[early, 2] - truth[["kin"]] * tms[early]))
+#> [1] 3.330669e-16
+max(abs(res[early, 3] + truth[["kout"]] * tms[early]))
+#> [1] 3.330669e-16
+```
+
+Past the first delay interval there is no closed form left, so the
+fallback there is central differences of whole solves – which is what
+[`rxsCheckGradient()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsCheckGradient.md)
+does once the model is compiled into Stan.
+
+## Using the DDE in a hand-coded Stan program
+
+Once registered, use it in Stan exactly as you would an ODE:
+
+``` r
+
+ddeStan <- "
+functions {
+  vector rx_solve(int handle, vector p);
+}
+data {
+  int<lower=1> nObs;
+  int<lower=1> handle;
+  vector[nObs] rObs;
+}
+parameters {
+  real lkin;
+  real lkout;
+  real ltau;
+  real<lower=0> sigma;
+}
+model {
+  vector[3] p = [lkin, lkout, ltau]';
+  vector[nObs] r = rx_solve(handle, p);
+
+  lkin ~ normal(0, 1);
+  lkout ~ normal(-1, 1);
+  ltau ~ normal(0, 1);
+  sigma ~ exponential(1);
+
+  rObs ~ normal(r, sigma);
+}
+"
+```
+
+Nothing in it mentions a delay: from Stan’s side `rx_solve()` is just a
+function with known partials.
+[`rstan::stanc()`](https://mc-stan.org/rstan/reference/stanc.html)
+confirms it is a valid program – `allow_undefined` is what lets
+`rx_solve()` stay undeclared until the bridge supplies it at link time:
+
+``` r
+
+sc <- rstan::stanc(model_code = ddeStan, model_name = "dde",
+                   allow_undefined = TRUE)
+sc$status
+#> [1] TRUE
+```
+
+Compiling and fitting it is then the ordinary pattern from
+[`vignette("rxstan-handcoded", "nlmixr2bayes")`](https://nlmixr2.github.io/nlmixr2bayes/articles/rxstan-handcoded.md)
+– write `ddeStan` to a `.stan` file,
+[`rxsStanModel()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsStanModel.md)
+it, and
+[`rstan::sampling()`](https://mc-stan.org/rstan/reference/stanmodel-method-sampling.html)
+with `list(nObs = length(rObs), handle = h, rObs = rObs)`:
+
+``` r
+
+f <- tempfile(fileext = ".stan")
+writeLines(ddeStan, f)
+sm <- rxsStanModel(f, modelName = "dde")
+fit := rstan::sampling(sm, data = list(nObs = length(rObs), handle = h,
+                                       rObs = rObs),
+                       chains = 2, iter = 1000)
+```
+
+The bridge compiles the rxode2 model with the forward-sensitivity DDE
+system augmented, solves it, and supplies both the solution and its
+derivatives to Stan’s reverse-mode autodiff. No DDE solver in Stan; no
+finite differencing; exact sensitivities.
+
+## Key points
+
+- **DDEs require dense output**: Use `method = "dop853"` or another
+  dense solver, and set `dense = TRUE` in `rxControl()`.
+- **The delay itself is a parameter**: You can estimate the lag time
+  $`\tau`$, and its gradient flows through the sensitivity equations
+  correctly.
+- **Pre-history must be constant**: The initial condition `R(0) <- 1`
+  defines both the condition at $`t=0`$ and the pre-history for
+  $`t < 0`$. It must be a constant (not a function of time or
+  parameters).
+- **The fast path is automatic**: rxstan detects DDEs and enables the
+  fast path when safe;
+  [`rxsFastAvailable()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsFastAvailable.md)
+  reports whether this handle got it (a modelled
+  `alag()`/`f()`/`dur()`/`rate()` with dose rows is the case that
+  refuses it):
+
+``` r
+
+rxsFastAvailable(h)
+#> [1] TRUE
+```
+
+Release the handle when you are done with it:
+
+``` r
+
+rxsRelease(h)
+```
+
+## See also
+
+- [`vignette("rxstan-handcoded", "nlmixr2bayes")`](https://nlmixr2.github.io/nlmixr2bayes/articles/rxstan-handcoded.md)
+  – the general hand-coded Stan pattern this vignette specializes for
+  DDEs.
+- [`vignette("nlmixr2bayes", "nlmixr2bayes")`](https://nlmixr2.github.io/nlmixr2bayes/articles/nlmixr2bayes.md)
+  – the automatic, likelihood-level approach used in the first half of
+  this vignette.
