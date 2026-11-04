@@ -17,13 +17,9 @@ stay in one place.
 
 ## R CMD check results
 
-Local `R CMD check --as-cran`: 0 errors | 0 warnings | 2 notes
+Local `R CMD check --as-cran`: 0 errors | 0 warnings | 1 notes
 
 * `New submission` (CRAN incoming feasibility).
-* `Compilation used the following non-portable flag(s):
-  '-mno-omit-leaf-frame-pointer'` -- this comes from the local Ubuntu R
-  build's own `CXXFLAGS`, not from this package (there is no
-  `src/Makevars`), so it will not appear on CRAN's machines.
 
 ## Notes the maintainer expects, and why
 
