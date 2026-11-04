@@ -303,7 +303,7 @@ sm <- rxsStanModel(system.file("stan", "pk_1cmt_oral.stan",
                                package = "nlmixr2bayes"),
                    modelName = "pk_1cmt_oral")
 
-fit2 <- rstan::sampling(sm, data = standata, chains = 2, iter = 1000,
+fit2 := rstan::sampling(sm, data = standata, chains = 2, iter = 1000,
                         seed = 42, refresh = 0,
                         init = function(chain_id = 1) {
                           list(lka = 0.1, lcl = 1.4, lv = 3.4, sigma = 0.2)
