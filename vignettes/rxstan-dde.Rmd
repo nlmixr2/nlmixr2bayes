@@ -19,8 +19,8 @@ bayesCache("dde-")
 
 ## Delay differential equations: a Stan limitation
 
-**Stan has no DDE solver.** Not a slow one -- none. There is no `ode_*` function that accepts 
-a lagged state, and you cannot write one in the Stan language, because the solution has to be 
+**Stan has no DDE solver.** Not a slow one -- none. There is no `ode_*` function that accepts
+a lagged state, and you cannot write one in the Stan language, because the solution has to be
 interpolated at $t - \tau$ while it is still being computed.
 
 However, **rxode2 has `delay()`**, and it propagates sensitivities through the delay
@@ -42,7 +42,7 @@ example through each:
 
 ## A delayed indirect response
 
-Turnover with delayed feedback: the loss term depends on the response one delay ago 
+Turnover with delayed feedback: the loss term depends on the response one delay ago
 rather than now.
 
 $$\frac{dR}{dt} = k_{in} - k_{out}\,R(t - \tau), \qquad R(s) = 1 \ \text{for}\ s \le 0$$
@@ -55,7 +55,17 @@ three positive without a constraint.
 ## Part 1: the automatic path
 
 Written as an nlmixr2 model with priors, the delay is just another line -- there is
-nothing DDE-specific in the `ini({})` block, and `tau` is estimated like any other theta:
+nothing DDE-specific in the `ini({})` block.
+
+The delay itself is `fix()`ed here, and that is a current limitation rather than a
+modelling choice: nlmixr2est's theta-sensitivity model returns an identically zero
+derivative for a parameter that reaches the model only as a `delay()` lag
+([nlmixr2est#1122](https://github.com/nlmixr2/nlmixr2est/issues/1122)).  Stan is then
+told the target is flat in `ltau` when it is in fact steep, and the fit does not
+sample: every iteration saturates `max_treedepth` and the chain does not mix (Rhat 2.2
+in the case that prompted the issue).  `est = "nuts"` warns when a model estimates
+such a parameter.  Part 2 below estimates the delay *with* correct sensitivities,
+through `rxsRegister()`, which is the path to use for that today.
 
 ```{r autoModel}
 library(nlmixr2)
@@ -63,14 +73,13 @@ library(nlmixr2bayes)
 
 ddeMod <- function() {
   ini({
-    lkin <- log(0.7)
-    lkout <- log(0.4)
-    ltau <- log(1.5)
+    lkin <- c(log(0.05), log(0.7), log(10))
+    lkout <- c(log(0.02), log(0.4), log(5))
+    ltau <- fix(log(1.5))
     add.sd <- c(0, 0.3)
     eta.kin ~ 0.05
     prior(lkin) ~ dnorm(log(0.7), 0.5)
     prior(lkout) ~ dnorm(log(0.4), 0.5)
-    prior(ltau) ~ dnorm(log(1.5), 0.5)
     prior(add.sd) ~ dcauchy(0, 1)
   })
   model({
@@ -84,36 +93,37 @@ ddeMod <- function() {
 }
 ```
 
-Six subjects, simulated from the model itself so there is a known truth to recover:
+Twelve subjects, simulated from the model itself so there is a known truth to
+recover:
 
 ```{r autoData}
 set.seed(42)
-tmsAuto <- seq(0.5, 20, by = 1.5)
+tmsAuto <- seq(0.5, 12, by = 1)
 evAuto <- rxode2::et(tmsAuto)
-evAuto <- rxode2::et(evAuto, id = 1:6)
+evAuto <- rxode2::et(evAuto, id = 1:12)
 
-simAuto <- rxode2::rxSolve(ddeMod, evAuto, returnType = "data.frame")
+simAuto := rxode2::rxSolve(ddeMod, evAuto, returnType = "data.frame")
 datAuto <- as.data.frame(evAuto)
 names(datAuto) <- tolower(names(datAuto))
 datAuto$dv <- simAuto$sim
 head(datAuto, 3)
 ```
 
-And that is the whole fit -- an ordinary `est = "nuts"` call.  `:=` is nlmixr2save's
-caching assignment, so it runs once and is reloaded on later builds:
+And that is the whole fit -- an ordinary `est = "nuts"` call, at Stan's default
+`max_treedepth`.  `:=` is nlmixr2save's caching assignment, so it runs once and is
+reloaded on later builds:
 
 ```{r autoFit}
 fitAuto := nlmixr2est::nlmixr2(ddeMod, datAuto, est = "nuts",
                                control = nutsControl(seed = 42, chains = 2,
-                                                     iter = 1000,
-                                                     max_treedepth = 12L))
+                                                     iter = 1000))
 print(fitAuto)
 ```
 
 The posterior sits on the simulating values:
 
 ```{r autoRecover}
-truthAuto <- c(lkin = log(0.7), lkout = log(0.4), ltau = log(1.5), add.sd = 0.3)
+truthAuto <- c(lkin = log(0.7), lkout = log(0.4), add.sd = 0.3)
 cbind(truth = truthAuto,
       posterior = fitAuto$posteriorSummary[names(truthAuto), "mean"],
       `2.5%` = fitAuto$posteriorSummary[names(truthAuto), "2.5%"],
@@ -124,9 +134,16 @@ Two practical notes, both of them about the *solver* rather than about Stan:
 
 - rxode2 detects the delay and picks a dense-output method itself, the same way it does
   under `est = "focei"` or `est = "saem"`; nothing in `stanControl()` mentions DDEs.
-- A DDE solve is expensive, and HMC asks for one per gradient.  This example raises
-  `max_treedepth` because the default of 10 saturates on it; expect DDE fits to be
-  slower per draw than the equivalent ODE fit, and budget iterations accordingly.
+- A DDE solve is expensive, and HMC asks for one per gradient, so expect DDE fits to
+  be slower per draw than the equivalent ODE fit.  With the lag `fix()`ed this one
+  needs no more than Stan's default tree depth: about 31 leapfrog steps per iteration,
+  no divergences, and half a minute of sampling per chain.
+- The rate parameters are bounded in `ini({})`.  A delay solve's cost grows like
+  1/lag, and an unbounded proposal at an absurd rate or lag can leave a single solve
+  running with its dense history growing without bound -- `rxControl(maxsteps=)` and
+  `hmin` do not stop it.  `est = "nuts"` rejects a proposal whose eta is beyond 100
+  `ini()` omega standard deviations before ever calling the solver, but bounding the
+  structural parameters of a DDE is worth doing too.
 
 ## Part 2: the bridge view
 
@@ -152,7 +169,7 @@ program supplies those:
 
 ## Register the DDE model
 
-Register it the same way as any other model. All three parameters are differentiated, 
+Register it the same way as any other model. All three parameters are differentiated,
 including the delay:
 
 ```{r register}
@@ -163,7 +180,7 @@ h <- rxsRegister(dde, events = rxode2::et(tms),
 h
 ```
 
-`method = "dop853"` rather than the default `liblsoda`: the delay machinery needs 
+`method = "dop853"` rather than the default `liblsoda`: the delay machinery needs
 a solver that keeps a dense history to interpolate from.
 
 The handle prints the layout Stan will see -- three parameters in, one state out, one row
@@ -194,11 +211,11 @@ range(res[tms >  truth[["tau"]], 4])   # after it
 
 ## Checking it without trusting finite differences
 
-Before the first delay has elapsed there is a closed form, and it makes a much better 
+Before the first delay has elapsed there is a closed form, and it makes a much better
 test than differencing the solver against itself.
 
-While $t \le \tau$ the lagged term is still the constant pre-history, so the equation 
-collapses to $R' = k_{in} - k_{out}$, giving $R = 1 + (k_{in} - k_{out})t$. On the 
+While $t \le \tau$ the lagged term is still the constant pre-history, so the equation
+collapses to $R' = k_{in} - k_{out}$, giving $R = 1 + (k_{in} - k_{out})t$. On the
 log scale the sensitivities are then exactly $k_{in}t$ and $-k_{out}t$:
 
 ```{r oracle}
@@ -210,7 +227,7 @@ data.frame(t        = tms[early],
            exact2   = -truth[["kout"]] * tms[early])
 ```
 
-An exact match (to solver tolerances) verifies that the delay itself and its derivatives 
+An exact match (to solver tolerances) verifies that the delay itself and its derivatives
 are handled correctly:
 
 ```{r oracleMax}
@@ -275,23 +292,23 @@ Compiling and fitting it is then the ordinary pattern from
 f <- tempfile(fileext = ".stan")
 writeLines(ddeStan, f)
 sm <- rxsStanModel(f, modelName = "dde")
-fit <- rstan::sampling(sm, data = list(nObs = length(rObs), handle = h,
+fit := rstan::sampling(sm, data = list(nObs = length(rObs), handle = h,
                                        rObs = rObs),
                        chains = 2, iter = 1000)
 ```
 
-The bridge compiles the rxode2 model with the forward-sensitivity DDE system augmented, 
-solves it, and supplies both the solution and its derivatives to Stan's reverse-mode 
+The bridge compiles the rxode2 model with the forward-sensitivity DDE system augmented,
+solves it, and supplies both the solution and its derivatives to Stan's reverse-mode
 autodiff. No DDE solver in Stan; no finite differencing; exact sensitivities.
 
 ## Key points
 
-- **DDEs require dense output**: Use `method = "dop853"` or another dense solver, 
+- **DDEs require dense output**: Use `method = "dop853"` or another dense solver,
   and set `dense = TRUE` in `rxControl()`.
-- **The delay itself is a parameter**: You can estimate the lag time $\tau$, and 
+- **The delay itself is a parameter**: You can estimate the lag time $\tau$, and
   its gradient flows through the sensitivity equations correctly.
-- **Pre-history must be constant**: The initial condition `R(0) <- 1` defines both 
-  the condition at $t=0$ and the pre-history for $t < 0$. It must be a constant 
+- **Pre-history must be constant**: The initial condition `R(0) <- 1` defines both
+  the condition at $t=0$ and the pre-history for $t < 0$. It must be a constant
   (not a function of time or parameters).
 - **The fast path is automatic**: rxstan detects DDEs and enables the fast path
   when safe; `rxsFastAvailable()` reports whether this handle got it (a modelled

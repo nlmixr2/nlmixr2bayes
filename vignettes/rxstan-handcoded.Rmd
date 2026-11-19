@@ -11,7 +11,11 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
                       message = FALSE, warning = FALSE)
 ## This vignette compiles one real Stan program (about a minute) and samples
-## it; the fit itself takes seconds, so nothing here is cached.
+## it.  The draws are cached with nlmixr2save's `:=` (see cacheSetup.R); the
+## compile is not, so it still happens on every build.
+source("cacheSetup.R")
+bayesCache("nlmixr2bayes-handcoded-")
+
 ```
 
 ## Hand-coded Stan: ODE-level linking
@@ -67,10 +71,10 @@ On a one-compartment oral model with 100 observations, per gradient:
 | Stan `ode_rk45`    | 0.125 ms          |
 | Stan `ode_bdf`     | 0.400 ms          |
 
-Speed is the smaller half of the argument. The larger half is that dosing events and DDEs 
+Speed is the smaller half of the argument. The larger half is that dosing events and DDEs
 are not expressible in Stan's ODE interface at all.
 
-`rstan` is required rather than optional: rxode2 has to be callable from the same process, 
+`rstan` is required rather than optional: rxode2 has to be callable from the same process,
 so the model must be compiled and run in-process.
 
 ## The quick path: generate the Stan program
@@ -158,7 +162,7 @@ case below:
 
 ```{r genFit, eval = FALSE}
 sm <- rxsStanModel(tempfile(fileext = ".stan"))  # after writing gen$code to it
-fit <- rstan::sampling(sm, data = gen$standata, init = rxsInit(gen),
+fit := rstan::sampling(sm, data = gen$standata, init = rxsInit(gen),
                        chains = 4, iter = 2000)
 ```
 
@@ -277,12 +281,12 @@ splices the bridge header in at global scope and keeps the model name unobfuscat
 only one.
 
 ```{r sample}
-fit <- rstan::sampling(sm, data = standata, chains = 2, iter = 1000,
+fit2 := rstan::sampling(sm, data = standata, chains = 2, iter = 1000,
                        seed = 42, refresh = 0,
                        init = function(chain_id = 1) {
                          list(lka = 0.1, lcl = 1.4, lv = 3.4, sigma = 0.2)
                        })
-print(fit, pars = c("lka", "lcl", "lv", "sigma"))
+print(fit2, pars = c("lka", "lcl", "lv", "sigma"))
 ```
 
 Sampling itself takes a couple of seconds: the whole posterior is 1000 draws over four
@@ -291,7 +295,7 @@ posterior means sit on the simulated truth:
 
 ```{r recover}
 round(rbind(truth = truth,
-            posterior = colMeans(as.matrix(fit, pars = c("lka", "lcl", "lv")))), 3)
+            posterior = colMeans(as.matrix(fit2, pars = c("lka", "lcl", "lv")))), 3)
 ```
 
 `rxsSolveStats()` counts what the sampler actually asked the bridge for, including how
@@ -304,8 +308,8 @@ rxsSolveStats(h)
 
 ## What crosses the boundary
 
-ODE **states**, never derived `lhs` quantities. rxode2 only emits `rx__sens_<state>_BY_<param>__` 
-for states, so any derived prediction (a concentration `central / v`, say) must be formed in the 
+ODE **states**, never derived `lhs` quantities. rxode2 only emits `rx__sens_<state>_BY_<param>__`
+for states, so any derived prediction (a concentration `central / v`, say) must be formed in the
 Stan program, where Stan differentiates it itself. That keeps exactly one differentiation boundary.
 
 In the example above, `depot` and `center` are states; `cp` is derived and formed in Stan.
@@ -319,7 +323,10 @@ enough if you have not fitted yet -- plus the parameter vector to test at, on th
 *unconstrained* scale Stan works in:
 
 ```{r check}
-rxsCheckGradient(fit, c(lka = 0.1, lcl = 1.4, lv = 3.4, sigma = 0.2))
+# fit2 may come back from the cache with its draws but no live model to
+# differentiate; a zero-chain sampling() of the compiled model supplies one
+rxsCheckGradient(rstan::sampling(sm, data = standata, chains = 0),
+                 c(lka = 0.1, lcl = 1.4, lv = 3.4, sigma = 0.2))
 ```
 
 Look for relative differences close to `1e-6` or better. Anything much worse suggests a
@@ -342,9 +349,9 @@ rxsHandles()
 ## Limits
 
 - **rstan only** -- rxode2 must be in-process.
-- **Single-threaded** -- do not use the bridge inside `map_rect()` or `reduce_sum()`. 
-  rxode2's solve structure is a process singleton, so concurrent entry is detected and throws 
-  rather than corrupting silently. Run chains as separate processes; leave subject-level 
+- **Single-threaded** -- do not use the bridge inside `map_rect()` or `reduce_sum()`.
+  rxode2's solve structure is a process singleton, so concurrent entry is detected and throws
+  rather than corrupting silently. Run chains as separate processes; leave subject-level
   parallelism to rxode2.
 - **First-order only** -- `precomputed_gradients()` is `var`-only, so `laplace_marginal`
   and RHMC are out.

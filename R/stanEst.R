@@ -361,6 +361,72 @@ attr(nlmixr2Est.stan, "unbounded") <- FALSE
 # sensitivity being right (#952).
 attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
 
+#' Estimated parameters that reach the model only as a `delay()` lag
+#'
+#' nlmixr2est's theta-sensitivity model returns an identically zero derivative
+#' for a parameter that enters only as the lag of `delay(state, lag)`: the
+#' delayed state's own sensitivity is propagated, the `-R'(t - lag)` term the
+#' lag contributes is not (nlmixr2/nlmixr2est#1122).  Stan then sees a target
+#' that is flat in that parameter while it is in truth steep, which collapses
+#' the step size -- every iteration hits `max_treedepth` and the chain does not
+#' mix.  rxode2 itself differentiates the lag correctly; the rxstan bridge
+#' ([rxsRegister()]) gets it right, so that is the path to use meanwhile.
+#'
+#' @param ui the rxode2 ui
+#' @return names of estimated (non-`fix`ed) population parameters that reach
+#'   the model only through a `delay()` lag
+#' @noRd
+.stanDelayLagPars <- function(ui) {
+  .lst <- ui$lstExpr
+  if (!is.list(.lst) || length(.lst) == 0L) {
+    return(character(0))
+  }
+  .syms <- function(e) {
+    if (is.name(e)) {
+      return(as.character(e))
+    }
+    if (!is.call(e)) {
+      return(character(0))
+    }
+    unlist(lapply(as.list(e)[-1], .syms), use.names = FALSE)
+  }
+  # every `delay(state, lag)` anywhere in the model, lag side only
+  .lags <- function(e) {
+    if (!is.call(e)) {
+      return(character(0))
+    }
+    .here <- if (identical(e[[1]], as.name("delay")) && length(e) >= 3L) .syms(e[[3]]) else character(0)
+    c(.here, unlist(lapply(as.list(e)[-1], .lags), use.names = FALSE))
+  }
+  .want <- unique(unlist(lapply(.lst, .lags), use.names = FALSE))
+  if (length(.want) == 0L) {
+    return(character(0))
+  }
+  # resolve through the model's own assignments: delay(R, tau) with
+  # tau <- exp(ltau) is a dependence on ltau
+  .defs <- stats::setNames(
+    lapply(.lst, function(e) if (is.call(e) && length(e) >= 3L) .syms(e[[3]]) else character(0)),
+    vapply(
+      .lst,
+      function(e) {
+        if (is.call(e) && length(e) >= 3L && is.name(e[[2]])) as.character(e[[2]]) else ""
+      },
+      character(1)
+    )
+  )
+  .defs <- .defs[nzchar(names(.defs))]
+  repeat {
+    .new <- unique(c(.want, unlist(.defs[intersect(.want, names(.defs))], use.names = FALSE)))
+    if (length(.new) == length(.want)) {
+      break
+    }
+    .want <- .new
+  }
+  .ini <- ui$iniDf
+  .est <- .ini$name[is.na(.ini$neta1) & !.ini$fix]
+  intersect(.want, .est)
+}
+
 #' The orchestration: preprocess -> map -> generate -> (compile -> link ->
 #' sample -> finalize)
 #' @noRd
@@ -369,6 +435,16 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   .ret$table <- if (is.null(env$table)) nlmixr2est::tableControl() else env$table
   .ret$stanControl <- control
   nlmixr2est::.foceiPreProcessData(env$data, .ret, ui, control$rxControl)
+  .lagPars <- .stanDelayLagPars(ui)
+  if (length(.lagPars) > 0L) {
+    # a warning raised during the run is collected onto the fit's $runInfo
+    warning(
+      "no gradient for the delay() lag: ",
+      paste(.lagPars, collapse = ", "),
+      " cannot be sampled (nlmixr2est#1122); fix() it, or use rxsRegister()",
+      call. = FALSE
+    )
+  }
   .map <- .stanMap(ui)
   .pri <- stanPriors(ui)
   .gen <- .stanGenerate(ui, .map, .pri, control)
