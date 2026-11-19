@@ -70,3 +70,65 @@ test_that("the bridge returns analytic DDE sensitivities", {
   expect_gt(max(abs(got[, -1L])), 1e-3)
   expect_equal(got[, -1L], fd, tolerance = 1e-4, ignore_attr = TRUE)
 })
+
+test_that("an estimated delay() lag is detected and warned about (nlmixr2est#1122)", {
+  skip_on_cran()
+  # nlmixr2est's theta sensitivity is identically zero for a parameter that
+  # reaches the model only as a delay() lag, so est="nuts" cannot sample it;
+  # the fit must say so rather than return a silently unmixed posterior
+  .lagMod <- function(fixTau) {
+    if (fixTau) {
+      function() {
+        ini({
+          lkin <- log(0.7)
+          ltau <- fix(log(1.5))
+          add.sd <- 0.3
+          eta.kin ~ 0.05
+        })
+        model({
+          kin <- exp(lkin + eta.kin)
+          tau <- exp(ltau)
+          R(0) <- 1
+          d/dt(R) <- kin - 0.4 * delay(R, tau)
+          R ~ add(add.sd)
+        })
+      }
+    } else {
+      function() {
+        ini({
+          lkin <- log(0.7)
+          ltau <- log(1.5)
+          add.sd <- 0.3
+          eta.kin ~ 0.05
+        })
+        model({
+          kin <- exp(lkin + eta.kin)
+          tau <- exp(ltau)
+          R(0) <- 1
+          d/dt(R) <- kin - 0.4 * delay(R, tau)
+          R ~ add(add.sd)
+        })
+      }
+    }
+  }
+  # resolved through the model's own assignments: delay(R, tau), tau <- exp(ltau)
+  expect_equal(.stanDelayLagPars(rxode2::rxode2(.lagMod(FALSE))), "ltau")
+  # fix()ed: nothing to sample, nothing to warn about
+  expect_equal(.stanDelayLagPars(rxode2::rxode2(.lagMod(TRUE))), character(0))
+  # a literal lag, and a model with no delay at all
+  .litMod <- function() {
+    ini({
+      lkin <- log(0.7)
+      add.sd <- 0.3
+      eta.kin ~ 0.05
+    })
+    model({
+      kin <- exp(lkin + eta.kin)
+      R(0) <- 1
+      d/dt(R) <- kin - 0.4 * delay(R, 1.5)
+      R ~ add(add.sd)
+    })
+  }
+  expect_equal(.stanDelayLagPars(rxode2::rxode2(.litMod)), character(0))
+  expect_equal(.stanDelayLagPars(rxode2::rxode2(.linkMod)), character(0))
+})

@@ -108,6 +108,66 @@
 #' @param ctl `stanControl()`
 #' @return list(code=, data=, notes=, blockSpecs=)
 #' @noRd
+#' Eta magnitude, in initial-omega standard deviations, beyond which a
+#' proposal is rejected unevaluated
+#'
+#' A single delay (and other pathological) forward-sensitivity solve at an
+#' absurd parameter value can run without bound -- rxode2's `maxsteps`/`hmin`
+#' do not stop a delay solve, and its dense history grows at hundreds of MB/s
+#' until the kernel kills the process.  Stan's step-size search and early
+#' warmup trajectories do propose such points, so the generated model rejects
+#' a proposal whose eta, in any column, is more than this many `ini()` omega
+#' standard deviations from zero *before* calling the external likelihood.
+#'
+#' The guard is on eta itself -- the value the solver receives -- not on the
+#' standardized `z`: with the heavy-tailed half-Cauchy omega SD prior a jump in
+#' log-SD makes eta huge while `z` stays moderate.  At 100 initial SDs there is
+#' no posterior mass even if `ini()` understates omega tenfold.  Thetas are not
+#' covered (no general scale exists for them); bound a theta in `ini()` when a
+#' model's solve is fragile at extreme values of it.
+#' @noRd
+.stanEtaGuardK <- 100
+
+#' The guard terms for one omega block, one per eta column
+#' @param blk the block from the parameter map (`start`, `k`, `init`)
+#' @return Stan boolean expressions, each true when that column is out of range
+#' @noRd
+.stanEtaGuardTerms <- function(blk) {
+  vapply(
+    seq_len(blk$k),
+    function(j) {
+      paste0(
+        "max(abs(col(eta, ",
+        blk$start + j - 1L,
+        "))) > ",
+        .stanNum(.stanEtaGuardK * sqrt(blk$init[j, j]))
+      )
+    },
+    character(1)
+  )
+}
+
+#' Wrap the model block's likelihood lines in the standardized-eta guard
+#' @param guard Stan boolean expressions, each true when one eta column is
+#'   out of range ([.stanEtaGuardTerms()]); none -> `body` unchanged
+#' @param body the likelihood lines to guard
+#' @return character vector of model-block lines
+#' @noRd
+.stanGuardLik <- function(guard, body) {
+  if (length(guard) == 0L) {
+    return(body)
+  }
+  c(
+    paste0("  if (", paste(guard, collapse = " || "), ") {"),
+    "    // far outside the eta prior: reject without calling the external",
+    "    // likelihood, whose solve can run without bound at such a point",
+    "    target += negative_infinity();",
+    "  } else {",
+    paste0("  ", body),
+    "  }"
+  )
+}
+
 .stanGenerate <- function(ui, map, pri, ctl) {
   .notes <- character(0)
   .free <- map$theta[!map$theta$fix, , drop = FALSE]
@@ -173,6 +233,7 @@
   .blockSpecs <- list()
   .tpL <- character(0) # transformed-parameter lines building L_b
   .priorL <- character(0)
+  .etaGuard <- character(0)
   .gqOmega <- character(0)
   # iteration-print display: natural-scale thetas + the ACTUAL omega
   # variances/covariances of every estimated block (om.<eta>, cov.<e1>.<e2>);
@@ -187,6 +248,7 @@
     .blockSpecs[[.b]] <- .sp
     .k <- .blk$k
     .id <- .stanBlockId(.blk$members)
+    .etaGuard <- c(.etaGuard, .stanEtaGuardTerms(.blk))
     if (.sp$type == "fixed") {
       # fixed-variance eta: L is a constant, nothing is declared or given a
       # prior; z is still sampled, so the eta remains a random effect with
@@ -436,31 +498,34 @@
       "  // the external function returns the CONDITIONAL log p(y_i|eta_i)",
       .thPrior,
       .priorL,
-      if (map$nMix > 1L) {
-        # component-major rows: llCond[i] is component 1,
-        # llCond[N+i] component 2; the eta priors are OUTSIDE
-        # the log_sum_exp (they factor), the weights inside
-        c(
-          paste0("  {"),
-          paste0("    vector[", .rowsN, "] llCond = nlmixr2_cond_all2(eta, theta);"),
-          paste0("    real sumLL = 0;"),
-          paste0("    for (i in 1:N) {"),
-          paste0("      sumLL += log_sum_exp(log(", .mixP, ") + llCond[i], log1p(-", .mixP, ") + llCond[N + i]);"),
-          paste0("    }"),
-          paste0("    target += sumLL;"),
-          .dispTick,
-          paste0("  }")
-        )
-      } else {
-        c(
-          paste0("  {"),
-          paste0("    vector[", .rowsN, "] llCond = nlmixr2_cond_all2(eta, theta);"),
-          paste0("    real sumLL = sum(llCond);"),
-          paste0("    target += sumLL;"),
-          .dispTick,
-          paste0("  }")
-        )
-      },
+      .stanGuardLik(
+        .etaGuard,
+        if (map$nMix > 1L) {
+          # component-major rows: llCond[i] is component 1,
+          # llCond[N+i] component 2; the eta priors are OUTSIDE
+          # the log_sum_exp (they factor), the weights inside
+          c(
+            paste0("  {"),
+            paste0("    vector[", .rowsN, "] llCond = nlmixr2_cond_all2(eta, theta);"),
+            paste0("    real sumLL = 0;"),
+            paste0("    for (i in 1:N) {"),
+            paste0("      sumLL += log_sum_exp(log(", .mixP, ") + llCond[i], log1p(-", .mixP, ") + llCond[N + i]);"),
+            paste0("    }"),
+            paste0("    target += sumLL;"),
+            .dispTick,
+            paste0("  }")
+          )
+        } else {
+          c(
+            paste0("  {"),
+            paste0("    vector[", .rowsN, "] llCond = nlmixr2_cond_all2(eta, theta);"),
+            paste0("    real sumLL = sum(llCond);"),
+            paste0("    target += sumLL;"),
+            .dispTick,
+            paste0("  }")
+          )
+        }
+      ),
       .tbsTarget,
       "}",
       "generated quantities {",
