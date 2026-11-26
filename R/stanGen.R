@@ -30,15 +30,7 @@
   # elements has no such constant factor and must error, not be
   # approximated.
   if (any(block$fix) || isTRUE(block$fixAny)) {
-    if (block$k > 1L && !isTRUE(block$fixAll)) {
-      stop(
-        "the omega block over ",
-        paste(block$members, collapse = ", "),
-        " mixes fixed and estimated eta(s) with modeled correlations; ",
-        "est=\"stan\" supports fixed diagonal etas and wholly fixed blocks only",
-        call. = FALSE
-      )
-    }
+    .stanAssertBlockFix(block)
     if (any(omPri$name %in% block$members)) {
       stop("eta '", .first, "' is fixed; a prior on a fixed eta is a ", "contradiction", call. = FALSE)
     }

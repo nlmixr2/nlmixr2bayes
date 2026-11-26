@@ -33,8 +33,8 @@
 }
 
 test_that("only an all-population-fixed model with etas skips the prior requirement", {
-  .ui <- function(f) rxode2::rxode2(f)
-  expect_true(.stanAllPopFixed(.ui(.mapBayesMod)))
+  .assert <- function(f) .stanAssert(rxode2::rxode2(f))
+  expect_true(.assert(.mapBayesMod))
   # one estimated theta: not the individual posterior, priors still required
   .oneFree <- function() {
     ini({
@@ -50,7 +50,7 @@ test_that("only an all-population-fixed model with etas skips the prior requirem
       cp ~ add(add.sd)
     })
   }
-  expect_false(.stanAllPopFixed(.ui(.oneFree)))
+  expect_error(.assert(.oneFree), "prior(tcl)", fixed = TRUE)
   # an estimated omega: the same
   .omFree <- function() {
     ini({
@@ -66,7 +66,7 @@ test_that("only an all-population-fixed model with etas skips the prior requirem
       cp ~ add(add.sd)
     })
   }
-  expect_false(.stanAllPopFixed(.ui(.omFree)))
+  expect_error(.assert(.omFree), "prior(eta.cl)", fixed = TRUE)
   # no etas at all: nothing to sample
   .noEta <- function() {
     ini({
@@ -78,7 +78,8 @@ test_that("only an all-population-fixed model with etas skips the prior requirem
       cp ~ add(add.sd)
     })
   }
-  expect_false(.stanAllPopFixed(.ui(.noEta)))
+  skip_if_not(.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
+  expect_error(.assert(.noEta), "nothing to sample")
 })
 
 test_that("all-population-fixed codegen: constant L, eta-only conditional, no priors", {
@@ -148,6 +149,23 @@ test_that("a correlated block with only some elements fixed is refused, off-diag
     })
   }
   expect_error(.run(.fixVar), "mixes fixed and estimated")
+  # one free variance: the prior advice cannot help (rxode2 refuses a prior
+  # on such a block), so the block's refusal comes first
+  .oneVar <- function() {
+    ini({
+      tcl <- fix(log(0.5))
+      tv <- fix(log(5))
+      eta.cl + eta.v ~ c(fix(0.09), 0.03, 0.04)
+      add.sd <- fix(0.2)
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  expect_error(.run(.oneVar), "mixes fixed and estimated")
 })
 
 test_that("all-population-fixed est=\"pathfinder\" runs (no theta columns to rebuild)", {
@@ -163,6 +181,10 @@ test_that("all-population-fixed est=\"pathfinder\" runs (no theta columns to reb
   # an approximation, so only a loose agreement with the exact posterior
   expect_equal(.fit$etaObf$eta.cl, 0.070, tolerance = 0.05 / 0.070)
   expect_equal(.fit$etaObf$eta.v, 0.046, tolerance = 0.05 / 0.046)
+  # the fixed omega cells are summarized (from the generated quantities),
+  # and no eta or theta cell leaks in
+  expect_equal(rownames(.fit$posteriorSummary), c("om.eta.cl", "cov.eta.v.eta.cl", "om.eta.v"))
+  expect_equal(.fit$posteriorSummary[, "mean"], c(0.09, 0.03, 0.04))
 })
 
 test_that("all-population-fixed est=\"nuts\" recovers the exact individual posterior (#22)", {
@@ -204,6 +226,8 @@ test_that("all-population-fixed est=\"nuts\" recovers the exact individual poste
   expect_equal(.fit$etaObf$eta.v, mean(.eta[, 1, 2]))
   # with no population parameter sampled, the etas are what gets diagnosed
   .dx <- .fit$env$stanDiagnostics
-  expect_true(is.finite(.dx$maxRhat))
+  .etaSum <- rstan::summary(.fit$stanfit)$summary[c("eta[1,1]", "eta[1,2]"), ]
+  expect_equal(.dx$maxRhat, max(.etaSum[, "Rhat"]))
+  expect_equal(.dx$minEss, min(.etaSum[, "n_eff"]))
   expect_true(.dx$minEss > 100)
 })

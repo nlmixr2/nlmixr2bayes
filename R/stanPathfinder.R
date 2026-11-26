@@ -396,12 +396,30 @@
     return(rstan::summary(sf)$summary)
   }
   .con <- .pathfinderConstrain(sf)
+  # the generated quantities (omegaOut, ...) as well, when the prefetch
+  # computed them while the link was up -- the omega rows come from them
+  .gq <- sf$cache$gq
+  .con <- c(.con, .gq[setdiff(names(.gq), c(names(.con), "lp__"))])
   .rows <- list()
   for (.nm in names(.con)) {
     .v <- .con[[.nm]]
     .dims <- dim(.v)
-    .m <- if (length(.dims) == 2L) .v else matrix(.v, .dims[1], prod(.dims[-1]))
-    .cn <- if (ncol(.m) == 1L) .nm else paste0(.nm, "[", seq_len(ncol(.m)), "]")
+    .m <- matrix(.v, .dims[1], prod(.dims[-1]))
+    if (ncol(.m) == 0L) {
+      next
+    }
+    # name the cells the way rstan does, from the DECLARED shape: a
+    # vector[1] (or a 1 x 1 matrix) is theta[1] / eta[1,1], not a scalar,
+    # and a matrix's cells carry both indices
+    .pd <- sf$fit0@par_dims[[.nm]]
+    if (is.null(.pd)) {
+      .pd <- if (length(.dims) <= 2L && ncol(.m) == 1L) integer(0) else .dims[-1]
+    }
+    .cn <- if (length(.pd) == 0L) {
+      .nm
+    } else {
+      paste0(.nm, "[", apply(expand.grid(lapply(.pd, seq_len)), 1, paste, collapse = ","), "]")
+    }
     for (.k in seq_len(ncol(.m))) {
       .x <- .m[, .k]
       .rows[[.cn[.k]]] <- c(

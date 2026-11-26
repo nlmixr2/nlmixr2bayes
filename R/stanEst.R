@@ -205,19 +205,25 @@
   c(.v, 0)
 }
 
-#' Is every population parameter fixed, with random effects to sample?
+#' Refuse an omega block that fixes some of its elements but not all
 #'
-#' A model whose thetas, omega (every element) and residual-error parameters
-#' are all `fix()`ed but which still has etas is the individual (MAP-Bayes)
-#' posterior `p(eta | y, theta, Omega, sigma)` (issue #22): the eta prior is
-#' the fixed `N(0, Omega)`, so it needs no `prior()` lines -- and a prior on
-#' a fixed parameter would be a contradiction anyway.
-#' @param ui rxode2 ui
-#' @return `TRUE` or `FALSE`
+#' A wholly fixed block is a constant Cholesky factor and a block with
+#' nothing fixed is sampled; one that mixes the two -- a fixed covariance
+#' between free variances, or the reverse -- has no such parameterization,
+#' and must error rather than be sampled with the fix() ignored.
+#' @param block one block of the model map
 #' @noRd
-.stanAllPopFixed <- function(ui) {
-  .iniDf <- ui$iniDf
-  any(!is.na(.iniDf$neta1)) && all(.iniDf$fix)
+.stanAssertBlockFix <- function(block) {
+  if (block$k > 1L && (isTRUE(block$fixAny) || any(block$fix)) && !isTRUE(block$fixAll)) {
+    stop(
+      "the omega block over ",
+      paste(block$members, collapse = ", "),
+      " mixes fixed and estimated eta(s) with modeled correlations; ",
+      "est=\"stan\" supports fixed diagonal etas and wholly fixed blocks only",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
 }
 
 #' Capability assertions + prior triage for est="stan"
@@ -305,21 +311,35 @@
       call. = FALSE
     )
   }
-  # D10: no priors at all is an error, with the exact lines to add --
-  # Bayesian inference with silently-invented priors produces a
-  # publishable-looking wrong answer
+  # a partly fixed omega block first: the prior advice below cannot fix it
+  # (rxode2 refuses a prior on such a block)
+  for (.b in .stanMap(ui)$blocks) {
+    .stanAssertBlockFix(.b)
+  }
   .pri <- .stanUiPriors(ui)
-  # with nothing to suggest, the only estimated element is an omega
-  # off-diagonal inside a block whose diagonal is fixed; the generator's
-  # refusal of that block says what is actually wrong
-  .sug <- .stanSuggestPriors(ui)
-  if (nrow(.pri) == 0L && !.stanAllPopFixed(ui) && length(.sug) > 0L) {
-    stop(
-      "est=\"stan\" needs prior distributions in the ini({}) block and ",
-      "this model declares none; for example:\n  ",
-      paste(.sug, collapse = "\n  "),
-      call. = FALSE
-    )
+  if (nrow(.pri) == 0L) {
+    # D10: no priors at all is an error, with the exact lines to add --
+    # Bayesian inference with silently-invented priors produces a
+    # publishable-looking wrong answer.  The one model that needs none has every population parameter fix()ed but
+    # random effects to sample: the individual (MAP-Bayes) posterior
+    # p(eta | y, theta, Omega, sigma) under the fixed N(0, Omega) (#22) --
+    # exactly the case with no prior to suggest and etas present
+    .sug <- .stanSuggestPriors(ui)
+    if (length(.sug) > 0L) {
+      stop(
+        "est=\"stan\" needs prior distributions in the ini({}) block and ",
+        "this model declares none; for example:\n  ",
+        paste(.sug, collapse = "\n  "),
+        call. = FALSE
+      )
+    }
+    if (.noEta) {
+      stop(
+        "est=\"stan\" has nothing to sample: every parameter is fix()ed ",
+        "and the model has no random effects",
+        call. = FALSE
+      )
+    }
   }
   invisible(TRUE)
 }
@@ -571,7 +591,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
       )
     }
     .sf <- .stanRunInference(.sm, .gen, .map, .nid, control)
-    .dx <- .stanDiagnostics(.sf, control)
+    .dx <- .stanDiagnostics(.sf, control, .map)
     # the nlm objective (-2 log-likelihood) at the posterior point estimate,
     # evaluated while the link is still up
     .pf <- if (identical(control$point, "median")) stats::median else mean
@@ -716,7 +736,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     .ph <- tryCatch(nlmixr2est::foceiLikIterPrintEnd(), error = function(e) NULL)
     if (is.data.frame(.ph)) .ret$parHistData <- .ph
   }
-  .dx <- .stanDiagnostics(.sf, control)
+  .dx <- .stanDiagnostics(.sf, control, .map)
   if (inherits(.sf, "nlmixr2bayesPathfinder")) {
     # the generated-quantities pass (rstan::gqs -> nlmixr2_cond_all2)
     # needs the linked likelihood, so it must run BEFORE the teardown
@@ -960,7 +980,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
 
 #' Sampler diagnostics with actionable, loud messages
 #' @noRd
-.stanDiagnostics <- function(sf, control) {
+.stanDiagnostics <- function(sf, control, map) {
   if (identical(control$algorithm, "pathfinder")) {
     return(.stanDiagnosticsPathfinder(sf, control))
   }
@@ -977,17 +997,19 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     numeric(1)
   ))
   .sum <- .stanSummaryDf(sf)
-  # a constant (a fixed block's Cholesky factor) has nothing to mix: its
-  # Rhat/ESS are noise, not a diagnosis.  Its summary sd need not be exactly
-  # 0 -- the running mean of a non-dyadic constant drifts by a few ulps -- so
-  # the cut is relative to the value's own scale
-  .vary <- is.finite(.sum[, "sd"]) &
-    .sum[, "sd"] > sqrt(.Machine$double.eps) * pmax(1, abs(.sum[, "mean"]))
-  .keep <- .vary & !grepl("^(z_|etaP_|eta\\[|omegaOut|logLikSubj|mixProbOut|lp__)", rownames(.sum))
+  .rn <- rownames(.sum)
+  # derived quantities are left out: each block's Cholesky factor L<id>
+  # (a function of the sd/Lcorr/omega it is built from, which are diagnosed
+  # themselves -- and a CONSTANT for a fixed block, whose Rhat/ESS are
+  # floating-point noise) and the assembled theta[] vector (the declared
+  # thetas plus fixed literals)
+  .lNames <- vapply(map$blocks, function(b) paste0("L", .stanBlockId(b$members)), character(1))
+  .derived <- sub("\\[.*\\]$", "", .rn) %in% .lNames
+  .keep <- !.derived & !grepl("^(z_|etaP_|eta\\[|theta\\[|omegaOut|logLikSubj|mixProbOut|lp__)", .rn)
   if (!any(.keep)) {
     # every population parameter fix()ed (the individual posterior, #22):
     # the etas are all there is to diagnose
-    .keep <- .vary & grepl("^eta\\[", rownames(.sum))
+    .keep <- grepl("^eta\\[", .rn)
   }
   .maxRhat <- suppressWarnings(max(.sum[.keep, "Rhat"], na.rm = TRUE))
   .minEss <- suppressWarnings(min(.sum[.keep, "n_eff"], na.rm = TRUE))
