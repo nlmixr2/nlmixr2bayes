@@ -212,6 +212,63 @@ test_that("a link/map theta mismatch is refused, naming literalFixRes when it is
   )
 })
 
+test_that("posterior labels: one om./cov. row per lower-triangle omega cell (#22)", {
+  .map <- list(theta = data.frame(name = "tcl", par = "tcl"))
+  .blk <- list(list(members = c("eta.cl", "eta.v"), start = 1L))
+  .rn <- c("tcl", "omegaOut[1,1]", "omegaOut[2,1]", "omegaOut[1,2]", "omegaOut[2,2]")
+  # the mirrored upper cell keeps its raw name (dropped later), so the
+  # labels stay unique
+  expect_equal(
+    .stanPosteriorRowLabels(.rn, .map, .blk),
+    c("tcl", "om.eta.cl", "cov.eta.v.eta.cl", "omegaOut[1,2]", "om.eta.v")
+  )
+})
+
+test_that("a correlated omega block fits and is summarized once per cell (#22)", {
+  skip_on_cran()
+  skip_if_not_installed("rstan")
+  .blockMod <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3
+      add.sd <- c(0, 0.5)
+      eta.cl + eta.v ~ c(0.1, 0.01, 0.1)
+      prior(tcl) ~ dnorm(1, 2)
+      prior(tv) ~ dnorm(3, 2)
+      prior(add.sd) ~ dcauchy(0, 2.5)
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  .fit <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
+    .blockMod,
+    .linkData(),
+    est = "nuts",
+    control = stanControl(
+      chains = 1L,
+      iter = 300L,
+      warmup = 150L,
+      seed = 3L,
+      cores = 1L,
+      calcTables = FALSE,
+      ofv = "none",
+      onDiagnostic = "none"
+    )
+  )))
+  expect_true(inherits(.fit, "nlmixr2FitCore"))
+  .rn <- rownames(.fit$posteriorSummary)
+  expect_equal(sum(.rn == "cov.eta.v.eta.cl"), 1L)
+  expect_true(all(c("om.eta.cl", "om.eta.v") %in% .rn))
+  expect_false(any(grepl("^omegaOut\\[", .rn)))
+  expect_equal(dim(.fit$omega), c(2L, 2L))
+  expect_true(isSymmetric(.fit$omega))
+  expect_equal(.fit$posteriorSummary["cov.eta.v.eta.cl", "mean"], .fit$omega["eta.v", "eta.cl"], tolerance = 1e-8)
+})
+
 test_that("iteration print + parameter history over the sampler", {
   skip_on_cran()
   skip_if_not_installed("rstan")

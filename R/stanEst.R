@@ -1149,12 +1149,14 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
           } else {
             paste0("cov.", .mem[.di], ".", .mem[.dj])
           }
-          # omegaOut is symmetric; the mirrored cell carries the same value
-          .lbl[paste0("omegaOut[", .blk$start - 1L + .dj, ",", .blk$start - 1L + .di, "]")] <- .lbl[.nm]
         }
       }
     }
   }
+  # only the lower triangle is labeled: omegaOut is symmetric, so the
+  # mirrored upper cell would repeat the label (and a data.frame refuses
+  # duplicate row names); left as omegaOut[...], it is dropped with the
+  # cross-block cells
   .m <- unname(.lbl[rn])
   ifelse(is.na(.m), rn, .m)
 }
@@ -1432,7 +1434,8 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     map$blocks
   )
   # cross-block omegaOut cells are always exactly 0 (no modeled correlation
-  # across blocks) and have no om./cov. label -- drop rather than show noise
+  # across blocks) and the upper triangle mirrors the lower one; neither has
+  # an om./cov. label -- drop rather than show noise or a duplicate
   .posteriorSummary <- .posteriorSummary[
     !grepl("^omegaOut\\[", rownames(.posteriorSummary)),
     ,
