@@ -1,0 +1,39 @@
+# Test files (name without "test-" and ".R") that the fast CI tier runs on
+# every pull request with NOT_CRAN=true and RXSTAN_STAN_TESTS=1.  Keep it to
+# fast, high-signal files: every file that runs in seconds, plus one real
+# Stan compile + sample per subsystem.  Everything else runs nightly and on
+# /cifull.  The total (see tests/ci-timings.csv) must fit the fast tier's
+# ~15 minute budget; .github/scripts/ci-shards.R errors on a name here that
+# no longer exists.
+
+# The two compile smoke tests -- if Stan cannot compile, link and sample,
+# fail here first
+stan-smoke
+platform-compile
+
+# Generation, mapping, priors and control (no compile)
+gen
+gen-breadth
+control
+priors
+quiet
+est-stan
+determinism
+
+# The linked likelihood and its gradients
+link
+tier2-grad
+censor-ll
+marginal-agq
+population
+
+# Pathfinder plumbing
+pathfinder
+
+# The rxstan bridge (solver side, no Stan compile)
+bridge
+fast
+fast-needsort
+eventsens
+dde
+torsten-port

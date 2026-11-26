@@ -1,13 +1,14 @@
 ## A real Stan compile + link + sample on every CI platform.
 ##
-## The macOS/Windows CI jobs run only the CRAN-visible subset
-## (NLMIXR2BAYES_TEST_CRAN_ONLY forces NOT_CRAN=false), so every other test
-## that compiles Stan is skipped there.  That hid, for weeks, that no Stan
-## compile had ever been shown to work on those platforms -- it surfaced only
-## as a vignette failure.  These two tests are the smallest proof that each
-## subsystem compiles, links against rxode2/nlmixr2est and runs: they are
-## gated on NLMIXR2BAYES_TEST_PLATFORM_COMPILE (set by the macOS/Windows jobs
-## in R-CMD-check.yaml) or NOT_CRAN, and never run on CRAN itself.
+## CI tests macOS/Windows only through the CRAN-mirror check (NOT_CRAN=false),
+## so every other test that compiles Stan is skipped there.  That hid, for
+## weeks, that no Stan compile had ever been shown to work on those platforms
+## -- it surfaced only as a vignette failure.  These two tests are the
+## smallest proof that each subsystem compiles, links against
+## rxode2/nlmixr2est and runs: they are gated on
+## NLMIXR2BAYES_TEST_PLATFORM_COMPILE (set by the macOS/Windows checks of
+## ci.yaml's full tier, .github/workflows/_check.yaml) or NOT_CRAN, and never
+## run on CRAN itself.
 library(testthat)
 
 skipUnlessPlatformCompile <- function() {

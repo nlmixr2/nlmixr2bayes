@@ -144,10 +144,30 @@ test_that("compile cache: a saved model is reused only if its compiled module lo
   suppressMessages(stanCompile(.code$code, cacheDir = .dir))
   .rds <- list.files(.dir, pattern = "^stanmodel-.*rds$", full.names = TRUE)
   expect_length(.rds, 1L)
-  # read back, as a later session would: the external module pointer is dead,
-  # but the embedded DSO bytes rstan reloads from are there
+  # A later session reads the entry back: the external module pointer is dead,
+  # and the module is reloaded from the embedded DSO bytes.  Check that in a
+  # FRESH process -- the case the cache exists for.  In this one, deep into
+  # the suite with ~100 DLLs loaded, the reload can genuinely fail ("NULL
+  # value passed for DllInfo"), which is exactly what .stanModelUsable() is
+  # there to catch (stanCompile() then recompiles), so it is not asserted
+  # here.  The subprocess cannot see this package's internals, so it runs the
+  # probe's body: the model's own mk_cppmodule slot, as rstan::sampling() does.
+  skip_if_not_installed("callr")
+  expect_true(callr::r(
+    function(f) {
+      requireNamespace("rstan", quietly = TRUE)
+      .m <- readRDS(f)
+      tryCatch(
+        {
+          .m@mk_cppmodule(.m)
+          TRUE
+        },
+        error = function(e) conditionMessage(e)
+      )
+    },
+    list(.rds)
+  ))
   .m <- readRDS(.rds)
-  expect_true(.stanModelUsable(.m))
   # what .stanTrimStanfit() does to a saved fit's model: bytes gone
   .trim <- .m
   .trim@dso@.CXXDSOMISC <- new.env(parent = emptyenv())

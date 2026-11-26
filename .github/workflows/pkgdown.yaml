@@ -1,95 +1,41 @@
-# Workflow derived from https://github.com/r-lib/actions/tree/v2/examples
-# Need help debugging build failures? Start at https://github.com/r-lib/actions#where-to-find-help
+# Builds and deploys the pkgdown site from main.  Pull requests build the site
+# (without deploying) in ci.yaml's full tier: nightly or on /cifull.
 on:
   push:
     branches: [main, master]
-  pull_request:
   release:
     types: [published]
   workflow_dispatch:
 
 name: pkgdown.yaml
 
-# a new commit on a pull request cancels that pull request's earlier run
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 permissions: read-all
 
+# Deploys must not overlap: a newer push waits for (never cancels) a
+# running deploy.
+concurrency:
+  group: pkgdown-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  pkgdown:
+  build:
+    uses: ./.github/workflows/_pkgdown.yaml
+
+  deploy:
+    needs: build
     runs-on: ubuntu-latest
-    # Only restrict concurrency for non-PR jobs
-    concurrency:
-      group: pkgdown-${{ github.event_name != 'pull_request' || github.run_id }}
-    env:
-      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      # the deploy action works inside a git checkout
+      - uses: actions/checkout@v6
 
-      - uses: r-lib/actions/setup-pandoc@v2
-
-      - uses: r-lib/actions/setup-r@v2
+      - uses: actions/download-artifact@v4
         with:
-          use-public-rspm: true
+          name: pkgdown-site
+          path: docs
 
-      - uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          cache-version: 1
-          # The vignettes ship precomputed (vignettes/precompute.R knits
-          # *.Rmd.orig -> static *.Rmd), so the articles evaluate no code;
-          # nlmixr2save is kept for the README and local re-knits.
-          extra-packages: |
-            any::pkgdown
-            nlmixr2/n1qn1c
-            nlmixr2/lbfgsb3c
-            nlmixr2/dparser-R
-            nlmixr2/lotri
-            nlmixr2/rxode2ll
-            nlmixr2/rxode2lincmt
-            nlmixr2/rxode2
-            nlmixr2/PreciseSums
-            nlmixr2/RcppTrust
-            nlmixr2/nlmixr2data
-            nlmixr2/nlmixr2est
-            nlmixr2/nlmixr2
-            nlmixr2/nlmixr2save
-            qs=?ignore
-            local::.
-          needs: website
-
-      # pkgdown downloads its JS assets (fuse.js, autocomplete.js, headroom, ...)
-      # from cdnjs into R_user_dir("pkgdown", "cache") on every cold run; caching
-      # them keeps a slow CDN from failing the build.
-      - name: Cache pkgdown assets
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/R/pkgdown
-          key: pkgdown-assets-${{ runner.os }}-${{ hashFiles('_pkgdown.yml') }}
-          restore-keys: pkgdown-assets-${{ runner.os }}-
-
-      # The articles are precomputed static markdown, so nothing here compiles
-      # or samples; this cache only matters if a future article evaluates a
-      # chunk that compiles a Stan program.  See R-CMD-check.yaml.
-      - name: Cache compiled Stan models
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/R/nlmixr2bayes
-          key: stan-models-${{ runner.os }}-pkgdown-${{ hashFiles('R/**', 'inst/include/**', 'inst/stan/**') }}
-          restore-keys: stan-models-${{ runner.os }}-pkgdown-
-
-      - name: Build site
-        run: |
-          # R's 60s default download timeout is not enough for a slow cdnjs
-          options(timeout = max(600, getOption("timeout")))
-          pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
-        shell: Rscript {0}
-
-      - name: Deploy to GitHub pages 🚀
-        if: github.event_name != 'pull_request'
+      - name: Deploy to GitHub pages
         uses: JamesIves/github-pages-deploy-action@v4.5.0
         with:
           clean: false

@@ -5,7 +5,7 @@
 
 <!-- badges: start -->
 
-[![R-CMD-check](https://github.com/nlmixr2/nlmixr2bayes/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/nlmixr2/nlmixr2bayes/actions/workflows/R-CMD-check.yaml)
+[![CI](https://github.com/nlmixr2/nlmixr2bayes/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/nlmixr2/nlmixr2bayes/actions/workflows/ci.yaml)
 [![CodeFactor](https://www.codefactor.io/repository/github/nlmixr2/nlmixr2bayes/badge)](https://www.codefactor.io/repository/github/nlmixr2/nlmixr2bayes)
 [![CRAN
 status](https://www.r-pkg.org/badges/version/nlmixr2bayes)](https://CRAN.R-project.org/package=nlmixr2bayes)
