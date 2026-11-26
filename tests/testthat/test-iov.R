@@ -232,6 +232,19 @@ test_that("a declared prior(iov.x) lands on the IOV magnitude theta", {
   # the magnitude IS an SD: lower-bounded, so cauchy() is the half-Cauchy
   # idiom (literal arguments -> constraint declared, T[,] omitted)
   expect_true(any(grepl("real<lower=0> iov_cl;", .lines, fixed = TRUE)))
+  # ... and both the program and the notes say so, since ini() declared a
+  # variance (#16)
+  expect_true(any(grepl("real<lower=0> iov_cl;  // occasion sd of 'iov.cl'", .lines, fixed = TRUE)))
+  expect_false(any(grepl("// occasion sd of 'tcl'", .lines, fixed = TRUE)))
+  expect_equal(sum(grepl("// occasion sd of", .lines, fixed = TRUE)), 1L)
+  expect_true(any(grepl(
+    paste0(
+      "IOV magnitudes (iov.cl) are on the sd scale (iovXform=\"sd\") in their priors, ",
+      "the Stan program and the fit's estimates, not the variance ini() declares"
+    ),
+    .code$notes,
+    fixed = TRUE
+  )))
   if (requireNamespace("rstan", quietly = TRUE)) {
     expect_silent(rstan::stanc(model_code = .code$code, allow_undefined = TRUE))
   }
@@ -377,6 +390,10 @@ test_that("several IOV parameters over several occasion variables", {
   expect_true(any(grepl("iov_v ~ cauchy(0, 3);", .lines, fixed = TRUE)))
   expect_true(any(grepl("^\\s*iov_cl ~ cauchy\\(0, 0\\.3535533905932", .lines)))
   expect_false(any(grepl("iov_cl ~ normal|iov_v ~ normal", .lines)))
+  # ... and each declaration names its own scale (#16)
+  expect_true(any(grepl("iov_cl;  // occasion sd of 'iov.cl'", .lines, fixed = TRUE)))
+  expect_true(any(grepl("iov_v;  // occasion sd of 'iov.v'", .lines, fixed = TRUE)))
+  expect_true(any(grepl("IOV magnitudes (iov.cl, iov.v) are on the sd scale", .code$notes, fixed = TRUE)))
   if (requireNamespace("rstan", quietly = TRUE)) {
     expect_silent(rstan::stanc(model_code = .code$code, allow_undefined = TRUE))
   }
@@ -434,4 +451,48 @@ test_that("a non-sd iovXform expansion is refused, not read as an SD", {
   expect_error(.stanIovMagnitude(.iniDf), "standard deviation")
   .iniDf$backTransform[2] <- "nlmixr2iovSdCv"
   expect_equal(.stanIovMagnitude(.iniDf), "iov.cl")
+})
+
+test_that("the IOV prior-scale note names the xform the rewrite recorded", {
+  .iniDf <- data.frame(
+    ntheta = c(1, 2, 3),
+    neta1 = NA_real_,
+    name = c("tcl", "iov.cl", "iov.v"),
+    backTransform = c(NA_character_, "nlmixr2iovSdCv", "nlmixr2iovSdSd"),
+    stringsAsFactors = FALSE
+  )
+  expect_equal(
+    .stanIovScaleNote(.iniDf),
+    paste0(
+      "IOV magnitudes (iov.cl, iov.v) are on the sd scale (iovXform=\"sd\") in their priors, ",
+      "the Stan program and the fit's estimates, not the variance ini() declares"
+    )
+  )
+  .iniDf$backTransform[2:3] <- "nlmixr2iovLogvarCv"
+  expect_match(.stanIovScaleNote(.iniDf), "on the logvar scale (iovXform=\"logvar\")", fixed = TRUE)
+  expect_identical(.stanIovScaleNote(.iniDf[1, ]), character(0))
+  expect_identical(.stanIovScaleNote(.iniDf[, c("ntheta", "name")]), character(0))
+})
+
+test_that("an IOV fit says in $runInfo which scale its priors were on (#16)", {
+  skip_on_cran()
+  skip_if_not(.stanHasIovSens(), "IOV gated off: upstream sens column wrong (nlmixr2est#952)")
+  skip_if_not_installed("rstan")
+  .fit <- suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(
+      .iovPriorMod,
+      .iovData(),
+      est = "stan",
+      control = stanControl(chains = 1L, iter = 200L, warmup = 100L, seed = 42L, cores = 1L, onDiagnostic = "none")
+    )
+  ))
+  expect_true(any(grepl(
+    "IOV magnitudes (iov.cl) are on the sd scale",
+    .fit$runInfo,
+    fixed = TRUE
+  )))
+  # ... which is what the fit reports: the magnitude stays the sd theta
+  # (nlmixr2est's .uiFinalizeIov() variance restore is not run for est="stan")
+  expect_true("iov.cl" %in% names(.fit$theta))
+  expect_false("iov.cl" %in% .fit$ui$iniDf$name[!is.na(.fit$ui$iniDf$neta1)])
 })
