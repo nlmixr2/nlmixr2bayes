@@ -7,15 +7,7 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r setup, include = FALSE}
-knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
-                      message = FALSE, warning = FALSE)
-## The est="nuts" fit below is run for real and cached under inst/cache with
-## nlmixr2save's `:=` operator; the bridge-level material is a few seconds of
-## rxode2 solving and is not cached.  See vignettes/cacheSetup.R.
-source("cacheSetup.R")
-bayesCache("dde-")
-```
+
 
 ## Delay differential equations: a Stan limitation
 
@@ -67,7 +59,8 @@ in the case that prompted the issue).  `est = "nuts"` warns when a model estimat
 such a parameter.  Part 2 below estimates the delay *with* correct sensitivities,
 through `rxsRegister()`, which is the path to use for that today.
 
-```{r autoModel}
+
+``` r
 library(nlmixr2)
 library(nlmixr2bayes)
 
@@ -96,7 +89,8 @@ ddeMod <- function() {
 Twelve subjects, simulated from the model itself so there is a known truth to
 recover:
 
-```{r autoData}
+
+``` r
 set.seed(42)
 tmsAuto <- seq(0.5, 12, by = 1)
 evAuto <- rxode2::et(tmsAuto)
@@ -107,27 +101,86 @@ datAuto <- as.data.frame(evAuto)
 names(datAuto) <- tolower(names(datAuto))
 datAuto$dv <- simAuto$sim
 head(datAuto, 3)
+#>   id time evid       dv
+#> 1  1  0.5    0 1.518050
+#> 2  1  1.5    0 1.290215
+#> 3  1  2.5    0 1.630253
 ```
 
 And that is the whole fit -- an ordinary `est = "nuts"` call, at Stan's default
-`max_treedepth`.  `:=` is nlmixr2save's caching assignment, so it runs once and is
-reloaded on later builds:
+`max_treedepth`.  `:=` is nlmixr2save's caching assignment, which this vignette's source uses
+so the fit runs once and later knits reload it (with `<-` it is an ordinary
+fit):
 
-```{r autoFit}
+
+``` r
 fitAuto := nlmixr2est::nlmixr2(ddeMod, datAuto, est = "nuts",
                                control = nutsControl(seed = 42, chains = 2,
                                                      iter = 1000))
 print(fitAuto)
+#> ── nlmixr² Stan (HMC) (2 chains x 500 draws; max Rhat 1.008; min ESS 265; Wald
+#> CI from posterior cov) ──
+#> 
+#>                                  OBJF      AIC      BIC Log-likelihood
+#> FOCEi                       -143.2669 129.3874 141.2666      -60.69369
+#> WAIC (subject-level)        -157.7685       NA       NA       78.88425
+#> LOO (leave-one-subject-out) -152.9218       NA       NA       76.46088
+#>                             Condition#(Cov) Condition#(Cor)
+#> FOCEi                              36.45573        8.867486
+#> WAIC (subject-level)                     NA              NA
+#> LOO (leave-one-subject-out)              NA              NA
+#> 
+#> ── Time (sec $time): ──
+#> 
+#>              setup   optimize covariance preprocess postprocess table compress
+#> elapsed 0.02917186 3.4859e-05 2.5908e-05      0.098       0.273 1.408    0.009
+#> 
+#> ── Population Parameters ($parFixed or $parFixedDf): ──
+#> 
+#>          Est.     SE  %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
+#> lkin   -0.487  0.105  21.5    0.614 (0.500, 0.754)     22.1       16.9 
+#> lkout  -0.934 0.0909  9.73    0.393 (0.329, 0.469)                     
+#> ltau    0.405  FIXED FIXED                    1.50                     
+#> add.sd  0.340 0.0218  6.42    0.340 (0.297, 0.383)                     
+#>  
+#>   Covariance Type ($covMethod): stan.posterior
+#>   Some strong fixed parameter correlations exist ($cor) :
+#>       cor:lkout,lkin  cor:add.sd,lkin cor:add.sd,lkout 
+#>           0.797           0.0137           0.0162  
+#>  
+#> 
+#>   No correlations in between subject variability (BSV) matrix
+#>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
+#>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
+#>   Information about run found ($runInfo):
+#>    • FOCEi objective excludes the ini() priors (posterior only) 
+#>   Censoring ($censInformation): No censoring
+#> 
+#> ── Fit Data (object is a modified tibble): ──
+#> # A tibble: 144 × 16
+#>   ID     TIME    DV  PRED     RES   WRES IPRED    IRES  IWRES CPRED    CRES
+#>   <fct> <dbl> <dbl> <dbl>   <dbl>  <dbl> <dbl>   <dbl>  <dbl> <dbl>   <dbl>
+#> 1 1       0.5  1.52  1.11  0.407   1.18   1.15  0.373   1.10   1.11  0.409 
+#> 2 1       1.5  1.29  1.33 -0.0419 -0.106  1.44 -0.146  -0.429  1.33 -0.0362
+#> 3 1       2.5  1.63  1.51  0.120   0.262  1.67 -0.0395 -0.116  1.50  0.129 
+#> # ℹ 141 more rows
+#> # ℹ 5 more variables: CWRES <dbl>, eta.kin <dbl>, R <dbl>, kin <dbl>,
+#> #   kout <dbl>
 ```
 
 The posterior sits on the simulating values:
 
-```{r autoRecover}
+
+``` r
 truthAuto <- c(lkin = log(0.7), lkout = log(0.4), add.sd = 0.3)
 cbind(truth = truthAuto,
       posterior = fitAuto$posteriorSummary[names(truthAuto), "mean"],
       `2.5%` = fitAuto$posteriorSummary[names(truthAuto), "2.5%"],
       `97.5%` = fitAuto$posteriorSummary[names(truthAuto), "97.5%"])
+#>             truth  posterior       2.5%      97.5%
+#> lkin   -0.3566749 -0.4873861 -0.6933766 -0.2839434
+#> lkout  -0.9162907 -0.9343854 -1.1119005 -0.7434201
+#> add.sd  0.3000000  0.3398187  0.3005292  0.3846784
 ```
 
 Two practical notes, both of them about the *solver* rather than about Stan:
@@ -152,7 +205,8 @@ The rest of this vignette works the same equation one level lower, through
 yourself -- and it is also the most direct way to *see* the delayed sensitivities, which
 the automatic path keeps inside the likelihood.
 
-```{r model}
+
+``` r
 library(nlmixr2bayes)
 
 dde <- "
@@ -172,12 +226,17 @@ program supplies those:
 Register it the same way as any other model. All three parameters are differentiated,
 including the delay:
 
-```{r register}
+
+``` r
 tms <- seq(0.25, 25, by = 0.25)
 h <- rxsRegister(dde, events = rxode2::et(tms),
                  sens = c("lkin", "lkout", "ltau"), output = "R",
                  atol = 1e-10, rtol = 1e-10, method = "dop853")
 h
+#> <rxstan handle 1>
+#>   parameters (3): lkin, lkout, ltau
+#>   states     (1): R
+#>   rows       : 100 obs -> 100 outputs
 ```
 
 `method = "dop853"` rather than the default `liblsoda`: the delay machinery needs
@@ -192,11 +251,16 @@ per requested time.  That `100 obs -> 100 outputs` line is what the Stan program
 `rxsSolve()` calls the same C entry point the Stan program does, so it is the direct way to
 see what crosses the bridge:
 
-```{r solve}
+
+``` r
 truth <- c(kin = 0.7, kout = 0.4, tau = 1.5)
 p <- log(unname(truth))
 res <- rxsSolve(h, p)
 head(res, 3)
+#>       [,1]  [,2] [,3] [,4]
+#> [1,] 1.075 0.175 -0.1    0
+#> [2,] 1.150 0.350 -0.2    0
+#> [3,] 1.225 0.525 -0.3    0
 ```
 
 Column 1 is $R$; the rest are $\partial R/\partial(\ell k_{in}, \ell k_{out}, \ell\tau)$.
@@ -204,9 +268,12 @@ The fourth column is exactly zero in those first rows, and that is correct rathe
 suspicious: before the first delay has elapsed the solution has not yet seen the lagged
 term, so it does not depend on $\tau$ at all.  It becomes non-zero once $t > \tau$:
 
-```{r tauSens}
+
+``` r
 range(res[tms <= truth[["tau"]], 4])   # before the first delay
+#> [1] 0 0
 range(res[tms >  truth[["tau"]], 4])   # after it
+#> [1] -0.08528119  0.38250000
 ```
 
 ## Checking it without trusting finite differences
@@ -218,21 +285,32 @@ While $t \le \tau$ the lagged term is still the constant pre-history, so the equ
 collapses to $R' = k_{in} - k_{out}$, giving $R = 1 + (k_{in} - k_{out})t$. On the
 log scale the sensitivities are then exactly $k_{in}t$ and $-k_{out}t$:
 
-```{r oracle}
+
+``` r
 early <- which(tms <= truth[["tau"]])
 data.frame(t        = tms[early],
            dlkin    = res[early, 2],
            exact    = truth[["kin"]] * tms[early],
            dlkout   = res[early, 3],
            exact2   = -truth[["kout"]] * tms[early])
+#>      t dlkin exact dlkout exact2
+#> 1 0.25 0.175 0.175   -0.1   -0.1
+#> 2 0.50 0.350 0.350   -0.2   -0.2
+#> 3 0.75 0.525 0.525   -0.3   -0.3
+#> 4 1.00 0.700 0.700   -0.4   -0.4
+#> 5 1.25 0.875 0.875   -0.5   -0.5
+#> 6 1.50 1.050 1.050   -0.6   -0.6
 ```
 
 An exact match (to solver tolerances) verifies that the delay itself and its derivatives
 are handled correctly:
 
-```{r oracleMax}
+
+``` r
 max(abs(res[early, 2] - truth[["kin"]] * tms[early]))
+#> [1] 3.330669e-16
 max(abs(res[early, 3] + truth[["kout"]] * tms[early]))
+#> [1] 3.330669e-16
 ```
 
 Past the first delay interval there is no closed form left, so the fallback there is
@@ -243,7 +321,8 @@ model is compiled into Stan.
 
 Once registered, use it in Stan exactly as you would an ODE:
 
-```{r stanCode}
+
+``` r
 ddeStan <- "
 functions {
   vector rx_solve(int handle, vector p);
@@ -277,10 +356,12 @@ Nothing in it mentions a delay: from Stan's side `rx_solve()` is just a function
 known partials.  `rstan::stanc()` confirms it is a valid program -- `allow_undefined`
 is what lets `rx_solve()` stay undeclared until the bridge supplies it at link time:
 
-```{r stanc}
+
+``` r
 sc <- rstan::stanc(model_code = ddeStan, model_name = "dde",
                    allow_undefined = TRUE)
 sc$status
+#> [1] TRUE
 ```
 
 Compiling and fitting it is then the ordinary pattern from
@@ -288,7 +369,8 @@ Compiling and fitting it is then the ordinary pattern from
 `rxsStanModel()` it, and `rstan::sampling()` with
 `list(nObs = length(rObs), handle = h, rObs = rObs)`:
 
-```{r fit, eval = FALSE}
+
+``` r
 f <- tempfile(fileext = ".stan")
 writeLines(ddeStan, f)
 sm <- rxsStanModel(f, modelName = "dde")
@@ -314,13 +396,16 @@ autodiff. No DDE solver in Stan; no finite differencing; exact sensitivities.
   when safe; `rxsFastAvailable()` reports whether this handle got it (a modelled
   `alag()`/`f()`/`dur()`/`rate()` with dose rows is the case that refuses it):
 
-```{r fast}
+
+``` r
 rxsFastAvailable(h)
+#> [1] TRUE
 ```
 
 Release the handle when you are done with it:
 
-```{r release}
+
+``` r
 rxsRelease(h)
 ```
 

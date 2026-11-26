@@ -51,17 +51,24 @@
 #' whose C++ module pointer is only meaningful in the session that compiled
 #' it (external pointers do not survive (de)serialization); rstan is
 #' normally supposed to transparently reload the module from the embedded
-#' DSO bytes on first use, but that reload can itself fail (e.g. a session
-#' near R's loaded-DLL limit), surfacing as `Error in Module(module,
-#' mustStart = TRUE): ... NULL value passed for DllInfo` deep inside
-#' [rstan::sampling()].  Probing with the same call rstan uses internally
-#' catches a stale/corrupt cache entry before it reaches the user.
+#' DSO bytes on first use, but that reload can itself fail -- the bytes are
+#' missing or corrupt, they were built on another platform, or a shared
+#' library they link against (TBB from RcppParallel, the Rcpp module ABI)
+#' has since changed -- surfacing as `Error in Module(module, mustStart =
+#' TRUE): ... NULL value passed for DllInfo` deep inside [rstan::sampling()].
+#'
+#' The probe is the model's own `mk_cppmodule` slot: `stanmodel` is an
+#' exported rstan class, and rstan's exported `sampling()` method starts with
+#' exactly `object@mk_cppmodule(object)`, so this performs the same reload
+#' `sampling()` would (no compile, well under a second) and fails only when
+#' `sampling()` itself would.  (CRAN does not allow reaching the same function
+#' as `rstan:::mk_cppmodule`.)  A failing entry is recompiled instead.
 #' @noRd
 .stanModelUsable <- function(m) {
   isTRUE(methods::is(m, "stanmodel")) &&
     isTRUE(tryCatch(
       {
-        rstan:::mk_cppmodule(m)
+        m@mk_cppmodule(m)
         TRUE
       },
       error = function(e) FALSE
@@ -105,6 +112,12 @@ stanCompile <- function(code = .stanPhase0Code(), cache = TRUE, cacheDir = NULL,
     code,
     readLines(.hpp),
     as.character(utils::packageVersion("rstan")),
+    # the compiled DSO links against these (StanHeaders' library, TBB via
+    # RcppParallel, the Rcpp module ABI), so an upgrade recompiles up front
+    # rather than leaving the reload probe to catch it
+    as.character(utils::packageVersion("StanHeaders")),
+    as.character(utils::packageVersion("RcppParallel")),
+    as.character(utils::packageVersion("Rcpp")),
     as.character(utils::packageVersion("nlmixr2bayes")),
     R.version.string
   ))

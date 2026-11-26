@@ -1,0 +1,151 @@
+# Sharded NOT_CRAN test run, called by ci.yaml and slow-tests.yaml.  Each
+# shard installs nlmixr2bayes from the checkout and runs the test files
+# .github/scripts/ci-shards.R assigns to it: "core" = tests/ci-core.txt (fast
+# tier), "all" = every test file (full tier, and the weekly slow run).
+#
+# Every shard runs the hand-coded .stan bridge tests (RXSTAN_STAN_TESTS);
+# `slow` adds the nightly-scale gates behind NLMIXR2STAN_SLOW (G5 SBC in
+# test-sbc.R, G6 FOCEi agreement, ...), which only slow-tests.yaml sets.
+name: _tests.yaml
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: git ref to check out ('' = the triggering ref)
+        type: string
+        default: ''
+      matrix:
+        description: JSON list of {os, r, subset, index, n} shards
+        type: string
+        required: true
+      timeout:
+        description: per-shard timeout in minutes
+        type: number
+        default: 120
+      slow:
+        description: also run the NLMIXR2STAN_SLOW gates
+        type: boolean
+        default: false
+      sbc-n:
+        description: SBC replicate count (NLMIXR2STAN_SBC_N) when slow
+        type: string
+        default: '40'
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ${{ matrix.shard.os }}
+    name: ${{ inputs.slow && 'slow ' || '' }}${{ matrix.shard.subset }} ${{ matrix.shard.index }}/${{ matrix.shard.n }} ${{ matrix.shard.os }} (${{ matrix.shard.r }})
+    timeout-minutes: ${{ inputs.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(inputs.matrix) }}
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      NOT_CRAN: 'true'
+      RXSTAN_STAN_TESTS: '1'
+      NLMIXR2STAN_SLOW: ${{ inputs.slow && 'TRUE' || '' }}
+      NLMIXR2STAN_SBC_N: ${{ inputs.sbc-n }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: ./.github/actions/setup-nlmixr2bayes
+        with:
+          r-version: ${{ matrix.shard.r }}
+          pandoc: 'false'
+          ccache-save: ${{ matrix.shard.index == 1 }}
+          extra-packages: |
+            any::testthat
+            any::xml2
+          needs: check
+
+      - name: Pick this shard's test files
+        shell: bash
+        run: |
+          f=$(Rscript .github/scripts/ci-shards.R ${{ matrix.shard.subset }} ${{ matrix.shard.index }} ${{ matrix.shard.n }})
+          echo "SHARD_FILTER=$f" >> "$GITHUB_ENV"
+
+      # stanCompile() re-keys every model when one of these changes, so they
+      # belong in this key too: otherwise a dependency bump restores an exact
+      # (stale) hit, every model recompiles, and nothing new is ever saved.
+      - name: Fingerprint the libraries compiled Stan models link against
+        id: stan-deps
+        shell: Rscript {0}
+        run: |
+          .v <- vapply(c("rstan", "StanHeaders", "RcppParallel", "Rcpp"), function(p) as.character(utils::packageVersion(p)), "")
+          cat("fp=", paste(.v, collapse = "-"), "\n", sep = "", file = Sys.getenv("GITHUB_OUTPUT"), append = TRUE)
+
+      # stanCompile() keeps compiled models in
+      # tools::R_user_dir("nlmixr2bayes", "cache"), keyed internally by a hash
+      # of the program, the bridge header and the rstan/StanHeaders/
+      # RcppParallel/Rcpp/nlmixr2bayes versions, and reloads an entry only if
+      # its compiled module actually loads -- so a loose key here is safe.
+      # Compiling dominates this suite, so carrying the models between runs is
+      # the single biggest wall-time saving.  Each shard (and the slow run) has
+      # its own key space: they compile different programs.
+      - name: Cache compiled Stan models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/R/nlmixr2bayes
+          key: stan-models-${{ runner.os }}-${{ matrix.shard.r }}-${{ inputs.slow && 'slow' || matrix.shard.subset }}-${{ matrix.shard.index }}of${{ matrix.shard.n }}-${{ steps.stan-deps.outputs.fp }}-${{ hashFiles('DESCRIPTION', 'R/**', 'inst/include/**', 'inst/stan/**', 'tests/testthat/**', 'tests/ci-core.txt', 'tests/ci-timings.csv') }}
+          restore-keys: |
+            stan-models-${{ runner.os }}-${{ matrix.shard.r }}-${{ inputs.slow && 'slow' || matrix.shard.subset }}-${{ matrix.shard.index }}of${{ matrix.shard.n }}-${{ steps.stan-deps.outputs.fp }}-
+
+      - name: Install nlmixr2bayes
+        shell: bash
+        run: R CMD INSTALL --no-docs --no-multiarch --no-test-load .
+
+      # Same setup as tests/testthat.R, run in the package namespace (tests
+      # reach internals directly); serial in-process, streaming one line per
+      # file so a hung or slow file is identifiable from the log.
+      - name: Run tests
+        shell: Rscript {0}
+        run: |
+          .filter <- Sys.getenv("SHARD_FILTER")
+          if (identical(.filter, "^$")) {
+            message("no test files in this shard")
+            quit(save = "no")
+          }
+          library(testthat)
+          library(nlmixr2bayes)
+          testthat::test_dir(
+            "tests/testthat",
+            filter = .filter,
+            perl = TRUE,
+            package = "nlmixr2bayes",
+            load_package = "installed",
+            reporter = testthat::MultiReporter$new(list(
+              testthat::ProgressReporter$new(show_praise = FALSE),
+              testthat::JunitReporter$new(file = file.path(getwd(), "junit.xml"))
+            )),
+            stop_on_failure = TRUE
+          )
+
+      - name: List failing tests
+        if: failure()
+        shell: bash
+        run: python3 .github/scripts/junit-failures.py junit.xml >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ inputs.slow && 'slow' || matrix.shard.subset }}-${{ matrix.shard.os }}-${{ matrix.shard.r }}-${{ matrix.shard.index }}
+          path: junit.xml
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload snapshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshots-${{ inputs.slow && 'slow' || matrix.shard.subset }}-${{ matrix.shard.os }}-${{ matrix.shard.r }}-${{ matrix.shard.index }}
+          path: tests/testthat/_snaps
+          if-no-files-found: ignore
+          retention-days: 7

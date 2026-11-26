@@ -1,0 +1,106 @@
+# Test coverage (full tier), called by ci.yaml.  Runs the "light" subset of
+# .github/scripts/ci-shards.R: every test file whose recorded time in
+# tests/ci-timings.csv is at most 300 s -- today that is every file (the
+# slowest is ~4 min), as the old coverage job ran; the cap is there so a file
+# that grows past it drops out rather than stalling covr's single process.
+# The hand-coded .stan compilation tests stay off here, as before: they
+# exercise src/bridge.cpp and .stan programs rather than R code, so they buy
+# little R coverage for a lot of compile time.
+name: _coverage.yaml
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: git ref to check out ('' = the triggering ref)
+        type: string
+        default: ''
+    secrets:
+      CODECOV_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  test-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      NOT_CRAN: 'true'
+      RXSTAN_STAN_TESTS: ''
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      # covr instruments its own build, so ccache would only add misses
+      - uses: ./.github/actions/setup-nlmixr2bayes
+        with:
+          pandoc: 'false'
+          ccache: 'false'
+          extra-packages: |
+            any::covr
+            any::xml2
+          needs: coverage
+
+      # tests/testthat.R honours NLMIXR2BAYES_TEST_FILTER
+      - name: Pick the coverage test files
+        shell: bash
+        run: |
+          f=$(Rscript .github/scripts/ci-shards.R light 1 1 300)
+          echo "NLMIXR2BAYES_TEST_FILTER=$f" >> "$GITHUB_ENV"
+
+      # stanCompile() re-keys every model when one of these changes, so they
+      # belong in this key too: otherwise a dependency bump restores an exact
+      # (stale) hit, every model recompiles, and nothing new is ever saved.
+      - name: Fingerprint the libraries compiled Stan models link against
+        id: stan-deps
+        shell: Rscript {0}
+        run: |
+          .v <- vapply(c("rstan", "StanHeaders", "RcppParallel", "Rcpp"), function(p) as.character(utils::packageVersion(p)), "")
+          cat("fp=", paste(.v, collapse = "-"), "\n", sep = "", file = Sys.getenv("GITHUB_OUTPUT"), append = TRUE)
+
+      # See _tests.yaml: compiled Stan models.
+      - name: Cache compiled Stan models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/R/nlmixr2bayes
+          key: stan-models-${{ runner.os }}-coverage-${{ steps.stan-deps.outputs.fp }}-${{ hashFiles('DESCRIPTION', 'R/**', 'inst/include/**', 'inst/stan/**', 'tests/testthat/**', 'tests/ci-core.txt', 'tests/ci-timings.csv') }}
+          restore-keys: stan-models-${{ runner.os }}-coverage-${{ steps.stan-deps.outputs.fp }}-
+
+      - name: Test coverage
+        run: |
+          cov <- covr::package_coverage(
+            quiet = FALSE,
+            clean = FALSE,
+            install_path = file.path(normalizePath(Sys.getenv("RUNNER_TEMP"), winslash = "/"), "package")
+          )
+          print(cov)
+          covr::to_cobertura(cov)
+        shell: Rscript {0}
+
+      - uses: codecov/codecov-action@v5
+        with:
+          # A run on main must upload; a /cifull run on a PR only fails when a
+          # token is available.
+          fail_ci_if_error: ${{ github.event_name != 'issue_comment' || secrets.CODECOV_TOKEN != '' }}
+          files: ./cobertura.xml
+          plugins: noop
+          disable_search: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Show testthat output
+        if: always()
+        run: |
+          ## --------------------------------------------------------------------
+          find '${{ runner.temp }}/package' -name 'testthat.Rout*' -exec cat '{}' \; || true
+        shell: bash
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-test-failures
+          path: ${{ runner.temp }}/package

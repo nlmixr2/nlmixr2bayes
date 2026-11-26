@@ -8,12 +8,12 @@
 ## when it is not, so the .Rmd stays the single source of truth for what
 ## produced the numbers.
 ##
-## The cache lives in `inst/cache`, so it is *installed with the package*: a
-## reader who re-renders these documents from an installed nlmixr2bayes gets
-## the committed fits rather than an hour of sampling.  It stays small because
-## nlmixr2bayes registers a `saveFitItem()` method that drops rstan's compiled
-## shared object from the saved `stanfit` (R/stanSave.R) -- roughly 15 MB per
-## fit down to 1.5 MB, with every read-only rstan accessor still working.
+## The cache lives in `inst/cache`, which is `.Rbuildignore`d: the vignettes
+## ship precomputed (vignettes/precompute.R knits *.Rmd.orig -> *.Rmd), so the
+## cache only speeds up re-knits.  It stays small because nlmixr2bayes
+## registers a `saveFitItem()` method that drops rstan's compiled shared
+## object from the saved `stanfit` (R/stanSave.R), and precompute.R trims bare
+## stanfit `.rds` entries the same way.
 ##
 ## Usage, from a document's setup chunk:
 ##
