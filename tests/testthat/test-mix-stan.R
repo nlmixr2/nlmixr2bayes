@@ -244,3 +244,30 @@ test_that("mixture end to end: assembled gradient + membership + fit contract", 
     expect_equal(.gA, .gN, tolerance = 1e-4)
   }
 })
+
+test_that("etaDraws maps component-major rows onto the fit's own ID levels (#22)", {
+  # a stand-in for a Pathfinder result: its constrained draws are read from
+  # the cache, so no compile is needed.  2 draws x (2 components x 2
+  # subjects) x 2 etas, each cell's value encoding (draw, row, eta)
+  .eta <- array(NA_real_, c(2L, 4L, 2L))
+  for (.d in 1:2) {
+    for (.r in 1:4) {
+      for (.k in 1:2) {
+        .eta[.d, .r, .k] <- 100 * .d + 10 * .r + .k
+      }
+    }
+  }
+  .pf <- structure(list(cache = list2env(list(constrained = list(eta = .eta)))), class = "nlmixr2bayesPathfinder")
+  .map <- list(eta = data.frame(name = c("eta.cl", "eta.v")), nMix = 2L)
+  .ed <- .stanEtaDraws(.pf, .map, c("10", "2"))
+  expect_equal(nrow(.ed), 8L)
+  expect_equal(as.character(.ed$ID), rep(c("10", "2", "10", "2"), each = 2L))
+  expect_equal(levels(.ed$ID), c("10", "2"))
+  expect_equal(.ed$.component, rep(1:2, each = 4L))
+  expect_equal(.ed$.draw, rep(1:2, 4L))
+  expect_true(all(is.na(.ed$.chain)))
+  # row r of draw d carries that cell, for each eta
+  .r <- rep(1:4, each = 2L)
+  expect_equal(.ed$eta.cl, 100 * .ed$.draw + 10 * .r + 1)
+  expect_equal(.ed$eta.v, 100 * .ed$.draw + 10 * .r + 2)
+})

@@ -279,8 +279,8 @@ test_that("a correlated omega block fits and is summarized once per cell (#22)",
   .ed <- .fit$etaDraws
   .a <- rstan::extract(.fit$stanfit, pars = "eta", permuted = FALSE)
   for (.i in 1:4) {
-    expect_equal(.ed$eta.cl[.ed$ID == .i], as.vector(.a[, , paste0("eta[", .i, ",1]")]))
-    expect_equal(.ed$eta.v[.ed$ID == .i], as.vector(.a[, , paste0("eta[", .i, ",2]")]))
+    expect_equal(.ed$eta.cl[.ed$ID == .i], as.vector(.a[,, paste0("eta[", .i, ",1]")]))
+    expect_equal(.ed$eta.v[.ed$ID == .i], as.vector(.a[,, paste0("eta[", .i, ",2]")]))
   }
 })
 
