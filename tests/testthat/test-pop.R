@@ -49,7 +49,7 @@ test_that("tier 0 codegen: theta-only program with nlmixr2_pop_ll", {
   }
 })
 
-test_that("tier 0 refuses undissolved fixed thetas (theta-length mismatch)", {
+test_that("tier 0 hands the nlm entry the free thetas only (fixed rows stay literals)", {
   skip_on_cran()
   skip_if_not(.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
   .fixMod <- function() {
@@ -68,23 +68,104 @@ test_that("tier 0 refuses undissolved fixed thetas (theta-length mismatch)", {
     })
   }
   # literalFix=FALSE keeps the fixed row in the theta vector; the nlm
-  # problem estimates only free thetas, so the mismatch is refused at
-  # GENERATION (before any compile) rather than failing at the first
-  # evaluation
-  expect_error(
-    suppressMessages(
-      nlmixr2est::nlmixr2(.fixMod, .popData(), est = "stan", control = stanControl(run = FALSE, literalFix = FALSE))
-    ),
-    "literalFix"
+  # problem estimates only free thetas, so the external gets the free rows
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.fixMod, .popData(), est = "stan", control = stanControl(run = FALSE, literalFix = FALSE))
   )
+  .lines <- strsplit(.code$code, "\n")[[1]]
+  expect_true(any(grepl("theta[2] = 3;", .lines, fixed = TRUE)))
+  expect_true(any(grepl("target += nlmixr2_pop_ll(theta[{1, 3}]);", .lines, fixed = TRUE)))
+  if (requireNamespace("rstan", quietly = TRUE)) {
+    expect_silent(rstan::stanc(model_code = .code$code, allow_undefined = TRUE))
+  }
   # with the default literalFix=TRUE the fixed theta dissolves and the
-  # model generates
-  expect_s3_class(
-    suppressMessages(
-      nlmixr2est::nlmixr2(.fixMod, .popData(), est = "stan", control = stanControl(run = FALSE))
-    ),
-    "nlmixr2bayesCode"
+  # whole vector is free
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.fixMod, .popData(), est = "stan", control = stanControl(run = FALSE))
   )
+  expect_s3_class(.code, "nlmixr2bayesCode")
+  expect_true(grepl("target += nlmixr2_pop_ll(theta);", .code$code, fixed = TRUE))
+})
+
+.popFixResMod <- function() {
+  ini({
+    a <- 1
+    # fixed BETWEEN the free thetas, so the free rows are a non-prefix
+    # multi-index and a mis-sliced vector cannot pass
+    add.sd <- fix(0.3)
+    b <- 0.4
+    prior(a) ~ dnorm(0, 10)
+    prior(b) ~ dnorm(0, 10)
+  })
+  model({
+    y <- a + b * time
+    y ~ add(add.sd)
+  })
+}
+
+.popFixResData <- function() {
+  set.seed(1)
+  .d <- data.frame(id = 1, time = 1:20)
+  .d$dv <- 1 + 0.5 * .d$time + stats::rnorm(20, sd = 0.3)
+  .d
+}
+
+test_that("tier 0 fixed residual error (#21): codegen keeps it a literal", {
+  skip_on_cran()
+  skip_if_not(.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
+  # a fix()ed residual SD survives literalFix=TRUE as a fixed theta
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.popFixResMod, .popFixResData(), est = "stan", control = stanControl(run = FALSE))
+  )
+  .lines <- strsplit(.code$code, "\n")[[1]]
+  expect_true(any(grepl("theta[2] = 0.3;", .lines, fixed = TRUE)))
+  expect_true(any(grepl("target += nlmixr2_pop_ll(theta[{1, 3}]);", .lines, fixed = TRUE)))
+  expect_false(any(grepl("add_sd", .lines, fixed = TRUE)))
+})
+
+test_that("tier 0 fixed residual error (#21): est=\"nuts\" fits", {
+  skip_on_cran()
+  skip_if_not_installed("rstan")
+  skip_if_not(.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
+  .fit <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
+    .popFixResMod,
+    .popFixResData(),
+    est = "nuts",
+    control = stanControl(
+      chains = 1L,
+      iter = 600L,
+      warmup = 300L,
+      seed = 1L,
+      cores = 1L,
+      calcTables = FALSE,
+      onDiagnostic = "none"
+    )
+  )))
+  expect_true(inherits(.fit, "nlmixr2FitCore"))
+  .th <- .fit$env$theta
+  expect_equal(names(.th), c("a", "add.sd", "b"))
+  expect_equal(.th[["add.sd"]], 0.3)
+  expect_equal(.th[["a"]], 1, tolerance = 0.3)
+  expect_equal(.th[["b"]], 0.5, tolerance = 0.05)
+  # the objective is the OBJF (-2 logLik less n*log(2*pi)) at the point
+  # estimate, evaluated with the FIXED SD
+  .d <- .popFixResData()
+  .ll <- sum(stats::dnorm(.d$dv, .th[["a"]] + .th[["b"]] * .d$time, 0.3, log = TRUE))
+  expect_equal(.fit$env$objective, -2 * .ll - nrow(.d) * log(2 * pi), tolerance = 1e-6)
+  # only the sampled parameters carry posterior uncertainty
+  expect_equal(dimnames(.fit$env$cov), list(c("a", "b"), c("a", "b")))
+  expect_equal(rownames(.fit$env$posteriorSummary), c("a", "b"))
+  # assembled gradient FD: each free theta's partial lands on its own slot
+  if (requireNamespace("numDeriv", quietly = TRUE)) {
+    h <- stanPopLinkSetup(.popFixResMod, .d)
+    on.exit(stanLinkFree(), add = TRUE)
+    .sf <- .fit$env$stanfit
+    .up <- rstan::unconstrain_pars(.sf, list(a = 1.1, b = 0.45))
+    .gA <- rstan::grad_log_prob(.sf, .up)
+    attributes(.gA) <- NULL
+    .gN <- numDeriv::grad(function(u) rstan::log_prob(.sf, u), .up, method = "Richardson")
+    expect_equal(.gA, .gN, tolerance = 1e-4)
+  }
 })
 
 test_that("tier 0 link: value ties to the hand density; gradient FD-agrees", {

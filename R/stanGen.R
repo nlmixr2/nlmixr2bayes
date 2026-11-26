@@ -168,6 +168,27 @@
   )
 }
 
+#' The theta argument handed to `nlmixr2_pop_ll()` in a tier-0 program
+#'
+#' The nlm problem estimates only FREE thetas, while the program's theta
+#' vector also carries fixed rows as literals (a fix()ed residual-error
+#' parameter survives literalFix=TRUE as a fixed theta, #21), so the
+#' external gets the free rows only, through a Stan multi-index.
+#' @param fix logical, the map's theta `fix` column
+#' @return the Stan expression
+#' @noRd
+.stanPopThetaArg <- function(fix) {
+  if (all(fix)) {
+    # unreachable today (an all-fixed model declares no priors and is
+    # refused upstream); an empty multi-index would not parse
+    stop("population-only est=\"stan\" needs at least one estimated parameter", call. = FALSE) # nocov
+  }
+  if (!any(fix)) {
+    return("theta")
+  }
+  paste0("theta[{", paste(which(!fix), collapse = ", "), "}]")
+}
+
 .stanGenerate <- function(ui, map, pri, ctl) {
   .notes <- character(0)
   .free <- map$theta[!map$theta$fix, , drop = FALSE]
@@ -425,17 +446,10 @@
     # (nlmixr2/nlmixr2est#953) -- one external scalar carrying the whole
     # data log-likelihood and its analytic theta gradient.  The nlm problem
     # estimates only FREE thetas, while the program's theta vector carries
-    # fixed rows as literals -- a length mismatch the C entry would reject
-    # at the first evaluation (after the compile), so refuse it here: with
-    # literalFix=TRUE (the default) fixed thetas dissolve before this point
-    if (any(map$theta$fix)) {
-      stop(
-        "population-only est=\"stan\" needs fixed thetas dissolved: ",
-        "keep literalFix=TRUE (the nlm problem estimates only free ",
-        "thetas, and the program's theta vector would not match)",
-        call. = FALSE
-      )
-    }
+    # fixed rows as literals (a fix()ed residual-error parameter survives
+    # literalFix=TRUE as a fixed theta, #21), so hand the entry the free
+    # rows only
+    .popTheta <- .stanPopThetaArg(map$theta$fix)
     .code <- paste(
       c(
         "functions {",
@@ -457,7 +471,7 @@
         "  // priors from ini({}); the external function returns the",
         "  // COMPLETE population data log-likelihood",
         .thPrior,
-        "  target += nlmixr2_pop_ll(theta);",
+        paste0("  target += nlmixr2_pop_ll(", .popTheta, ");"),
         .tbsTarget,
         "}"
       ),
