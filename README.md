@@ -224,7 +224,10 @@ print(fit)
 ```
 
 On top of the usual fit contents it carries `$stanfit`,
-`$posteriorSummary`, `$loo`, `$waic` and `$stanDiagnostics`.
+`$posteriorSummary`, `$etaDraws`, `$loo`, `$waic` and
+`$stanDiagnostics`. `$etaDraws` holds the posterior draws of every
+subject’s etas, one row per draw and subject, with
+`posterior::draws_df()`-style `.chain`/`.iteration`/`.draw` columns.
 
 `$stanfit` is the `rstan::stanfit` itself, so everything in the
 rstan/bayesplot/posterior ecosystem works from it:

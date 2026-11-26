@@ -205,6 +205,12 @@ test_that("mixture end to end: assembled gradient + membership + fit contract", 
   expect_false(any(grepl("excludes the ini() priors", .fit$runInfo, fixed = TRUE)))
   # the etaObf is the membership-weighted eta (one row per PHYSICAL subject)
   expect_equal(nrow(.fit$env$etaObf), 4L)
+  # the eta draws are component-specific: each physical subject once per
+  # component (#22)
+  .ed <- .fit$etaDraws
+  expect_equal(nrow(.ed), 250L * 4L * 2L)
+  expect_equal(sort(unique(.ed$.component)), 1:2)
+  expect_equal(as.vector(table(.ed$ID, .ed$.component)), rep(250L, 8L))
   # assembled gradient FD through the whole mixture target, INCLUDING the
   # mixing probability (whose gradient is pure Stan autodiff of the
   # log_sum_exp weights)

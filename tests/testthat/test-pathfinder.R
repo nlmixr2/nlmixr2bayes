@@ -96,6 +96,11 @@ test_that("est='pathfinder': a complete nlmixr2 fit", {
   expect_true(all(eigen(.fit$omega)$values > 0))
   expect_true(is.data.frame(.fit$etaObf))
   expect_true(abs(.fit$ui$theta[["tv"]] - 3) < 1)
+  # resampled draws have no chain structure (#22)
+  .ed <- .fit$etaDraws
+  expect_equal(nrow(.ed), 300L * 4L)
+  expect_true(all(is.na(.ed$.chain)))
+  expect_equal(as.vector(tapply(.ed$eta.cl, .ed$ID, mean)), .fit$etaObf$eta.cl)
 })
 
 test_that("est='advi': sugar records its own est name", {
@@ -111,6 +116,10 @@ test_that("est='advi': sugar records its own est name", {
   ))
   expect_equal(.fit$env$est, "advi")
   expect_equal(.fit$env$method, "Stan (ADVI meanfield)")
+  # the approximation's draws, one "chain" (#22)
+  .ed <- .fit$etaDraws
+  expect_equal(nrow(.ed), 1000L * 4L)
+  expect_equal(as.vector(tapply(.ed$eta.cl, .ed$ID, mean)), .fit$etaObf$eta.cl)
 })
 
 test_that("est='nuts': sugar records its own est name, same fit as est='stan'", {

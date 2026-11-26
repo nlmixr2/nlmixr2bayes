@@ -33,6 +33,13 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
   if (exists("etaObfFocei", .env)) {
     expect_false(isTRUE(all.equal(.fit$etaObf, get("etaObfFocei", .env))))
   }
+  # every subject's eta draws, long: 2 chains x 200 draws x 4 subjects; each
+  # subject's draws average to its reported posterior-mean eta (#22)
+  .ed <- .fit$etaDraws
+  expect_equal(nrow(.ed), 2L * 200L * 4L)
+  expect_equal(levels(.ed$ID), as.character(1:4))
+  expect_equal(unique(.ed$.draw), 1:400)
+  expect_equal(as.vector(tapply(.ed$eta.cl, .ed$ID, mean)), .fit$etaObf$eta.cl)
   # Bayesian accessors ride on the fit environment
   expect_s4_class(.env$stanfit, "stanfit")
   # the documented retrieval path: fit$stanfit reaches the rstan object

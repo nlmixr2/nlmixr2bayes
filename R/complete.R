@@ -21,3 +21,14 @@ nmObjGet.posteriorSummary <- function(x, ...) {
   }
 }
 attr(nmObjGet.posteriorSummary, "desc") <- "Stan posterior summary"
+
+nmObjGet.etaDraws <- function(x, ...) {
+  .obj <- x[[1]]
+  .env <- .obj$env
+  if (exists("etaDraws", envir = .env, inherits = FALSE)) {
+    get("etaDraws", envir = .env, inherits = FALSE)
+  } else {
+    NULL
+  }
+}
+attr(nmObjGet.etaDraws, "desc") <- "posterior draws of every subject's etas"
