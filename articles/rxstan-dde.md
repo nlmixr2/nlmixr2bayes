@@ -323,9 +323,9 @@ its derivatives are handled correctly:
 ``` r
 
 max(abs(res[early, 2] - truth[["kin"]] * tms[early]))
-#> [1] 3.330669e-16
+#> [1] 4.440892e-16
 max(abs(res[early, 3] + truth[["kout"]] * tms[early]))
-#> [1] 3.330669e-16
+#> [1] 2.220446e-16
 ```
 
 Past the first delay interval there is no closed form left, so the
