@@ -106,11 +106,11 @@ one.cmt <- function() {
 ```
 
 Fitting it is one call. The `:=` here is nlmixr2save’s caching
-assignment (see `vignettes/cacheSetup.R`): the first render runs the
-sampler for real and writes the fit into `inst/cache`, and every later
-render loads it back, so the numbers on this page are the ones the code
-produced. Written with `<-` instead, the line is an ordinary fit that
-runs every time:
+assignment in the package’s source repository: the first knit of this
+vignette ran the sampler for real and cached the fit, and later knits
+reload it, so the numbers on this page are the ones the code produced.
+Written with `<-` instead, the line is an ordinary fit that runs every
+time:
 
 ``` r
 
@@ -308,7 +308,7 @@ stanControl(
 #> [1] TRUE
 #> 
 #> $chainCores
-#> [1] 2
+#> [1] 4
 #> 
 #> $diagOmegaSdPrior
 #> [1] "cauchy(0, %s)"
@@ -799,39 +799,6 @@ stanControl(
 #> $nonmem
 #> [1] FALSE
 #> 
-#> $tieOrder
-#> [1] "evid"
-#> 
-#> $rateAtDoseTime
-#> [1] FALSE
-#> 
-#> $durAtDoseTime
-#> [1] FALSE
-#> 
-#> $resetCancelsPending
-#> [1] TRUE
-#> 
-#> $ssMethod
-#> [1] 1
-#> 
-#> $doseAtRecord
-#> [1] FALSE
-#> 
-#> $addlCovAtTime
-#> [1] TRUE
-#> 
-#> $gpuBackend
-#> [1] "auto"
-#> 
-#> $gpuDevice
-#> NULL
-#> 
-#> $gpuPrecision
-#> [1] "double"
-#> 
-#> $gpuBatch
-#> [1] 16384
-#> 
 #> attr(,"class")
 #> [1] "rxControl"
 #> 
@@ -998,6 +965,10 @@ the program the fit above actually sampled:
 
 code <- nlmixr2est::nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "nuts",
                             control = stanControl(run = FALSE))
+#>  
+#>  
+#>  
+#> 
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
 #> ℹ Need to run with the source intact to parse comments
 #> est="stan": default prior sd_eta_ka ~ cauchy(0, 1.93649167310371) on omega
@@ -1057,26 +1028,20 @@ cat(code$code)
 #>   to_vector(z_eta_cl) ~ std_normal();
 #>   sd_eta_v ~ cauchy(0, 0.790569415042095);
 #>   to_vector(z_eta_v) ~ std_normal();
-#>   if (max(abs(col(eta, 1))) > 77.4596669241483 || max(abs(col(eta, 2))) > 54.7722557505166 || max(abs(col(eta, 3))) > 31.6227766016838) {
-#>     // far outside the eta prior: reject without calling the external
-#>     // likelihood, whose solve can run without bound at such a point
-#>     target += negative_infinity();
-#>   } else {
-#>     {
-#>       vector[N] llCond = nlmixr2_cond_all2(eta, theta);
-#>       real sumLL = sum(llCond);
-#>       target += sumLL;
-#>       vector[8] parDisp;
-#>       matrix[1,1] Od_eta_ka = L_eta_ka * L_eta_ka';
-#>       parDisp[5] = Od_eta_ka[1,1];
-#>       matrix[1,1] Od_eta_cl = L_eta_cl * L_eta_cl';
-#>       parDisp[6] = Od_eta_cl[1,1];
-#>       matrix[1,1] Od_eta_v = L_eta_v * L_eta_v';
-#>       parDisp[7] = Od_eta_v[1,1];
-#>       parDisp[8] = 0;
-#>       parDisp[1:4] = theta;
-#>       real iterDummy = nlmixr2_iter_tick(parDisp, -2 * sumLL);
-#>     }
+#>   {
+#>     vector[N] llCond = nlmixr2_cond_all2(eta, theta);
+#>     real sumLL = sum(llCond);
+#>     target += sumLL;
+#>     vector[8] parDisp;
+#>     matrix[1,1] Od_eta_ka = L_eta_ka * L_eta_ka';
+#>     parDisp[5] = Od_eta_ka[1,1];
+#>     matrix[1,1] Od_eta_cl = L_eta_cl * L_eta_cl';
+#>     parDisp[6] = Od_eta_cl[1,1];
+#>     matrix[1,1] Od_eta_v = L_eta_v * L_eta_v';
+#>     parDisp[7] = Od_eta_v[1,1];
+#>     parDisp[8] = 0;
+#>     parDisp[1:4] = theta;
+#>     real iterDummy = nlmixr2_iter_tick(parDisp, -2 * sumLL);
 #>   }
 #> }
 #> generated quantities {
@@ -1458,14 +1423,18 @@ And the plotting/posterior packages take the `stanfit` directly:
 rstan::traceplot(sf, pars = c("tka", "tcl", "tv"))
 ```
 
-![](nlmixr2bayes_files/figure-html/plots-1.png)
+![plot of chunk plots](fig-nlmixr2bayes-plots-1.png)
+
+plot of chunk plots
 
 ``` r
 
 bayesplot::mcmc_pairs(sf, pars = c("tka", "tcl", "tv"))
 ```
 
-![](nlmixr2bayes_files/figure-html/pairs-1.png)
+![plot of chunk pairs](fig-nlmixr2bayes-pairs-1.png)
+
+plot of chunk pairs
 
 ``` r
 
@@ -1498,7 +1467,7 @@ can be answered against the exact program that produced it:
 names(fit$stanData)
 #> [1] "N"
 identical(fit$stanCode, code$code)
-#> [1] FALSE
+#> [1] TRUE
 ```
 
 ### The objective-function rows

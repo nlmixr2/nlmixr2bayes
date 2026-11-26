@@ -172,15 +172,16 @@ truth to recover:</p>
 <span><span class="co">#&gt; 3  1  2.5    0 1.630253</span></span></code></pre></div>
 <p>And that is the whole fit – an ordinary <code>est = "nuts"</code>
 call, at Stan’s default <code>max_treedepth</code>. <code>:=</code> is
-nlmixr2save’s caching assignment, so it runs once and is reloaded on
-later builds:</p>
+nlmixr2save’s caching assignment, which this vignette’s source uses so
+the fit runs once and later knits reload it (with <code>&lt;-</code> it
+is an ordinary fit):</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fitAuto</span> <span class="op">:=</span> <span class="fu">nlmixr2est</span><span class="fu">::</span><span class="fu"><a href="https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.html" class="external-link">nlmixr2</a></span><span class="op">(</span><span class="va">ddeMod</span>, <span class="va">datAuto</span>, est <span class="op">=</span> <span class="st">"nuts"</span>,</span>
 <span>                               control <span class="op">=</span> <span class="fu"><a href="../reference/nutsControl.html">nutsControl</a></span><span class="op">(</span>seed <span class="op">=</span> <span class="fl">42</span>, chains <span class="op">=</span> <span class="fl">2</span>,</span>
 <span>                                                     iter <span class="op">=</span> <span class="fl">1000</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fitAuto</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> </span><span style="color: #BBBB00; font-weight: bold;">Stan (HMC)</span><span style="font-weight: bold;"> (2 chains x 500 draws; max Rhat 1.008; min ESS 265; Wald</span></span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">CI from posterior cov) ──</span></span></span>
+<span><span class="co">#&gt; ── nlmixr² Stan (HMC) (2 chains x 500 draws; max Rhat 1.008; min ESS 265; Wald</span></span>
+<span><span class="co">#&gt; CI from posterior cov) ──</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;                                  OBJF      AIC      BIC Log-likelihood</span></span>
 <span><span class="co">#&gt; FOCEi                       -143.2669 129.3874 141.2666      -60.69369</span></span>
@@ -191,42 +192,42 @@ later builds:</p>
 <span><span class="co">#&gt; WAIC (subject-level)                     NA              NA</span></span>
 <span><span class="co">#&gt; LOO (leave-one-subject-out)              NA              NA</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span></span>
+<span><span class="co">#&gt; ── Time (sec $time): ──</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;              setup   optimize covariance preprocess postprocess table compress</span></span>
 <span><span class="co">#&gt; elapsed 0.02917186 3.4859e-05 2.5908e-05      0.098       0.273 1.408    0.009</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">── Population Parameters (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span></span>
+<span><span class="co">#&gt; ── Population Parameters ($parFixed or $parFixedDf): ──</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt;          <span style="font-weight: bold;">Est.</span>     <span style="font-weight: bold;">SE</span>  <span style="font-weight: bold;">%RSE</span> <span style="font-weight: bold;">Back-transformed(95%CI)</span> <span style="font-weight: bold;">BSV(CV%)</span> <span style="font-weight: bold;">Shrink(SD)%</span></span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">lkin</span>   -0.487  0.105  21.5    0.614 (0.500, 0.754)     22.1       16.9 </span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">lkout</span>  -0.934 0.0909  9.73    0.393 (0.329, 0.469)                     </span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">ltau</span>    0.405  <span style="color: #00BB00; font-weight: bold;">FIXED</span> <span style="color: #00BB00; font-weight: bold;">FIXED</span>                    1.50                     </span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">add.sd</span>  0.340 0.0218  6.42    0.340 (0.297, 0.383)                     </span></span>
+<span><span class="co">#&gt;          Est.     SE  %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%</span></span>
+<span><span class="co">#&gt; lkin   -0.487  0.105  21.5    0.614 (0.500, 0.754)     22.1       16.9 </span></span>
+<span><span class="co">#&gt; lkout  -0.934 0.0909  9.73    0.393 (0.329, 0.469)                     </span></span>
+<span><span class="co">#&gt; ltau    0.405  FIXED FIXED                    1.50                     </span></span>
+<span><span class="co">#&gt; add.sd  0.340 0.0218  6.42    0.340 (0.297, 0.383)                     </span></span>
 <span><span class="co">#&gt;  </span></span>
-<span><span class="co">#&gt;   Covariance Type (<span style="color: #0000BB; font-weight: bold;">$covMethod</span>): <span style="font-weight: bold;">stan.posterior</span></span></span>
-<span><span class="co">#&gt;   Some strong fixed parameter correlations exist (<span style="color: #0000BB; font-weight: bold;">$cor</span>) :</span></span>
+<span><span class="co">#&gt;   Covariance Type ($covMethod): stan.posterior</span></span>
+<span><span class="co">#&gt;   Some strong fixed parameter correlations exist ($cor) :</span></span>
 <span><span class="co">#&gt;       cor:lkout,lkin  cor:add.sd,lkin cor:add.sd,lkout </span></span>
-<span><span class="co">#&gt;           <span style="color: #BB0000; font-weight: bold;">0.797 </span>          0.0137            0.0162   </span></span>
+<span><span class="co">#&gt;           0.797           0.0137           0.0162  </span></span>
 <span><span class="co">#&gt;  </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;   No correlations in between subject variability (BSV) matrix</span></span>
-<span><span class="co">#&gt;   Full BSV covariance (<span style="color: #0000BB; font-weight: bold;">$omega</span>) or correlation (<span style="color: #0000BB; font-weight: bold;">$omegaR</span>; diagonals=SDs) </span></span>
-<span><span class="co">#&gt;   Distribution stats (mean/skewness/kurtosis/p-value) available in <span style="color: #0000BB; font-weight: bold;">$shrink</span> </span></span>
-<span><span class="co">#&gt;   Information about run found (<span style="color: #0000BB; font-weight: bold;">$runInfo</span>):</span></span>
+<span><span class="co">#&gt;   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) </span></span>
+<span><span class="co">#&gt;   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink </span></span>
+<span><span class="co">#&gt;   Information about run found ($runInfo):</span></span>
 <span><span class="co">#&gt;    • FOCEi objective excludes the ini() priors (posterior only) </span></span>
-<span><span class="co">#&gt;   Censoring (<span style="color: #0000BB; font-weight: bold;">$censInformation</span>): No censoring</span></span>
+<span><span class="co">#&gt;   Censoring ($censInformation): No censoring</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">── Fit Data (object is a modified </span><span style="color: #0000BB; font-weight: bold;">tibble</span><span style="font-weight: bold;">): ──</span></span></span>
-<span><span class="co">#&gt; <span style="color: #949494;"># A tibble: 144 × 16</span></span></span>
+<span><span class="co">#&gt; ── Fit Data (object is a modified tibble): ──</span></span>
+<span><span class="co">#&gt; # A tibble: 144 × 16</span></span>
 <span><span class="co">#&gt;   ID     TIME    DV  PRED     RES   WRES IPRED    IRES  IWRES CPRED    CRES</span></span>
-<span><span class="co">#&gt;   <span style="color: #949494; font-style: italic;">&lt;fct&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">1</span> 1       0.5  1.52  1.11  0.407   1.18   1.15  0.373   1.10   1.11  0.409 </span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">2</span> 1       1.5  1.29  1.33 -<span style="color: #BB0000;">0.041</span><span style="color: #BB0000; text-decoration: underline;">9</span> -<span style="color: #BB0000;">0.106</span>  1.44 -<span style="color: #BB0000;">0.146</span>  -<span style="color: #BB0000;">0.429</span>  1.33 -<span style="color: #BB0000;">0.036</span><span style="color: #BB0000; text-decoration: underline;">2</span></span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">3</span> 1       2.5  1.63  1.51  0.120   0.262  1.67 -<span style="color: #BB0000;">0.039</span><span style="color: #BB0000; text-decoration: underline;">5</span> -<span style="color: #BB0000;">0.116</span>  1.50  0.129 </span></span>
-<span><span class="co">#&gt; <span style="color: #949494;"># ℹ 141 more rows</span></span></span>
-<span><span class="co">#&gt; <span style="color: #949494;"># ℹ 5 more variables: CWRES &lt;dbl&gt;, eta.kin &lt;dbl&gt;, R &lt;dbl&gt;, kin &lt;dbl&gt;,</span></span></span>
-<span><span class="co">#&gt; <span style="color: #949494;">#   kout &lt;dbl&gt;</span></span></span></code></pre></div>
+<span><span class="co">#&gt;   &lt;fct&gt; &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;   &lt;dbl&gt;  &lt;dbl&gt; &lt;dbl&gt;   &lt;dbl&gt;  &lt;dbl&gt; &lt;dbl&gt;   &lt;dbl&gt;</span></span>
+<span><span class="co">#&gt; 1 1       0.5  1.52  1.11  0.407   1.18   1.15  0.373   1.10   1.11  0.409 </span></span>
+<span><span class="co">#&gt; 2 1       1.5  1.29  1.33 -0.0419 -0.106  1.44 -0.146  -0.429  1.33 -0.0362</span></span>
+<span><span class="co">#&gt; 3 1       2.5  1.63  1.51  0.120   0.262  1.67 -0.0395 -0.116  1.50  0.129 </span></span>
+<span><span class="co">#&gt; # ℹ 141 more rows</span></span>
+<span><span class="co">#&gt; # ℹ 5 more variables: CWRES &lt;dbl&gt;, eta.kin &lt;dbl&gt;, R &lt;dbl&gt;, kin &lt;dbl&gt;,</span></span>
+<span><span class="co">#&gt; #   kout &lt;dbl&gt;</span></span></code></pre></div>
 <p>The posterior sits on the simulating values:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">truthAuto</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>lkin <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="fl">0.7</span><span class="op">)</span>, lkout <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="fl">0.4</span><span class="op">)</span>, add.sd <span class="op">=</span> <span class="fl">0.3</span><span class="op">)</span></span>
@@ -291,8 +292,6 @@ differentiated, including the delay:</p>
 <span><span class="va">h</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/rxsRegister.html">rxsRegister</a></span><span class="op">(</span><span class="va">dde</span>, events <span class="op">=</span> <span class="fu">rxode2</span><span class="fu">::</span><span class="fu"><a href="https://nlmixr2.github.io/rxode2/reference/et.html" class="external-link">et</a></span><span class="op">(</span><span class="va">tms</span><span class="op">)</span>,</span>
 <span>                 sens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lkin"</span>, <span class="st">"lkout"</span>, <span class="st">"ltau"</span><span class="op">)</span>, output <span class="op">=</span> <span class="st">"R"</span>,</span>
 <span>                 atol <span class="op">=</span> <span class="fl">1e-10</span>, rtol <span class="op">=</span> <span class="fl">1e-10</span>, method <span class="op">=</span> <span class="st">"dop853"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
-<span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
 <span><span class="va">h</span></span>
 <span><span class="co">#&gt; &lt;rxstan handle 1&gt;</span></span>
 <span><span class="co">#&gt;   parameters (3): lkin, lkout, ltau</span></span>
@@ -371,9 +370,9 @@ and
 and its derivatives are handled correctly:</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">res</span><span class="op">[</span><span class="va">early</span>, <span class="fl">2</span><span class="op">]</span> <span class="op">-</span> <span class="va">truth</span><span class="op">[[</span><span class="st">"kin"</span><span class="op">]</span><span class="op">]</span> <span class="op">*</span> <span class="va">tms</span><span class="op">[</span><span class="va">early</span><span class="op">]</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 4.440892e-16</span></span>
+<span><span class="co">#&gt; [1] 3.330669e-16</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">res</span><span class="op">[</span><span class="va">early</span>, <span class="fl">3</span><span class="op">]</span> <span class="op">+</span> <span class="va">truth</span><span class="op">[[</span><span class="st">"kout"</span><span class="op">]</span><span class="op">]</span> <span class="op">*</span> <span class="va">tms</span><span class="op">[</span><span class="va">early</span><span class="op">]</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 2.220446e-16</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 3.330669e-16</span></span></code></pre></div>
 <p>Past the first delay interval there is no closed form left, so the
 fallback there is central differences of whole solves – which is what
 <code><a href="../reference/rxsCheckGradient.html">rxsCheckGradient()</a></code> does once the model is compiled into

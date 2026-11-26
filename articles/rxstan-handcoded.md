@@ -136,8 +136,6 @@ Generate the Stan program and solver handle:
 ``` r
 
 gen <- rxsStanFromUi(oneCmt, dat)
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
 names(gen)
 #> [1] "code"       "handle"     "standata"   "inits"      "thetaNames"
 #> [6] "etaNames"   "errNames"   "states"     "stanNames"
@@ -345,8 +343,6 @@ h <- rxsRegister(pkModel, events = ev1,
                  sens = c("lka", "lcl", "lv"),
                  output = "center",
                  atol = 1e-10, rtol = 1e-10)
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
 h
 #> <rxstan handle 2>
 #>   parameters (3): lka, lcl, lv
@@ -415,12 +411,12 @@ print(fit2, pars = c("lka", "lcl", "lv", "sigma"))
 #> post-warmup draws per chain=500, total post-warmup draws=1000.
 #> 
 #>       mean se_mean   sd  2.5%  25%  50%  75% 97.5% n_eff Rhat
-#> lka   0.14    0.01 0.19 -0.24 0.02 0.15 0.24  0.50   369 1.00
-#> lcl   1.25    0.00 0.05  1.14 1.22 1.25 1.28  1.35   390 1.00
-#> lv    3.36    0.01 0.09  3.16 3.31 3.36 3.41  3.52   301 1.01
-#> sigma 0.15    0.00 0.05  0.09 0.12 0.14 0.17  0.27   254 1.02
+#> lka   0.14    0.01 0.16 -0.18 0.04 0.14 0.25  0.46   401    1
+#> lcl   1.25    0.00 0.05  1.15 1.22 1.25 1.29  1.35   569    1
+#> lv    3.36    0.00 0.09  3.17 3.31 3.37 3.42  3.53   336    1
+#> sigma 0.15    0.00 0.04  0.10 0.12 0.14 0.17  0.26   278    1
 #> 
-#> Samples were drawn using NUTS(diag_e) at Thu Nov 26 17:04:21 2026.
+#> Samples were drawn using NUTS(diag_e) at Mon Sep 21 12:49:08 2026.
 #> For each parameter, n_eff is a crude measure of effective sample size,
 #> and Rhat is the potential scale reduction factor on split chains (at 
 #> convergence, Rhat=1).
@@ -437,7 +433,7 @@ round(rbind(truth = truth,
             posterior = colMeans(as.matrix(fit2, pars = c("lka", "lcl", "lv")))), 3)
 #>             lka   lcl    lv
 #> truth     0.095 1.386 3.401
-#> posterior 0.136 1.251 3.357
+#> posterior 0.145 1.253 3.364
 ```
 
 [`rxsSolveStats()`](https://nlmixr2.github.io/nlmixr2bayes/reference/rxsSolveStats.md)
@@ -449,7 +445,7 @@ each one becomes a rejected proposal rather than an error):
 
 rxsSolveStats(h)
 #>   solves failures 
-#>    21164        1
+#>        1        0
 ```
 
 ## What crosses the boundary
@@ -480,10 +476,10 @@ at, on the *unconstrained* scale Stan works in:
 rxsCheckGradient(rstan::sampling(sm, data = standata, chains = 0),
                  c(lka = 0.1, lcl = 1.4, lv = 3.4, sigma = 0.2))
 #>   par     analytic      numeric      relDiff
-#> 1   1  -0.07123147  -0.07123147 3.610434e-10
-#> 2   2  -1.40451837  -1.40451837 6.307394e-10
-#> 3   3   0.41635454   0.41635455 3.292972e-09
-#> 4   4 -13.21096698 -13.21096698 1.254116e-11
+#> 1   1  -0.07123147  -0.07123147 2.180990e-10
+#> 2   2  -1.40451837  -1.40451837 7.261012e-10
+#> 3   3   0.41635454   0.41635455 3.331731e-09
+#> 4   4 -13.21096698 -13.21096698 1.177218e-11
 ```
 
 Look for relative differences close to `1e-6` or better. Anything much

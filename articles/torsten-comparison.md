@@ -181,7 +181,7 @@ cat(grep("Lcorr|lkj|^\\s*z\\b|eta\\[|matrix", strsplit(codePop$code, "\n")[[1]],
 #>   matrix[5,5] L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka = diag_pre_multiply(sd_eta_cl_eta_q_eta_v1_eta_v2_eta_ka, Lcorr_eta_cl_eta_q_eta_v1_eta_v2_eta_ka);
 #>   eta[, 1:5] = z_eta_cl_eta_q_eta_v1_eta_v2_eta_ka * L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka';
 #>   Lcorr_eta_cl_eta_q_eta_v1_eta_v2_eta_ka ~ lkj_corr_cholesky(2);
-#>       matrix[5,5] Od_eta_cl_eta_q_eta_v1_eta_v2_eta_ka = L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka * L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka';
+#>     matrix[5,5] Od_eta_cl_eta_q_eta_v1_eta_v2_eta_ka = L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka * L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka';
 #>   matrix[5,5] omegaOut = rep_matrix(0, 5,5);
 ```
 

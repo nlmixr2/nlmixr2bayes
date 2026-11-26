@@ -10,8 +10,8 @@
 <script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="Bayesian Interface for nlmixr2">
-<meta name="description" content="Bayesian estimation for nlmixr2 models by linking Stan (via rstan) directly to the compiled rxode2/nlmixr2est likelihoods rather than re-expressing the model in the Stan language. The ordinary differential equation solving, residual-error models and censoring stay in one place (rxode2/nlmixr2est), and Stan consumes the likelihood and its analytically-supplied gradients as an external function. Prior distributions come from the models ini({}) block, whose distribution catalog is one-to-one with Stans.">
-<meta property="og:description" content="Bayesian estimation for nlmixr2 models by linking Stan (via rstan) directly to the compiled rxode2/nlmixr2est likelihoods rather than re-expressing the model in the Stan language. The ordinary differential equation solving, residual-error models and censoring stay in one place (rxode2/nlmixr2est), and Stan consumes the likelihood and its analytically-supplied gradients as an external function. Prior distributions come from the models ini({}) block, whose distribution catalog is one-to-one with Stans.">
+<meta name="description" content="Bayesian estimation for nlmixr2 models by linking Stan (via rstan) directly to the compiled rxode2/nlmixr2est likelihoods rather than re-expressing the model in the Stan language. The ordinary differential equation solving, residual-error models and censoring stay in one place (rxode2/nlmixr2est), and Stan consumes the likelihood and its analytically-supplied gradients as an external function. Prior distributions come from the models ini({}) block, whose distribution catalog is one-to-one with that of Stan'.">
+<meta property="og:description" content="Bayesian estimation for nlmixr2 models by linking Stan (via rstan) directly to the compiled rxode2/nlmixr2est likelihoods rather than re-expressing the model in the Stan language. The ordinary differential equation solving, residual-error models and censoring stay in one place (rxode2/nlmixr2est), and Stan consumes the likelihood and its analytically-supplied gradients as an external function. Prior distributions come from the models ini({}) block, whose distribution catalog is one-to-one with that of Stan'.">
 <meta property="og:image" content="https://nlmixr2.github.io/nlmixr2bayes/logo.png">
 </head>
 <body>
@@ -137,18 +137,13 @@
 <span></span>
 <span><span class="va">fit</span> <span class="op">:=</span> <span class="fu">nlmixr2est</span><span class="fu">::</span><span class="fu"><a href="https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.html" class="external-link">nlmixr2</a></span><span class="op">(</span><span class="va">one.cmt</span>, <span class="va">theo_sd</span>, est <span class="op">=</span> <span class="st">"nuts"</span>,</span>
 <span>                           control <span class="op">=</span> <span class="fu"><a href="reference/nutsControl.html">nutsControl</a></span><span class="op">(</span>seed <span class="op">=</span> <span class="fl">42</span>, chains <span class="op">=</span> <span class="fl">2</span>,</span>
-<span>                                                 iter <span class="op">=</span> <span class="fl">1000</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
-<span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
-<span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
-<span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
-<span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
-<span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span></code></pre></div>
+<span>                                                 iter <span class="op">=</span> <span class="fl">1000</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 <p>(<code>:=</code> is nlmixr2save’s caching assignment – it runs the fit once, caches it under <code>inst/cache</code>, and reloads it on later knits so the numbers on this page are the ones this code produced. With <code>&lt;-</code> it is an ordinary fit. The short 2-chain run keeps the README quick to rebuild; the defaults are 4 chains of 2000.)</p>
 <p>It returns an ordinary nlmixr2 fit object – the sampler diagnostics are in the header, and the posterior is summarized in the usual parameter table:</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ── nlmixr² Stan (HMC) (2 chains x 500 draws; max Rhat 1.004; min ESS 358; Wald CI from posterior cov) ──</span></span>
+<span><span class="co">#&gt; ── nlmixr² Stan (HMC) (2 chains x 500 draws; max Rhat 1.004; min ESS 358; Wald</span></span>
+<span><span class="co">#&gt; CI from posterior cov) ──</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;                                  OBJF      AIC      BIC Log-likelihood</span></span>
 <span><span class="co">#&gt; FOCEi                       127.77345 384.3732 404.5528      -185.1866</span></span>
@@ -190,7 +185,7 @@
 <span><span class="co">#&gt; 3 1      0.57  6.57  5.90  0.670  6.78 -0.208 -0.294 0.0875 -0.491 -0.0768  119.</span></span>
 <span><span class="co">#&gt; # ℹ 129 more rows</span></span>
 <span><span class="co">#&gt; # ℹ 6 more variables: central &lt;dbl&gt;, ka &lt;dbl&gt;, cl &lt;dbl&gt;, v &lt;dbl&gt;, tad &lt;dbl&gt;,</span></span>
-<span><span class="co">#&gt; #   dosenum &lt;dbl&gt;</span></span></code></pre></div>
+<span><span class="co">#&gt; #   dosenum &lt;int&gt;</span></span></code></pre></div>
 <p>On top of the usual fit contents it carries <code>$stanfit</code>, <code>$posteriorSummary</code>, <code>$loo</code>, <code>$waic</code> and <code>$stanDiagnostics</code>.</p>
 <p><code>$stanfit</code> is the <code><a href="https://mc-stan.org/rstan/reference/stanfit-class.html" class="external-link">rstan::stanfit</a></code> itself, so everything in the rstan/bayesplot/posterior ecosystem works from it:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
@@ -596,7 +591,10 @@
 <span><span class="co">#&gt; truth     0.09531018 1.386294 3.401197</span></span>
 <span><span class="co">#&gt; posterior 0.14477675 1.253490 3.364142</span></span>
 <span></span>
-<span><span class="fu"><a href="reference/rxsCheckGradient.html">rxsCheckGradient</a></span><span class="op">(</span><span class="va">fit2</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>lka <span class="op">=</span> <span class="fl">0.1</span>, lcl <span class="op">=</span> <span class="fl">1.4</span>, lv <span class="op">=</span> <span class="fl">3.4</span>, sigma <span class="op">=</span> <span class="fl">0.2</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co"># the cached fit2 keeps its draws but not the compiled model, so check the</span></span>
+<span><span class="co"># gradient against a zero-chain sampling() of the live one</span></span>
+<span><span class="fu"><a href="reference/rxsCheckGradient.html">rxsCheckGradient</a></span><span class="op">(</span><span class="fu">rstan</span><span class="fu">::</span><span class="fu"><a href="https://mc-stan.org/rstan/reference/stanmodel-method-sampling.html" class="external-link">sampling</a></span><span class="op">(</span><span class="va">sm</span>, data <span class="op">=</span> <span class="va">standata</span>, chains <span class="op">=</span> <span class="fl">0</span><span class="op">)</span>,</span>
+<span>                 <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>lka <span class="op">=</span> <span class="fl">0.1</span>, lcl <span class="op">=</span> <span class="fl">1.4</span>, lv <span class="op">=</span> <span class="fl">3.4</span>, sigma <span class="op">=</span> <span class="fl">0.2</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;   par     analytic      numeric      relDiff</span></span>
 <span><span class="co">#&gt; 1   1  -0.07123147  -0.07123147 2.180990e-10</span></span>
 <span><span class="co">#&gt; 2   2  -1.40451837  -1.40451837 7.261012e-10</span></span>
@@ -800,7 +798,7 @@
 <div class="dev-status">
 <h2 data-toc-skip>Dev status</h2>
 <ul class="list-unstyled">
-<li><a href="https://github.com/nlmixr2/nlmixr2bayes/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/nlmixr2/nlmixr2bayes/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
+<li><a href="https://github.com/nlmixr2/nlmixr2bayes/actions/workflows/ci.yaml" class="external-link"><img src="https://github.com/nlmixr2/nlmixr2bayes/actions/workflows/ci.yaml/badge.svg?branch=main" alt="CI"></a></li>
 <li><a href="https://www.codefactor.io/repository/github/nlmixr2/nlmixr2bayes" class="external-link"><img src="https://www.codefactor.io/repository/github/nlmixr2/nlmixr2bayes/badge" alt="CodeFactor"></a></li>
 <li><a href="https://CRAN.R-project.org/package=nlmixr2bayes" class="external-link"><img src="https://www.r-pkg.org/badges/version/nlmixr2bayes" alt="CRAN status"></a></li>
 <li><a href="https://cran.r-project.org/package=nlmixr2bayes" class="external-link"><img src="https://cranlogs.r-pkg.org/badges/grand-total/nlmixr2bayes" alt="CRAN total downloads"></a></li>

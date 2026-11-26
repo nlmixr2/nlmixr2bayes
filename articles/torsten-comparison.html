@@ -338,7 +338,7 @@ rather than written:</p>
 <span><span class="co">#&gt;   matrix[5,5] L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka = diag_pre_multiply(sd_eta_cl_eta_q_eta_v1_eta_v2_eta_ka, Lcorr_eta_cl_eta_q_eta_v1_eta_v2_eta_ka);</span></span>
 <span><span class="co">#&gt;   eta[, 1:5] = z_eta_cl_eta_q_eta_v1_eta_v2_eta_ka * L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka';</span></span>
 <span><span class="co">#&gt;   Lcorr_eta_cl_eta_q_eta_v1_eta_v2_eta_ka ~ lkj_corr_cholesky(2);</span></span>
-<span><span class="co">#&gt;       matrix[5,5] Od_eta_cl_eta_q_eta_v1_eta_v2_eta_ka = L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka * L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka';</span></span>
+<span><span class="co">#&gt;     matrix[5,5] Od_eta_cl_eta_q_eta_v1_eta_v2_eta_ka = L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka * L_eta_cl_eta_q_eta_v1_eta_v2_eta_ka';</span></span>
 <span><span class="co">#&gt;   matrix[5,5] omegaOut = rep_matrix(0, 5,5);</span></span></code></pre></div>
 <p>A note on the eta parameterization: nlmixr2bayes’s generated program
 uses <strong>the same Matt’s trick</strong> Torsten’s examples hand-code

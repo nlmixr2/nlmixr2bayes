@@ -111,8 +111,9 @@ head(datAuto, 3)
 ```
 
 And that is the whole fit – an ordinary `est = "nuts"` call, at Stan’s
-default `max_treedepth`. `:=` is nlmixr2save’s caching assignment, so it
-runs once and is reloaded on later builds:
+default `max_treedepth`. `:=` is nlmixr2save’s caching assignment, which
+this vignette’s source uses so the fit runs once and later knits reload
+it (with `<-` it is an ordinary fit):
 
 ``` r
 
@@ -148,7 +149,7 @@ print(fitAuto)
 #>   Covariance Type ($covMethod): stan.posterior
 #>   Some strong fixed parameter correlations exist ($cor) :
 #>       cor:lkout,lkin  cor:add.sd,lkin cor:add.sd,lkout 
-#>           0.797           0.0137            0.0162   
+#>           0.797           0.0137           0.0162  
 #>  
 #> 
 #>   No correlations in between subject variability (BSV) matrix
@@ -241,8 +242,6 @@ tms <- seq(0.25, 25, by = 0.25)
 h <- rxsRegister(dde, events = rxode2::et(tms),
                  sens = c("lkin", "lkout", "ltau"), output = "R",
                  atol = 1e-10, rtol = 1e-10, method = "dop853")
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
 h
 #> <rxstan handle 1>
 #>   parameters (3): lkin, lkout, ltau
@@ -323,9 +322,9 @@ its derivatives are handled correctly:
 ``` r
 
 max(abs(res[early, 2] - truth[["kin"]] * tms[early]))
-#> [1] 4.440892e-16
+#> [1] 3.330669e-16
 max(abs(res[early, 3] + truth[["kout"]] * tms[early]))
-#> [1] 2.220446e-16
+#> [1] 3.330669e-16
 ```
 
 Past the first delay interval there is no closed form left, so the

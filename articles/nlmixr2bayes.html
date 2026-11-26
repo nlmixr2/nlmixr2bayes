@@ -172,12 +172,11 @@ one <code>prior()</code> line per estimated parameter:</p>
 <span>  <span class="op">}</span><span class="op">)</span></span>
 <span><span class="op">}</span></span></code></pre></div>
 <p>Fitting it is one call. The <code>:=</code> here is nlmixr2save’s
-caching assignment (see <code>vignettes/cacheSetup.R</code>): the first
-render runs the sampler for real and writes the fit into
-<code>inst/cache</code>, and every later render loads it back, so the
-numbers on this page are the ones the code produced. Written with
-<code>&lt;-</code> instead, the line is an ordinary fit that runs every
-time:</p>
+caching assignment in the package’s source repository: the first knit of
+this vignette ran the sampler for real and cached the fit, and later
+knits reload it, so the numbers on this page are the ones the code
+produced. Written with <code>&lt;-</code> instead, the line is an
+ordinary fit that runs every time:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit</span> <span class="op">:=</span> <span class="fu">nlmixr2est</span><span class="fu">::</span><span class="fu"><a href="https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.html" class="external-link">nlmixr2</a></span><span class="op">(</span><span class="va">one.cmt</span>, <span class="fu">nlmixr2data</span><span class="fu">::</span><span class="va"><a href="https://nlmixr2.github.io/nlmixr2data/reference/theo_sd.html" class="external-link">theo_sd</a></span>, est <span class="op">=</span> <span class="st">"nuts"</span>,</span>
 <span>                           control <span class="op">=</span> <span class="fu"><a href="../reference/nutsControl.html">nutsControl</a></span><span class="op">(</span>seed <span class="op">=</span> <span class="fl">42</span>, chains <span class="op">=</span> <span class="fl">2</span>,</span>
@@ -190,8 +189,8 @@ headline diagnostics in the header and the posterior summarized in the
 usual parameter table:</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> </span><span style="color: #BBBB00; font-weight: bold;">Stan (HMC)</span><span style="font-weight: bold;"> (2 chains x 500 draws; max Rhat 1.004; min ESS 358; Wald</span></span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">CI from posterior cov) ──</span></span></span>
+<span><span class="co">#&gt; ── nlmixr² Stan (HMC) (2 chains x 500 draws; max Rhat 1.004; min ESS 358; Wald</span></span>
+<span><span class="co">#&gt; CI from posterior cov) ──</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;                                  OBJF      AIC      BIC Log-likelihood</span></span>
 <span><span class="co">#&gt; FOCEi                       127.77345 384.3732 404.5528      -185.1866</span></span>
@@ -202,38 +201,38 @@ usual parameter table:</p>
 <span><span class="co">#&gt; WAIC (subject-level)                     NA              NA</span></span>
 <span><span class="co">#&gt; LOO (leave-one-subject-out)              NA              NA</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span></span>
+<span><span class="co">#&gt; ── Time (sec $time): ──</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;              setup   optimize covariance preprocess postprocess table compress</span></span>
 <span><span class="co">#&gt; elapsed 0.07425366 3.6172e-05  2.151e-05      0.039       0.013 0.034    0.006</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">── Population Parameters (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span></span>
+<span><span class="co">#&gt; ── Population Parameters ($parFixed or $parFixedDf): ──</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt;         <span style="font-weight: bold;">Est.</span>     <span style="font-weight: bold;">SE</span> <span style="font-weight: bold;">%RSE</span> <span style="font-weight: bold;">Back-transformed(95%CI)</span> <span style="font-weight: bold;">BSV(CV%)</span> <span style="font-weight: bold;">Shrink(SD)%</span></span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">tka</span>    0.468  0.215 46.0       1.60 (1.05, 2.43)     97.3       18.3 </span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">tcl</span>     1.01 0.0980 9.68       2.75 (2.27, 3.34)     32.9       19.7 </span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">tv</span>      3.45 0.0561 1.63       31.5 (28.2, 35.1)     17.1       <span style="color: #00BB00; font-weight: bold;">26.4</span> </span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">add.sd</span> 0.707 0.0541 7.65    0.707 (0.601, 0.813)                     </span></span>
+<span><span class="co">#&gt;         Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%</span></span>
+<span><span class="co">#&gt; tka    0.468  0.215 46.0       1.60 (1.05, 2.43)     97.3       18.3 </span></span>
+<span><span class="co">#&gt; tcl     1.01 0.0980 9.68       2.75 (2.27, 3.34)     32.9       19.7 </span></span>
+<span><span class="co">#&gt; tv      3.45 0.0561 1.63       31.5 (28.2, 35.1)     17.1       26.4 </span></span>
+<span><span class="co">#&gt; add.sd 0.707 0.0541 7.65    0.707 (0.601, 0.813)                     </span></span>
 <span><span class="co">#&gt;  </span></span>
-<span><span class="co">#&gt;   Covariance Type (<span style="color: #0000BB; font-weight: bold;">$covMethod</span>): <span style="font-weight: bold;">stan.posterior</span></span></span>
-<span><span class="co">#&gt;   Fixed parameter correlations in <span style="color: #0000BB; font-weight: bold;">$cor</span></span></span>
+<span><span class="co">#&gt;   Covariance Type ($covMethod): stan.posterior</span></span>
+<span><span class="co">#&gt;   Fixed parameter correlations in $cor</span></span>
 <span><span class="co">#&gt;   No correlations in between subject variability (BSV) matrix</span></span>
-<span><span class="co">#&gt;   Full BSV covariance (<span style="color: #0000BB; font-weight: bold;">$omega</span>) or correlation (<span style="color: #0000BB; font-weight: bold;">$omegaR</span>; diagonals=SDs) </span></span>
-<span><span class="co">#&gt;   Distribution stats (mean/skewness/kurtosis/p-value) available in <span style="color: #0000BB; font-weight: bold;">$shrink</span> </span></span>
-<span><span class="co">#&gt;   Information about run found (<span style="color: #0000BB; font-weight: bold;">$runInfo</span>):</span></span>
+<span><span class="co">#&gt;   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) </span></span>
+<span><span class="co">#&gt;   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink </span></span>
+<span><span class="co">#&gt;   Information about run found ($runInfo):</span></span>
 <span><span class="co">#&gt;    • Bulk Effective Samples Size (ESS) is too low, indicating posterior means and medians may be unreliable. Running the chains for more iterations may help. See https://mc-stan.org/misc/warnings.html#bulk-ess </span></span>
-<span><span class="co">#&gt;   Censoring (<span style="color: #0000BB; font-weight: bold;">$censInformation</span>): No censoring</span></span>
+<span><span class="co">#&gt;   Censoring ($censInformation): No censoring</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; <span style="font-weight: bold;">── Fit Data (object is a modified </span><span style="color: #0000BB; font-weight: bold;">tibble</span><span style="font-weight: bold;">): ──</span></span></span>
-<span><span class="co">#&gt; <span style="color: #949494;"># A tibble: 132 × 18</span></span></span>
+<span><span class="co">#&gt; ── Fit Data (object is a modified tibble): ──</span></span>
+<span><span class="co">#&gt; # A tibble: 132 × 18</span></span>
 <span><span class="co">#&gt;   ID     TIME    DV  PRED    RES IPRED   IRES  IWRES eta.ka eta.cl   eta.v depot</span></span>
-<span><span class="co">#&gt;   <span style="color: #949494; font-style: italic;">&lt;fct&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">1</span> 1      0     0.74  0     0.74   0     0.74   1.05  0.087<span style="text-decoration: underline;">5</span> -<span style="color: #BB0000;">0.491</span> -<span style="color: #BB0000;">0.076</span><span style="color: #BB0000; text-decoration: underline;">8</span>  320.</span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">2</span> 1      0.25  2.84  3.31 -<span style="color: #BB0000;">0.465</span>  3.84 -<span style="color: #BB0000;">1.00</span>  -<span style="color: #BB0000;">1.42</span>  0.087<span style="text-decoration: underline;">5</span> -<span style="color: #BB0000;">0.491</span> -<span style="color: #BB0000;">0.076</span><span style="color: #BB0000; text-decoration: underline;">8</span>  207.</span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">3</span> 1      0.57  6.57  5.90  0.670  6.78 -<span style="color: #BB0000;">0.208</span> -<span style="color: #BB0000;">0.294</span> 0.087<span style="text-decoration: underline;">5</span> -<span style="color: #BB0000;">0.491</span> -<span style="color: #BB0000;">0.076</span><span style="color: #BB0000; text-decoration: underline;">8</span>  119.</span></span>
-<span><span class="co">#&gt; <span style="color: #949494;"># ℹ 129 more rows</span></span></span>
-<span><span class="co">#&gt; <span style="color: #949494;"># ℹ 6 more variables: central &lt;dbl&gt;, ka &lt;dbl&gt;, cl &lt;dbl&gt;, v &lt;dbl&gt;, tad &lt;dbl&gt;,</span></span></span>
-<span><span class="co">#&gt; <span style="color: #949494;">#   dosenum &lt;int&gt;</span></span></span></code></pre></div>
+<span><span class="co">#&gt;   &lt;fct&gt; &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;  &lt;dbl&gt; &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;   &lt;dbl&gt; &lt;dbl&gt;</span></span>
+<span><span class="co">#&gt; 1 1      0     0.74  0     0.74   0     0.74   1.05  0.0875 -0.491 -0.0768  320.</span></span>
+<span><span class="co">#&gt; 2 1      0.25  2.84  3.31 -0.465  3.84 -1.00  -1.42  0.0875 -0.491 -0.0768  207.</span></span>
+<span><span class="co">#&gt; 3 1      0.57  6.57  5.90  0.670  6.78 -0.208 -0.294 0.0875 -0.491 -0.0768  119.</span></span>
+<span><span class="co">#&gt; # ℹ 129 more rows</span></span>
+<span><span class="co">#&gt; # ℹ 6 more variables: central &lt;dbl&gt;, ka &lt;dbl&gt;, cl &lt;dbl&gt;, v &lt;dbl&gt;, tad &lt;dbl&gt;,</span></span>
+<span><span class="co">#&gt; #   dosenum &lt;int&gt;</span></span></code></pre></div>
 <p>Notes on how priors are handled:</p>
 <ul>
 <li>A parameter’s <code>ini()</code> bounds become Stan constraints;
@@ -277,8 +276,8 @@ prints the <code>prior()</code> lines to paste back into
 <span>  <span class="op">}</span><span class="op">)</span></span>
 <span><span class="op">}</span></span>
 <span><span class="fu">nlmixr2est</span><span class="fu">::</span><span class="fu"><a href="https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.html" class="external-link">nlmixr2</a></span><span class="op">(</span><span class="va">noPriors</span>, <span class="fu">nlmixr2data</span><span class="fu">::</span><span class="va"><a href="https://nlmixr2.github.io/nlmixr2data/reference/theo_sd.html" class="external-link">theo_sd</a></span>, est <span class="op">=</span> <span class="st">"nuts"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #BBBB00; font-weight: bold;">Error</span><span style="font-weight: bold;">:</span></span></span>
-<span><span class="co">#&gt; <span style="color: #BBBB00;">!</span> est="stan" needs prior distributions in the ini({}) block and this model declares none; for example:</span></span>
+<span><span class="co">#&gt; Error:</span></span>
+<span><span class="co">#&gt; ! est="stan" needs prior distributions in the ini({}) block and this model declares none; for example:</span></span>
 <span><span class="co">#&gt;   prior(tka) ~ dnorm(0.45, 10)</span></span>
 <span><span class="co">#&gt;   prior(tcl) ~ dnorm(0.993, 10)</span></span>
 <span><span class="co">#&gt;   prior(tv) ~ dnorm(3.45, 34.5)</span></span>
@@ -364,7 +363,7 @@ check what a setting resolved to before spending an hour on a fit:</p>
 <span><span class="co">#&gt; [1] TRUE</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; $chainCores</span></span>
-<span><span class="co">#&gt; [1] 2</span></span>
+<span><span class="co">#&gt; [1] 4</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; $diagOmegaSdPrior</span></span>
 <span><span class="co">#&gt; [1] "cauchy(0, %s)"</span></span>
@@ -855,39 +854,6 @@ check what a setting resolved to before spending an hour on a fit:</p>
 <span><span class="co">#&gt; $nonmem</span></span>
 <span><span class="co">#&gt; [1] FALSE</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; $tieOrder</span></span>
-<span><span class="co">#&gt; [1] "evid"</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; $rateAtDoseTime</span></span>
-<span><span class="co">#&gt; [1] FALSE</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; $durAtDoseTime</span></span>
-<span><span class="co">#&gt; [1] FALSE</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; $resetCancelsPending</span></span>
-<span><span class="co">#&gt; [1] TRUE</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; $ssMethod</span></span>
-<span><span class="co">#&gt; [1] 1</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; $doseAtRecord</span></span>
-<span><span class="co">#&gt; [1] FALSE</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; $addlCovAtTime</span></span>
-<span><span class="co">#&gt; [1] TRUE</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; $gpuBackend</span></span>
-<span><span class="co">#&gt; [1] "auto"</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; $gpuDevice</span></span>
-<span><span class="co">#&gt; NULL</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; $gpuPrecision</span></span>
-<span><span class="co">#&gt; [1] "double"</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; $gpuBatch</span></span>
-<span><span class="co">#&gt; [1] 16384</span></span>
-<span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; attr(,"class")</span></span>
 <span><span class="co">#&gt; [1] "rxControl"</span></span>
 <span><span class="co">#&gt; </span></span>
@@ -986,8 +952,8 @@ nlmixr2est, so these two lines are the same fit:</p>
 message names the call that would have meant it:</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/adviControl.html">adviControl</a></span><span class="op">(</span>algorithm <span class="op">=</span> <span class="st">"pathfinder"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #BBBB00; font-weight: bold;">Error</span><span style="font-weight: bold;">:</span></span></span>
-<span><span class="co">#&gt; <span style="color: #BBBB00;">!</span> est="advi" runs ADVI; use stanControl(algorithm="pathfinder") with est="stan" instead</span></span></code></pre></div>
+<span><span class="co">#&gt; Error:</span></span>
+<span><span class="co">#&gt; ! est="advi" runs ADVI; use stanControl(algorithm="pathfinder") with est="stan" instead</span></span></code></pre></div>
 <p>The fit also reports back the control you wrote –
 <code>fit$control</code> on the NUTS fit is a <code>nutsControl</code>,
 not a bare <code>stanControl</code>:</p>
@@ -1037,8 +1003,12 @@ This is the program the fit above actually sampled:</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">code</span> <span class="op">&lt;-</span> <span class="fu">nlmixr2est</span><span class="fu">::</span><span class="fu"><a href="https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.html" class="external-link">nlmixr2</a></span><span class="op">(</span><span class="va">one.cmt</span>, <span class="fu">nlmixr2data</span><span class="fu">::</span><span class="va"><a href="https://nlmixr2.github.io/nlmixr2data/reference/theo_sd.html" class="external-link">theo_sd</a></span>, est <span class="op">=</span> <span class="st">"nuts"</span>,</span>
 <span>                            control <span class="op">=</span> <span class="fu"><a href="../reference/stanControl.html">stanControl</a></span><span class="op">(</span>run <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> parameter labels from comments are typically ignored in non-interactive mode</span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Need to run with the source intact to parse comments</span></span>
+<span><span class="co">#&gt;  </span></span>
+<span><span class="co">#&gt;  </span></span>
+<span><span class="co">#&gt;  </span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; ℹ parameter labels from comments are typically ignored in non-interactive mode</span></span>
+<span><span class="co">#&gt; ℹ Need to run with the source intact to parse comments</span></span>
 <span><span class="co">#&gt; est="stan": default prior sd_eta_ka ~ cauchy(0, 1.93649167310371) on omega</span></span>
 <span><span class="co">#&gt; diagonal 'eta.ka'</span></span>
 <span><span class="co">#&gt; est="stan": default prior sd_eta_cl ~ cauchy(0, 1.36930639376292) on omega</span></span>
@@ -1096,26 +1066,20 @@ This is the program the fit above actually sampled:</p>
 <span><span class="co">#&gt;   to_vector(z_eta_cl) ~ std_normal();</span></span>
 <span><span class="co">#&gt;   sd_eta_v ~ cauchy(0, 0.790569415042095);</span></span>
 <span><span class="co">#&gt;   to_vector(z_eta_v) ~ std_normal();</span></span>
-<span><span class="co">#&gt;   if (max(abs(col(eta, 1))) &gt; 77.4596669241483 || max(abs(col(eta, 2))) &gt; 54.7722557505166 || max(abs(col(eta, 3))) &gt; 31.6227766016838) {</span></span>
-<span><span class="co">#&gt;     // far outside the eta prior: reject without calling the external</span></span>
-<span><span class="co">#&gt;     // likelihood, whose solve can run without bound at such a point</span></span>
-<span><span class="co">#&gt;     target += negative_infinity();</span></span>
-<span><span class="co">#&gt;   } else {</span></span>
-<span><span class="co">#&gt;     {</span></span>
-<span><span class="co">#&gt;       vector[N] llCond = nlmixr2_cond_all2(eta, theta);</span></span>
-<span><span class="co">#&gt;       real sumLL = sum(llCond);</span></span>
-<span><span class="co">#&gt;       target += sumLL;</span></span>
-<span><span class="co">#&gt;       vector[8] parDisp;</span></span>
-<span><span class="co">#&gt;       matrix[1,1] Od_eta_ka = L_eta_ka * L_eta_ka';</span></span>
-<span><span class="co">#&gt;       parDisp[5] = Od_eta_ka[1,1];</span></span>
-<span><span class="co">#&gt;       matrix[1,1] Od_eta_cl = L_eta_cl * L_eta_cl';</span></span>
-<span><span class="co">#&gt;       parDisp[6] = Od_eta_cl[1,1];</span></span>
-<span><span class="co">#&gt;       matrix[1,1] Od_eta_v = L_eta_v * L_eta_v';</span></span>
-<span><span class="co">#&gt;       parDisp[7] = Od_eta_v[1,1];</span></span>
-<span><span class="co">#&gt;       parDisp[8] = 0;</span></span>
-<span><span class="co">#&gt;       parDisp[1:4] = theta;</span></span>
-<span><span class="co">#&gt;       real iterDummy = nlmixr2_iter_tick(parDisp, -2 * sumLL);</span></span>
-<span><span class="co">#&gt;     }</span></span>
+<span><span class="co">#&gt;   {</span></span>
+<span><span class="co">#&gt;     vector[N] llCond = nlmixr2_cond_all2(eta, theta);</span></span>
+<span><span class="co">#&gt;     real sumLL = sum(llCond);</span></span>
+<span><span class="co">#&gt;     target += sumLL;</span></span>
+<span><span class="co">#&gt;     vector[8] parDisp;</span></span>
+<span><span class="co">#&gt;     matrix[1,1] Od_eta_ka = L_eta_ka * L_eta_ka';</span></span>
+<span><span class="co">#&gt;     parDisp[5] = Od_eta_ka[1,1];</span></span>
+<span><span class="co">#&gt;     matrix[1,1] Od_eta_cl = L_eta_cl * L_eta_cl';</span></span>
+<span><span class="co">#&gt;     parDisp[6] = Od_eta_cl[1,1];</span></span>
+<span><span class="co">#&gt;     matrix[1,1] Od_eta_v = L_eta_v * L_eta_v';</span></span>
+<span><span class="co">#&gt;     parDisp[7] = Od_eta_v[1,1];</span></span>
+<span><span class="co">#&gt;     parDisp[8] = 0;</span></span>
+<span><span class="co">#&gt;     parDisp[1:4] = theta;</span></span>
+<span><span class="co">#&gt;     real iterDummy = nlmixr2_iter_tick(parDisp, -2 * sumLL);</span></span>
 <span><span class="co">#&gt;   }</span></span>
 <span><span class="co">#&gt; }</span></span>
 <span><span class="co">#&gt; generated quantities {</span></span>
@@ -1478,10 +1442,14 @@ divergences – come from <code>get_sampler_params()</code>:</p>
 directly:</p>
 <div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">rstan</span><span class="fu">::</span><span class="fu"><a href="https://mc-stan.org/rstan/reference/stanfit-method-traceplot.html" class="external-link">traceplot</a></span><span class="op">(</span><span class="va">sf</span>, pars <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"tka"</span>, <span class="st">"tcl"</span>, <span class="st">"tv"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="nlmixr2bayes_files/figure-html/plots-1.png" class="r-plt" alt="" width="672"></p>
+<div class="float">
+<img src="fig-nlmixr2bayes-plots-1.png" alt="plot of chunk plots"><div class="figcaption">plot of chunk plots</div>
+</div>
 <div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">bayesplot</span><span class="fu">::</span><span class="fu"><a href="https://mc-stan.org/bayesplot/reference/MCMC-scatterplots.html" class="external-link">mcmc_pairs</a></span><span class="op">(</span><span class="va">sf</span>, pars <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"tka"</span>, <span class="st">"tcl"</span>, <span class="st">"tv"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="nlmixr2bayes_files/figure-html/pairs-1.png" class="r-plt" alt="" width="576"></p>
+<div class="float">
+<img src="fig-nlmixr2bayes-pairs-1.png" alt="plot of chunk pairs"><div class="figcaption">plot of chunk pairs</div>
+</div>
 <div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">posterior</span><span class="fu">::</span><span class="fu"><a href="https://mc-stan.org/posterior/reference/draws_df.html" class="external-link">as_draws_df</a></span><span class="op">(</span><span class="va">sf</span><span class="op">)</span></span>
 <span><span class="co">#&gt; # A draws_df: 500 iterations, 2 chains, and 108 variables</span></span>
@@ -1510,7 +1478,7 @@ answered against the exact program that produced it:</p>
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">fit</span><span class="op">$</span><span class="va">stanData</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] "N"</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/identical.html" class="external-link">identical</a></span><span class="op">(</span><span class="va">fit</span><span class="op">$</span><span class="va">stanCode</span>, <span class="va">code</span><span class="op">$</span><span class="va">code</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] FALSE</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] TRUE</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="the-objective-function-rows">The objective-function rows<a class="anchor" aria-label="anchor" href="#the-objective-function-rows"></a>
@@ -1612,8 +1580,8 @@ compiled:</p>
 <code class="sourceCode R"><span><span class="va">discreteModel</span> <span class="op">&lt;-</span> <span class="va">one.cmt</span> <span class="op">|&gt;</span> <span class="fu">ini</span><span class="op">(</span><span class="fu">prior</span><span class="op">(</span><span class="va">tka</span><span class="op">)</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/stats/Poisson.html" class="external-link">dpois</a></span><span class="op">(</span><span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="fu">nlmixr2est</span><span class="fu">::</span><span class="fu"><a href="https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.html" class="external-link">nlmixr2</a></span><span class="op">(</span><span class="va">discreteModel</span>, <span class="fu">nlmixr2data</span><span class="fu">::</span><span class="va"><a href="https://nlmixr2.github.io/nlmixr2data/reference/theo_sd.html" class="external-link">theo_sd</a></span>, est <span class="op">=</span> <span class="st">"nuts"</span>,</span>
 <span>                    control <span class="op">=</span> <span class="fu"><a href="../reference/stanControl.html">stanControl</a></span><span class="op">(</span>run <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; <span style="color: #BBBB00; font-weight: bold;">Error</span><span style="font-weight: bold;">:</span></span></span>
-<span><span class="co">#&gt; <span style="color: #BBBB00;">!</span> prior 'dpois' on 'tka' is a discrete distribution; every nlmixr2 parameter is real-valued</span></span></code></pre></div>
+<span><span class="co">#&gt; Error:</span></span>
+<span><span class="co">#&gt; ! prior 'dpois' on 'tka' is a discrete distribution; every nlmixr2 parameter is real-valued</span></span></code></pre></div>
 <p>IOV is supported: <code>iov.x ~ v | OCC</code> expands into
 per-occasion fixed-variance etas scaled by an estimated magnitude theta,
 the same way nlmixr2est’s own methods treat occasion-level variability.
