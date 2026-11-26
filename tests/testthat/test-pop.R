@@ -90,10 +90,12 @@ test_that("tier 0 hands the nlm entry the free thetas only (fixed rows stay lite
 .popFixResMod <- function() {
   ini({
     a <- 1
+    # fixed BETWEEN the free thetas, so the free rows are a non-prefix
+    # multi-index and a mis-sliced vector cannot pass
+    add.sd <- fix(0.3)
     b <- 0.4
     prior(a) ~ dnorm(0, 10)
     prior(b) ~ dnorm(0, 10)
-    add.sd <- fix(0.3)
   })
   model({
     y <- a + b * time
@@ -116,8 +118,8 @@ test_that("tier 0 fixed residual error (#21): codegen keeps it a literal", {
     nlmixr2est::nlmixr2(.popFixResMod, .popFixResData(), est = "stan", control = stanControl(run = FALSE))
   )
   .lines <- strsplit(.code$code, "\n")[[1]]
-  expect_true(any(grepl("theta[3] = 0.3;", .lines, fixed = TRUE)))
-  expect_true(any(grepl("target += nlmixr2_pop_ll(theta[{1, 2}]);", .lines, fixed = TRUE)))
+  expect_true(any(grepl("theta[2] = 0.3;", .lines, fixed = TRUE)))
+  expect_true(any(grepl("target += nlmixr2_pop_ll(theta[{1, 3}]);", .lines, fixed = TRUE)))
   expect_false(any(grepl("add_sd", .lines, fixed = TRUE)))
 })
 
@@ -140,11 +142,30 @@ test_that("tier 0 fixed residual error (#21): est=\"nuts\" fits", {
     )
   )))
   expect_true(inherits(.fit, "nlmixr2FitCore"))
-  expect_equal(names(.fit$env$theta), c("a", "b", "add.sd"))
-  expect_equal(.fit$env$theta[["add.sd"]], 0.3)
-  expect_equal(.fit$env$theta[["a"]], 1, tolerance = 0.3)
-  expect_equal(.fit$env$theta[["b"]], 0.5, tolerance = 0.05)
-  expect_true(is.finite(.fit$env$objective))
+  .th <- .fit$env$theta
+  expect_equal(names(.th), c("a", "add.sd", "b"))
+  expect_equal(.th[["add.sd"]], 0.3)
+  expect_equal(.th[["a"]], 1, tolerance = 0.3)
+  expect_equal(.th[["b"]], 0.5, tolerance = 0.05)
+  # the objective is the OBJF (-2 logLik less n*log(2*pi)) at the point
+  # estimate, evaluated with the FIXED SD
+  .d <- .popFixResData()
+  .ll <- sum(stats::dnorm(.d$dv, .th[["a"]] + .th[["b"]] * .d$time, 0.3, log = TRUE))
+  expect_equal(.fit$env$objective, -2 * .ll - nrow(.d) * log(2 * pi), tolerance = 1e-6)
+  # only the sampled parameters carry posterior uncertainty
+  expect_equal(dimnames(.fit$env$cov), list(c("a", "b"), c("a", "b")))
+  expect_equal(rownames(.fit$env$posteriorSummary), c("a", "b"))
+  # assembled gradient FD: each free theta's partial lands on its own slot
+  if (requireNamespace("numDeriv", quietly = TRUE)) {
+    h <- stanPopLinkSetup(.popFixResMod, .d)
+    on.exit(stanLinkFree(), add = TRUE)
+    .sf <- .fit$env$stanfit
+    .up <- rstan::unconstrain_pars(.sf, list(a = 1.1, b = 0.45))
+    .gA <- rstan::grad_log_prob(.sf, .up)
+    attributes(.gA) <- NULL
+    .gN <- numDeriv::grad(function(u) rstan::log_prob(.sf, u), .up, method = "Richardson")
+    expect_equal(.gA, .gN, tolerance = 1e-4)
+  }
 })
 
 test_that("tier 0 link: value ties to the hand density; gradient FD-agrees", {
