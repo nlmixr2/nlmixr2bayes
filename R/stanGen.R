@@ -23,16 +23,19 @@
   # the eta is still random (z ~ std_normal), but L is fixed.  This is what
   # the IOV preprocessing hook produces (per-occasion unit-variance etas
   # scaled by an estimated sd theta in the model code), and it serves plain
-  # fixed-variance etas identically.  Fixed etas with modeled correlations
-  # (a fixed block, k > 1) are out of scope and must error, not be
+  # fixed-variance etas identically.  A WHOLLY fixed correlated block
+  # (`eta.a + eta.b ~ fix(...)`, every element fixed) is the same thing with
+  # a constant Cholesky factor -- what the all-population-fixed individual
+  # posterior needs (issue #22).  A block mixing fixed and estimated
+  # elements has no such constant factor and must error, not be
   # approximated.
   if (any(block$fix)) {
-    if (block$k > 1L) {
+    if (block$k > 1L && !isTRUE(block$fixAll)) {
       stop(
         "the omega block over ",
         paste(block$members, collapse = ", "),
-        " contains fixed eta(s) with modeled correlations; ",
-        "est=\"stan\" supports fixed DIAGONAL etas only",
+        " mixes fixed and estimated eta(s) with modeled correlations; ",
+        "est=\"stan\" supports fixed diagonal etas and wholly fixed blocks only",
         call. = FALSE
       )
     }
@@ -275,7 +278,7 @@
       # fixed-variance eta: L is a constant, nothing is declared or given a
       # prior; z is still sampled, so the eta remains a random effect with
       # a KNOWN variance (the IOV hook's unit-variance occasion effects)
-      .tpL <- c(.tpL, paste0("  matrix[1,1] L", .id, " = [[", .stanNum(sqrt(.blk$init[1, 1])), "]];"))
+      .tpL <- c(.tpL, paste0("  matrix[", .k, ",", .k, "] L", .id, " = ", .stanMatLit(t(chol(.blk$init))), ";"))
     } else if (.sp$type == "cov") {
       .decl <- c(.decl, paste0("  cov_matrix[", .k, "] omega", .id, ";"))
       .priorL <- c(
@@ -486,12 +489,29 @@
       pop = TRUE
     ))
   }
+  # with no free theta there is no theta gradient to assemble -- and with
+  # every population parameter fix()ed the loaded problem has no estimated
+  # parameter for the theta entry to write (#22) -- so the conditional comes
+  # from the eta-only batch
+  if (any(!map$theta$fix)) {
+    .condDecl <- c(
+      "  // external (allow_undefined): value + analytic d/d(eta) and",
+      "  // d/d(theta) supplied by the linked rxode2/nlmixr2est likelihood",
+      "  vector nlmixr2_cond_all2(matrix etaMat, vector theta);"
+    )
+    .condCall <- "nlmixr2_cond_all2(eta, theta)"
+  } else {
+    .condDecl <- c(
+      "  // external (allow_undefined): value + analytic d/d(eta) supplied",
+      "  // by the linked rxode2/nlmixr2est likelihood (no free theta)",
+      "  vector nlmixr2_cond_all(matrix etaMat);"
+    )
+    .condCall <- "nlmixr2_cond_all(eta)"
+  }
   .code <- paste(
     c(
       "functions {",
-      "  // external (allow_undefined): value + analytic d/d(eta) and",
-      "  // d/d(theta) supplied by the linked rxode2/nlmixr2est likelihood",
-      "  vector nlmixr2_cond_all2(matrix etaMat, vector theta);",
+      .condDecl,
       "  // external iteration tick: nlmixr2est-style iteration print;",
       "  // returns 0 and contributes nothing to the target",
       "  real nlmixr2_iter_tick(vector par, real objf);",
@@ -521,7 +541,7 @@
           # the log_sum_exp (they factor), the weights inside
           c(
             paste0("  {"),
-            paste0("    vector[", .rowsN, "] llCond = nlmixr2_cond_all2(eta, theta);"),
+            paste0("    vector[", .rowsN, "] llCond = ", .condCall, ";"),
             paste0("    real sumLL = 0;"),
             paste0("    for (i in 1:N) {"),
             paste0("      sumLL += log_sum_exp(log(", .mixP, ") + llCond[i], log1p(-", .mixP, ") + llCond[N + i]);"),
@@ -533,7 +553,7 @@
         } else {
           c(
             paste0("  {"),
-            paste0("    vector[", .rowsN, "] llCond = nlmixr2_cond_all2(eta, theta);"),
+            paste0("    vector[", .rowsN, "] llCond = ", .condCall, ";"),
             paste0("    real sumLL = sum(llCond);"),
             paste0("    target += sumLL;"),
             .dispTick,
@@ -561,7 +581,7 @@
       if (map$nMix > 1L) {
         c(
           paste0("  {"),
-          paste0("    vector[", .rowsN, "] llCond = nlmixr2_cond_all2(eta, theta);"),
+          paste0("    vector[", .rowsN, "] llCond = ", .condCall, ";"),
           paste0("    for (i in 1:N) {"),
           paste0("      real lp1 = log(", .mixP, ") + llCond[i];"),
           paste0("      real lp2 = log1p(-", .mixP, ") + llCond[N + i];"),
@@ -572,7 +592,7 @@
           paste0("  }")
         )
       } else {
-        "  logLikSubj = nlmixr2_cond_all2(eta, theta);"
+        paste0("  logLikSubj = ", .condCall, ";")
       },
       "}"
     ),

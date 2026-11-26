@@ -155,7 +155,7 @@ test_that("plain fixed-variance etas work; fixed correlated blocks refuse", {
   if (requireNamespace("rstan", quietly = TRUE)) {
     expect_silent(rstan::stanc(model_code = .codeC$code, allow_undefined = TRUE))
   }
-  # fixed etas with modeled correlations: out of scope, must error
+  # a wholly fixed correlated block is a constant Cholesky factor (#22)
   .fixBlk <- function() {
     ini({
       tcl <- 1
@@ -173,12 +173,26 @@ test_that("plain fixed-variance etas work; fixed correlated blocks refuse", {
       cp ~ add(add.sd)
     })
   }
-  expect_error(
-    suppressMessages(
-      nlmixr2est::nlmixr2(.fixBlk, .d, est = "stan", control = stanControl(run = FALSE))
-    ),
-    "correlations"
+  .codeB <- suppressMessages(
+    nlmixr2est::nlmixr2(.fixBlk, .d, est = "stan", control = stanControl(run = FALSE))
   )
+  .linesB <- strsplit(.codeB$code, "\n")[[1]]
+  expect_true(any(grepl(
+    "matrix[2,2] L_eta_cl_eta_v = [[0.2, 0], [0.05, 0.193649167310371]];",
+    .linesB,
+    fixed = TRUE
+  )))
+  expect_false(any(grepl("sd_eta_cl_eta_v|Lcorr_eta_cl_eta_v", .linesB)))
+  # fixed and estimated elements mixed in one correlated block: no constant
+  # factor exists, so it must error rather than be approximated
+  .mixed <- list(
+    members = c("eta.cl", "eta.v"),
+    k = 2L,
+    init = diag(2),
+    fix = c(TRUE, FALSE),
+    fixAll = FALSE
+  )
+  expect_error(.stanOmegaBlockSpec(.mixed, .codeB$priors$omega, stanControl()), "mixes fixed and estimated")
 })
 
 test_that("IOV models are refused while the upstream sens column is wrong (#952)", {

@@ -48,7 +48,14 @@
         end = max(.idx),
         k = length(.nm),
         init = .m[order(.idx), order(.idx), drop = FALSE],
-        fix = .eta$fix[sort(.idx)]
+        fix = .eta$fix[sort(.idx)],
+        # every element (diagonal AND off-diagonal) fixed: a constant
+        # Cholesky factor (issue #22)
+        fixAll = all(.iniDf$fix[
+          !is.na(.iniDf$neta1) &
+            .iniDf$neta1 %in% .eta$neta[.idx] &
+            .iniDf$neta2 %in% .eta$neta[.idx]
+        ])
       )
     .done <- c(.done, .nm)
   }

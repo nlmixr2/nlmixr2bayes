@@ -205,6 +205,21 @@
   c(.v, 0)
 }
 
+#' Is every population parameter fixed, with random effects to sample?
+#'
+#' A model whose thetas, omega (every element) and residual-error parameters
+#' are all `fix()`ed but which still has etas is the individual (MAP-Bayes)
+#' posterior `p(eta | y, theta, Omega, sigma)` (issue #22): the eta prior is
+#' the fixed `N(0, Omega)`, so it needs no `prior()` lines -- and a prior on
+#' a fixed parameter would be a contradiction anyway.
+#' @param ui rxode2 ui
+#' @return `TRUE` or `FALSE`
+#' @noRd
+.stanAllPopFixed <- function(ui) {
+  .iniDf <- ui$iniDf
+  any(!is.na(.iniDf$neta1)) && all(.iniDf$fix)
+}
+
 #' Capability assertions + prior triage for est="stan"
 #' @noRd
 .stanAssert <- function(ui) {
@@ -294,7 +309,7 @@
   # Bayesian inference with silently-invented priors produces a
   # publishable-looking wrong answer
   .pri <- .stanUiPriors(ui)
-  if (nrow(.pri) == 0L) {
+  if (nrow(.pri) == 0L && !.stanAllPopFixed(ui)) {
     stop(
       "est=\"stan\" needs prior distributions in the ini({}) block and ",
       "this model declares none; for example:\n  ",
@@ -310,7 +325,9 @@
 #' Dispatched by `nlmixr2(model, data, est="stan", stanControl(...))`.  The
 #' first nlmixr2 estimation method to declare `nlmixr2Priors = "all"`: prior
 #' distributions come from the model's `ini({})` block and are required
-#' (a model without any errors, printing the lines to add).
+#' (a model without any errors, printing the lines to add) -- unless every
+#' population parameter is `fix()`ed, when the etas are sampled from the
+#' exact individual posterior under the fixed `N(0, Omega)` prior.
 #'
 #' @param env nlmixr2 estimation environment
 #' @param ... passed through
@@ -956,7 +973,15 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     numeric(1)
   ))
   .sum <- .stanSummaryDf(sf)
-  .keep <- !grepl("^(z_|etaP_|eta\\[|omegaOut|logLikSubj|mixProbOut|lp__)", rownames(.sum))
+  # a constant (a fixed block's Cholesky factor) has nothing to mix: its
+  # Rhat/ESS are noise, not a diagnosis
+  .vary <- is.finite(.sum[, "sd"]) & .sum[, "sd"] > 0
+  .keep <- .vary & !grepl("^(z_|etaP_|eta\\[|omegaOut|logLikSubj|mixProbOut|lp__)", rownames(.sum))
+  if (!any(.keep)) {
+    # every population parameter fix()ed (the individual posterior, #22):
+    # the etas are all there is to diagnose
+    .keep <- .vary & grepl("^eta\\[", rownames(.sum))
+  }
   .maxRhat <- suppressWarnings(max(.sum[.keep, "Rhat"], na.rm = TRUE))
   .minEss <- suppressWarnings(min(.sum[.keep, "n_eff"], na.rm = TRUE))
   .msg <- character(0)
@@ -1368,9 +1393,12 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
 .stanFinalizeEnv <- function(ret, ui, env, sf, map, gen, dx, control) {
   # est="nuts"/"advi"/"pathfinder" sugar records its own name on the fit
   .estName <- if (is.null(env$stanEstName)) "stan" else env$stanEstName
-  .ex <- .stanExtract(sf, pars = c("theta", "eta", "omegaOut", "logLikSubj"))
+  .hasTheta <- nrow(map$theta) > 0L
+  .ex <- .stanExtract(sf, pars = c(if (.hasTheta) "theta", "eta", "omegaOut", "logLikSubj"))
   .pointFun <- if (identical(control$point, "median")) stats::median else mean
-  .thDraw <- .ex$theta # draws x ntheta
+  # draws x ntheta; with every population parameter fix()ed and inlined
+  # (#22) there are no thetas, and Stan reports no zero-length draws
+  .thDraw <- if (.hasTheta) .ex$theta else matrix(numeric(0), dim(.ex$eta)[1], 0L)
   .fullTheta <- apply(.thDraw, 2, .pointFun)
   names(.fullTheta) <- map$theta$name
   .omega <- apply(.ex$omegaOut, c(2, 3), .pointFun)
@@ -1450,8 +1478,12 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   env2$omega <- .omega
   env2$etaObf <- .etaObf
   env2$etaMat <- as.matrix(.etaObf[, map$eta$name, drop = FALSE])
-  env2$cov <- .cov
-  env2$covMethod <- "stan.posterior"
+  if (any(.free)) {
+    # with every population parameter fix()ed (#22) there is no posterior
+    # covariance to report; a 0 x 0 matrix would read as a malformed one
+    env2$cov <- .cov
+    env2$covMethod <- "stan.posterior"
+  }
   env2$objective <- NA_real_
   env2$adjObf <- TRUE
   env2$extra <- if (identical(control$algorithm, "NUTS")) {

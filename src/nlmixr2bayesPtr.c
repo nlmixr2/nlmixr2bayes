@@ -191,9 +191,12 @@ static double *nlmixr2bayesCovVal = NULL;
 
 SEXP _nlmixr2bayes_setThetaBase(SEXP thetaS) {
   int n = (int) Rf_xlength(thetaS), i;
-  if (TYPEOF(thetaS) != REALSXP || n < 1) Rf_error("'theta' must be a numeric vector");
+  /* n == 0 is a real problem shape: with every population parameter fix()ed
+   * (the individual MAP-Bayes posterior, #22) the loaded problem has no
+   * estimated parameter at all; the program then calls the eta-only batch */
+  if (TYPEOF(thetaS) != REALSXP) Rf_error("'theta' must be a numeric vector");
   if (nlmixr2bayesThetaBase != NULL) { R_Free(nlmixr2bayesThetaBase); nlmixr2bayesThetaBase = NULL; }
-  nlmixr2bayesThetaBase = R_Calloc((size_t) n, double);
+  nlmixr2bayesThetaBase = R_Calloc((size_t) (n > 0 ? n : 1), double);
   for (i = 0; i < n; i++) nlmixr2bayesThetaBase[i] = REAL(thetaS)[i];
   nlmixr2bayesNpars = n;
   return Rf_ScalarInteger(n);
