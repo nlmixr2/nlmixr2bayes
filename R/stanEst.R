@@ -998,14 +998,20 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   ))
   .sum <- .stanSummaryDf(sf)
   .rn <- rownames(.sum)
-  # derived quantities are left out: each block's Cholesky factor L<id>
-  # (a function of the sd/Lcorr/omega it is built from, which are diagnosed
-  # themselves -- and a CONSTANT for a fixed block, whose Rhat/ESS are
-  # floating-point noise) and the assembled theta[] vector (the declared
-  # thetas plus fixed literals)
-  .lNames <- vapply(map$blocks, function(b) paste0("L", .stanBlockId(b$members)), character(1))
-  .derived <- sub("\\[.*\\]$", "", .rn) %in% .lNames
-  .keep <- !.derived & !grepl("^(z_|etaP_|eta\\[|theta\\[|omegaOut|logLikSubj|mixProbOut|lp__)", .rn)
+  # diagnosed: the declared population parameters.  Left out: the per-
+  # subject draws (each block's z<id>/etaP<id>, eta), each block's Cholesky
+  # factor L<id> (a function of the sd/Lcorr/omega it is built from, which
+  # are diagnosed themselves -- and a CONSTANT for a fixed block, whose
+  # Rhat/ESS are floating-point noise), the assembled theta[] vector (the
+  # declared thetas plus fixed literals) and the generated quantities.
+  # Matched by exact base name, never a prefix: a theta may well be called
+  # z.cl (Stan name z_cl)
+  .internal <- unlist(
+    lapply(map$blocks, function(b) paste0(c("L", "z", "etaP"), .stanBlockId(b$members))),
+    use.names = FALSE
+  )
+  .base <- sub("\\[.*\\]$", "", .rn)
+  .keep <- !(.base %in% c(.internal, "eta", "theta", "omegaOut", "logLikSubj", "mixProbOut", "lp__"))
   if (!any(.keep)) {
     # every population parameter fix()ed (the individual posterior, #22):
     # the etas are all there is to diagnose

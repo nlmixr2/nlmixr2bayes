@@ -105,6 +105,23 @@ test_that("all-population-fixed codegen: constant L, eta-only conditional, no pr
   if (requireNamespace("rstan", quietly = TRUE)) {
     expect_silent(rstan::stanc(model_code = .code$code, allow_undefined = TRUE))
   }
+  # the centered parameterization samples the etas against the same
+  # constant 2 x 2 factor
+  .codeC <- suppressMessages(nlmixr2est::nlmixr2(
+    .mapBayesMod,
+    .mapBayesData(),
+    est = "nuts",
+    control = stanControl(run = FALSE, etaParam = "centered")
+  ))
+  .linesC <- strsplit(.codeC$code, "\n")[[1]]
+  expect_true(any(grepl(
+    "etaP_eta_cl_eta_v[i] ~ multi_normal_cholesky(rep_vector(0, 2), L_eta_cl_eta_v);",
+    .linesC,
+    fixed = TRUE
+  )))
+  if (requireNamespace("rstan", quietly = TRUE)) {
+    expect_silent(rstan::stanc(model_code = .codeC$code, allow_undefined = TRUE))
+  }
 })
 
 test_that("a correlated block with only some elements fixed is refused, off-diagonal included", {
