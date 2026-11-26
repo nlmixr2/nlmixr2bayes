@@ -108,6 +108,79 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
   }
 })
 
+test_that("a mixed model with a fix()ed residual-error parameter fits (#22)", {
+  skip_on_cran()
+  skip_if_not_installed("rstan")
+  # the linked FOCEi problem inlines a fixed residual SD as a literal
+  # (literalFixRes), so the est side has to as well or the parameter map and
+  # the linked problem disagree on the theta vector
+  .fixResMod <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3
+      add.sd <- fix(0.5)
+      eta.cl ~ 0.1
+      prior(tcl) ~ dnorm(1, 2)
+      prior(tv) ~ dnorm(3, 2)
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  .d <- .linkData()
+  .fit <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
+    .fixResMod,
+    .d,
+    est = "nuts",
+    control = stanControl(
+      chains = 1L,
+      iter = 300L,
+      warmup = 150L,
+      seed = 7L,
+      cores = 1L,
+      calcTables = FALSE,
+      ofv = "none",
+      onDiagnostic = "none"
+    )
+  )))
+  expect_true(inherits(.fit, "nlmixr2FitCore"))
+  expect_false(grepl("add_sd", .fit$stanCode, fixed = TRUE))
+  expect_equal(.fit$theta[["add.sd"]], 0.5)
+  expect_equal(dimnames(.fit$cov)[[1]], c("tcl", "tv"))
+  # the sampled conditional is the hand density at the FIXED SD, draw by draw
+  # (less the constant n/2 log(2 pi), which nlmixr2est's conditional omits)
+  .ex <- rstan::extract(.fit$stanfit, pars = c("theta", "eta", "logLikSubj"))
+  for (.s in c(1L, 50L, 150L)) {
+    .hand <- vapply(
+      1:4,
+      function(.i) {
+        .di <- .d[.d$ID == .i, ]
+        .cl <- exp(.ex$theta[.s, 1] + .ex$eta[.s, .i, 1])
+        .v <- exp(.ex$theta[.s, 2])
+        sum(stats::dnorm(.di$DV, 100 / .v * exp(-.cl / .v * .di$TIME), 0.5, log = TRUE)) +
+          nrow(.di) / 2 * log(2 * pi)
+      },
+      numeric(1)
+    )
+    expect_equal(.ex$logLikSubj[.s, ], .hand, tolerance = 1e-6)
+  }
+})
+
+test_that("a link/map theta mismatch is refused, naming literalFixRes when it is off", {
+  .map <- list(eta = data.frame(name = "eta.cl"), theta = data.frame(name = c("tcl", "add.sd")))
+  expect_true(.stanAssertLinkMatchesMap(list(etaNames = "eta.cl", ntheta = 2L), .map, stanControl()))
+  .h <- list(etaNames = "eta.cl", ntheta = 1L)
+  expect_error(.stanAssertLinkMatchesMap(.h, .map, stanControl()), "do not match the model map$")
+  expect_error(
+    .stanAssertLinkMatchesMap(.h, .map, stanControl(literalFixRes = FALSE)),
+    "keep literalFixRes=TRUE",
+    fixed = TRUE
+  )
+})
+
 test_that("iteration print + parameter history over the sampler", {
   skip_on_cran()
   skip_if_not_installed("rstan")

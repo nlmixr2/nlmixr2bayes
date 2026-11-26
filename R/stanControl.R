@@ -134,6 +134,11 @@
 #'   fallback when the system turns stiff
 #' @param addProp,sumProd,optExpression,literalFix,calcTables,compress,ci,sigdigTable
 #'   standard nlmixr2 passthroughs for the output machinery
+#' @param literalFixRes inline `fix()`ed residual-error parameters as model
+#'   literals (nlmixr2est's literal-fix hook).  The linked FOCEi likelihood
+#'   always inlines them, so this is `TRUE` by default to keep the model's
+#'   parameter map in step with the linked problem; with `FALSE`, a mixed
+#'   model with a fixed residual-error parameter is refused
 #' @param ... only `genRxControl`
 #' @return a `stanControl` list
 #' @export
@@ -190,6 +195,7 @@ stanControl <- function(
   sumProd = FALSE,
   optExpression = TRUE,
   literalFix = TRUE,
+  literalFixRes = TRUE,
   calcTables = TRUE,
   compress = TRUE,
   ci = 0.95,
@@ -275,6 +281,7 @@ stanControl <- function(
   checkmate::assertLogical(sumProd, len = 1, any.missing = FALSE)
   checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
   checkmate::assertLogical(literalFix, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(literalFixRes, len = 1, any.missing = FALSE)
   checkmate::assertLogical(calcTables, len = 1, any.missing = FALSE)
   checkmate::assertLogical(compress, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(ci, lower = 0, upper = 1, len = 1)
@@ -376,6 +383,7 @@ stanControl <- function(
     sumProd = sumProd,
     optExpression = optExpression,
     literalFix = literalFix,
+    literalFixRes = literalFixRes,
     calcTables = calcTables,
     compress = compress,
     ci = ci,
@@ -454,6 +462,7 @@ nmObjGetControl.stan <- function(x, ...) {
     sumProd = .c$sumProd,
     optExpression = .c$optExpression,
     literalFix = .c$literalFix,
+    literalFixRes = .c$literalFixRes,
     calcTables = .c$calcTables,
     addProp = .c$addProp,
     compress = .c$compress,

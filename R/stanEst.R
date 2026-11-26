@@ -427,6 +427,30 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   intersect(.want, .est)
 }
 
+#' Refuse a linked problem whose parameters differ from the model map
+#'
+#' The generated program hands the linked conditional the map's theta
+#' vector, so the two must agree.  The linked FOCEi problem inlines a
+#' `fix()`ed residual-error parameter as a literal (nlmixr2est's
+#' `literalFixRes`), which is why `stanControl(literalFixRes=TRUE)` is the
+#' default: the est side then inlines it too.
+#' @param h the link handle
+#' @param map the model map
+#' @param control the `stanControl`
+#' @noRd
+.stanAssertLinkMatchesMap <- function(h, map, control) {
+  if (!identical(h$etaNames, map$eta$name) || h$ntheta != nrow(map$theta)) {
+    stop(
+      "the linked problem's parameters do not match the model map",
+      if (!isTRUE(control$literalFixRes)) {
+        " (the linked likelihood inlines fix()ed residual-error parameters; keep literalFixRes=TRUE)"
+      },
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 #' The orchestration: preprocess -> map -> generate -> (compile -> link ->
 #' sample -> finalize)
 #' @noRd
@@ -534,12 +558,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   )
   on.exit(stanLinkFree(), add = TRUE)
   on.exit(.Call(`_nlmixr2bayes_clearThetaBase`), add = TRUE)
-  if (
-    !identical(.h$etaNames, .map$eta$name) ||
-      .h$ntheta != nrow(.map$theta)
-  ) {
-    stop("the linked problem's parameters do not match the model map", call. = FALSE) # nocov
-  }
+  .stanAssertLinkMatchesMap(.h, .map, control)
   .stanAssertThetaGradCover(.map, .h$thetaSensIdx)
   # tier-2 state: base parameter vector (omega tail fixed at link values) +
   # the mu-reference map for the theta-gradient assembly
@@ -709,9 +728,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     maxOdeRecalc = control$maxOdeRecalc,
     fallbackFD = control$fallbackFD
   )
-  if (!identical(.h$etaNames, map$eta$name) || .h$ntheta != nrow(map$theta)) {
-    stop("the linked problem's parameters do not match the model map", call. = FALSE) # nocov
-  }
+  .stanAssertLinkMatchesMap(.h, map, control)
   .stanAssertThetaGradCover(map, .h$thetaSensIdx)
   .Call(`_nlmixr2bayes_setThetaBase`, as.double(.h$initPar))
   .Call(`_nlmixr2bayes_setMuRef`, as.integer(map$muRefIdx))

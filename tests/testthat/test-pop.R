@@ -113,9 +113,23 @@ test_that("tier 0 hands the nlm entry the free thetas only (fixed rows stay lite
 test_that("tier 0 fixed residual error (#21): codegen keeps it a literal", {
   skip_on_cran()
   skip_if_not(.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
-  # a fix()ed residual SD survives literalFix=TRUE as a fixed theta
+  # by default (literalFixRes=TRUE, #22) the fixed residual SD dissolves
+  # into the model like a fixed structural theta
   .code <- suppressMessages(
     nlmixr2est::nlmixr2(.popFixResMod, .popFixResData(), est = "stan", control = stanControl(run = FALSE))
+  )
+  .lines <- strsplit(.code$code, "\n")[[1]]
+  expect_true(any(grepl("target += nlmixr2_pop_ll(theta);", .lines, fixed = TRUE)))
+  expect_false(any(grepl("add_sd", .lines, fixed = TRUE)))
+  # with literalFixRes=FALSE it survives as a fixed theta: a literal in the
+  # program's theta vector, left out of the free rows the nlm entry gets
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(
+      .popFixResMod,
+      .popFixResData(),
+      est = "stan",
+      control = stanControl(run = FALSE, literalFixRes = FALSE)
+    )
   )
   .lines <- strsplit(.code$code, "\n")[[1]]
   expect_true(any(grepl("theta[2] = 0.3;", .lines, fixed = TRUE)))
