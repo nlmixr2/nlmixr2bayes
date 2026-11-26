@@ -49,7 +49,7 @@ test_that("tier 0 codegen: theta-only program with nlmixr2_pop_ll", {
   }
 })
 
-test_that("tier 0 refuses undissolved fixed thetas (theta-length mismatch)", {
+test_that("tier 0 hands the nlm entry the free thetas only (fixed rows stay literals)", {
   skip_on_cran()
   skip_if_not(.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
   .fixMod <- function() {
@@ -68,23 +68,83 @@ test_that("tier 0 refuses undissolved fixed thetas (theta-length mismatch)", {
     })
   }
   # literalFix=FALSE keeps the fixed row in the theta vector; the nlm
-  # problem estimates only free thetas, so the mismatch is refused at
-  # GENERATION (before any compile) rather than failing at the first
-  # evaluation
-  expect_error(
-    suppressMessages(
-      nlmixr2est::nlmixr2(.fixMod, .popData(), est = "stan", control = stanControl(run = FALSE, literalFix = FALSE))
-    ),
-    "literalFix"
+  # problem estimates only free thetas, so the external gets the free rows
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.fixMod, .popData(), est = "stan", control = stanControl(run = FALSE, literalFix = FALSE))
   )
+  .lines <- strsplit(.code$code, "\n")[[1]]
+  expect_true(any(grepl("theta[2] = 3;", .lines, fixed = TRUE)))
+  expect_true(any(grepl("target += nlmixr2_pop_ll(theta[{1, 3}]);", .lines, fixed = TRUE)))
+  if (requireNamespace("rstan", quietly = TRUE)) {
+    expect_silent(rstan::stanc(model_code = .code$code, allow_undefined = TRUE))
+  }
   # with the default literalFix=TRUE the fixed theta dissolves and the
-  # model generates
-  expect_s3_class(
-    suppressMessages(
-      nlmixr2est::nlmixr2(.fixMod, .popData(), est = "stan", control = stanControl(run = FALSE))
-    ),
-    "nlmixr2bayesCode"
+  # whole vector is free
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.fixMod, .popData(), est = "stan", control = stanControl(run = FALSE))
   )
+  expect_s3_class(.code, "nlmixr2bayesCode")
+  expect_true(grepl("target += nlmixr2_pop_ll(theta);", .code$code, fixed = TRUE))
+})
+
+.popFixResMod <- function() {
+  ini({
+    a <- 1
+    b <- 0.4
+    prior(a) ~ dnorm(0, 10)
+    prior(b) ~ dnorm(0, 10)
+    add.sd <- fix(0.3)
+  })
+  model({
+    y <- a + b * time
+    y ~ add(add.sd)
+  })
+}
+
+.popFixResData <- function() {
+  set.seed(1)
+  .d <- data.frame(id = 1, time = 1:20)
+  .d$dv <- 1 + 0.5 * .d$time + stats::rnorm(20, sd = 0.3)
+  .d
+}
+
+test_that("tier 0 fixed residual error (#21): codegen keeps it a literal", {
+  skip_on_cran()
+  skip_if_not(.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
+  # a fix()ed residual SD survives literalFix=TRUE as a fixed theta
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.popFixResMod, .popFixResData(), est = "stan", control = stanControl(run = FALSE))
+  )
+  .lines <- strsplit(.code$code, "\n")[[1]]
+  expect_true(any(grepl("theta[3] = 0.3;", .lines, fixed = TRUE)))
+  expect_true(any(grepl("target += nlmixr2_pop_ll(theta[{1, 2}]);", .lines, fixed = TRUE)))
+  expect_false(any(grepl("add_sd", .lines, fixed = TRUE)))
+})
+
+test_that("tier 0 fixed residual error (#21): est=\"nuts\" fits", {
+  skip_on_cran()
+  skip_if_not_installed("rstan")
+  skip_if_not(.stanHasNlmApi(), "nlmixr2est lacks the nlm C API (#953)")
+  .fit <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
+    .popFixResMod,
+    .popFixResData(),
+    est = "nuts",
+    control = stanControl(
+      chains = 1L,
+      iter = 600L,
+      warmup = 300L,
+      seed = 1L,
+      cores = 1L,
+      calcTables = FALSE,
+      onDiagnostic = "none"
+    )
+  )))
+  expect_true(inherits(.fit, "nlmixr2FitCore"))
+  expect_equal(names(.fit$env$theta), c("a", "b", "add.sd"))
+  expect_equal(.fit$env$theta[["add.sd"]], 0.3)
+  expect_equal(.fit$env$theta[["a"]], 1, tolerance = 0.3)
+  expect_equal(.fit$env$theta[["b"]], 0.5, tolerance = 0.05)
+  expect_true(is.finite(.fit$env$objective))
 })
 
 test_that("tier 0 link: value ties to the hand density; gradient FD-agrees", {

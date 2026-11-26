@@ -494,7 +494,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     if (.h$ntheta != sum(!.map$theta$fix)) {
       stop(
         "the tier-0 problem's parameter count does not match the model ",
-        "map (fix() thetas with literalFix=TRUE)",
+        "map (its free thetas)",
         call. = FALSE
       )
     }
