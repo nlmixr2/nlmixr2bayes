@@ -451,6 +451,32 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   invisible(TRUE)
 }
 
+#' Refuse a kept fixed residual-error parameter in a mixed model up front
+#'
+#' With `stanControl(literalFixRes = FALSE)` a `fix()`ed residual-error
+#' parameter stays in the map's theta vector, while the linked FOCEi problem
+#' inlines it, so `.stanAssertLinkMatchesMap()` would refuse the run -- but
+#' only after the compile.  Say so before generating anything.
+#' @param ui the (preprocessed) ui
+#' @param control the `stanControl`
+#' @noRd
+.stanAssertFixResInlined <- function(ui, control) {
+  .iniDf <- ui$iniDf
+  if (isTRUE(control$literalFixRes) || !any(!is.na(.iniDf$neta1))) {
+    return(invisible(TRUE))
+  }
+  .w <- which(!is.na(.iniDf$ntheta) & !is.na(.iniDf$err) & .iniDf$fix)
+  if (length(.w) > 0L) {
+    stop(
+      "the linked likelihood inlines fix()ed residual-error parameter(s) ",
+      paste0("'", .iniDf$name[.w], "'", collapse = ", "),
+      "; keep literalFixRes=TRUE",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 #' The orchestration: preprocess -> map -> generate -> (compile -> link ->
 #' sample -> finalize)
 #' @noRd
@@ -470,6 +496,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     )
   }
   .map <- .stanMap(ui)
+  .stanAssertFixResInlined(ui, control)
   .pri <- stanPriors(ui)
   .gen <- .stanGenerate(ui, .map, .pri, control)
   .nid <- length(.ret$idLvl)

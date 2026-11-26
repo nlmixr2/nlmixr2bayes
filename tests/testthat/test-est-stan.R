@@ -169,6 +169,37 @@ test_that("a mixed model with a fix()ed residual-error parameter fits (#22)", {
   }
 })
 
+test_that("literalFixRes=FALSE with a fixed residual error is refused before the compile", {
+  skip_on_cran()
+  .fixResMod <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3
+      add.sd <- fix(0.5)
+      eta.cl ~ 0.1
+      prior(tcl) ~ dnorm(1, 2)
+      prior(tv) ~ dnorm(3, 2)
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  # run = FALSE stops before any compile or link, so this is the up-front check
+  expect_error(
+    suppressMessages(nlmixr2est::nlmixr2(
+      .fixResMod,
+      .linkData(),
+      est = "nuts",
+      control = stanControl(run = FALSE, literalFixRes = FALSE)
+    )),
+    "'add.sd'; keep literalFixRes=TRUE",
+    fixed = TRUE
+  )
+})
+
 test_that("a link/map theta mismatch is refused, naming literalFixRes when it is off", {
   .map <- list(eta = data.frame(name = "eta.cl"), theta = data.frame(name = c("tcl", "add.sd")))
   expect_true(.stanAssertLinkMatchesMap(list(etaNames = "eta.cl", ntheta = 2L), .map, stanControl()))
