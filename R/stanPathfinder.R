@@ -368,6 +368,11 @@
       next
     } # transformed/gq names resolve later
     .dims <- dim(.v)
+    if (prod(.dims[-1]) == 0L) {
+      # a zero-length parameter (every theta fix()ed and inlined, #22) has
+      # no flat column; paste0() would still name one ("theta[]")
+      next
+    }
     if (length(.dims) == 2L) {
       .m <- .v
       .cn <- if (.dims[2] == 1L) .nm else paste0(.nm, "[", seq_len(.dims[2]), "]")

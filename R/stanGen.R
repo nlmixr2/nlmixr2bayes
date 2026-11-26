@@ -29,7 +29,7 @@
   # posterior needs (issue #22).  A block mixing fixed and estimated
   # elements has no such constant factor and must error, not be
   # approximated.
-  if (any(block$fix)) {
+  if (any(block$fix) || isTRUE(block$fixAny)) {
     if (block$k > 1L && !isTRUE(block$fixAll)) {
       stop(
         "the omega block over ",

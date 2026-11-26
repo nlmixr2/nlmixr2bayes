@@ -40,6 +40,9 @@
     .m <- as.matrix(.b)
     .nm <- dimnames(.m)[[1]]
     .idx <- match(.nm, .etaNames)
+    .inBlk <- !is.na(.iniDf$neta1) &
+      .iniDf$neta1 %in% .eta$neta[.idx] &
+      .iniDf$neta2 %in% .eta$neta[.idx]
     .blocks[[length(.blocks) + 1L]] <-
       list(
         members = .nm,
@@ -51,11 +54,10 @@
         fix = .eta$fix[sort(.idx)],
         # every element (diagonal AND off-diagonal) fixed: a constant
         # Cholesky factor (issue #22)
-        fixAll = all(.iniDf$fix[
-          !is.na(.iniDf$neta1) &
-            .iniDf$neta1 %in% .eta$neta[.idx] &
-            .iniDf$neta2 %in% .eta$neta[.idx]
-        ])
+        fixAll = all(.iniDf$fix[.inBlk]),
+        # any element fixed -- an off-diagonal included, which the diagonal
+        # `fix` above cannot see
+        fixAny = any(.iniDf$fix[.inBlk])
       )
     .done <- c(.done, .nm)
   }

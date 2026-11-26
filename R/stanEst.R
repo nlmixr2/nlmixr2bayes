@@ -309,11 +309,15 @@
   # Bayesian inference with silently-invented priors produces a
   # publishable-looking wrong answer
   .pri <- .stanUiPriors(ui)
-  if (nrow(.pri) == 0L && !.stanAllPopFixed(ui)) {
+  # with nothing to suggest, the only estimated element is an omega
+  # off-diagonal inside a block whose diagonal is fixed; the generator's
+  # refusal of that block says what is actually wrong
+  .sug <- .stanSuggestPriors(ui)
+  if (nrow(.pri) == 0L && !.stanAllPopFixed(ui) && length(.sug) > 0L) {
     stop(
       "est=\"stan\" needs prior distributions in the ini({}) block and ",
       "this model declares none; for example:\n  ",
-      paste(.stanSuggestPriors(ui), collapse = "\n  "),
+      paste(.sug, collapse = "\n  "),
       call. = FALSE
     )
   }
@@ -974,8 +978,11 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   ))
   .sum <- .stanSummaryDf(sf)
   # a constant (a fixed block's Cholesky factor) has nothing to mix: its
-  # Rhat/ESS are noise, not a diagnosis
-  .vary <- is.finite(.sum[, "sd"]) & .sum[, "sd"] > 0
+  # Rhat/ESS are noise, not a diagnosis.  Its summary sd need not be exactly
+  # 0 -- the running mean of a non-dyadic constant drifts by a few ulps -- so
+  # the cut is relative to the value's own scale
+  .vary <- is.finite(.sum[, "sd"]) &
+    .sum[, "sd"] > sqrt(.Machine$double.eps) * pmax(1, abs(.sum[, "mean"]))
   .keep <- .vary & !grepl("^(z_|etaP_|eta\\[|omegaOut|logLikSubj|mixProbOut|lp__)", rownames(.sum))
   if (!any(.keep)) {
     # every population parameter fix()ed (the individual posterior, #22):

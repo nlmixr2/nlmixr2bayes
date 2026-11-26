@@ -106,6 +106,65 @@ test_that("all-population-fixed codegen: constant L, eta-only conditional, no pr
   }
 })
 
+test_that("a correlated block with only some elements fixed is refused, off-diagonal included", {
+  skip_on_cran()
+  .run <- function(f) {
+    suppressMessages(nlmixr2est::nlmixr2(f, .mapBayesData(), est = "nuts", control = stanControl(run = FALSE)))
+  }
+  # a fixed covariance between free variances: the diagonal fix flags alone
+  # would not see it, and the block would be sampled with the fix() ignored
+  # (rxode2 refuses a prior on such a block, so the block takes the default
+  # priors behind a free, prior-carrying theta)
+  .fixCov <- function() {
+    ini({
+      tcl <- log(0.5)
+      tv <- fix(log(5))
+      eta.cl + eta.v ~ c(0.09, fix(0.03), 0.04)
+      add.sd <- fix(0.2)
+      prior(tcl) ~ dnorm(0, 2)
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  expect_error(.run(.fixCov), "mixes fixed and estimated")
+  # fixed variances around a free covariance: no prior() line can be
+  # suggested, so the refusal is the block's, not an empty "for example:"
+  .fixVar <- function() {
+    ini({
+      tcl <- fix(log(0.5))
+      tv <- fix(log(5))
+      eta.cl + eta.v ~ c(fix(0.09), 0.03, fix(0.04))
+      add.sd <- fix(0.2)
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      cp <- 100 / v * exp(-cl / v * time)
+      cp ~ add(add.sd)
+    })
+  }
+  expect_error(.run(.fixVar), "mixes fixed and estimated")
+})
+
+test_that("all-population-fixed est=\"pathfinder\" runs (no theta columns to rebuild)", {
+  skip_on_cran()
+  skip_if_not_installed("rstan")
+  .fit <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
+    .mapBayesMod,
+    .mapBayesData(),
+    est = "pathfinder",
+    control = stanControl(seed = 22L, cores = 1L, print = 0L, vbOutputSamples = 500L, onDiagnostic = "none")
+  )))
+  expect_true(inherits(.fit, "nlmixr2FitData"))
+  # an approximation, so only a loose agreement with the exact posterior
+  expect_equal(.fit$etaObf$eta.cl, 0.070, tolerance = 0.05 / 0.070)
+  expect_equal(.fit$etaObf$eta.v, 0.046, tolerance = 0.05 / 0.046)
+})
+
 test_that("all-population-fixed est=\"nuts\" recovers the exact individual posterior (#22)", {
   skip_on_cran()
   skip_if_not_installed("rstan")
