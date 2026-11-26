@@ -274,6 +274,14 @@ test_that("a correlated omega block fits and is summarized once per cell (#22)",
   expect_equal(dim(.fit$omega), c(2L, 2L))
   expect_true(isSymmetric(.fit$omega))
   expect_equal(.fit$posteriorSummary["cov.eta.v.eta.cl", "mean"], .fit$omega["eta.v", "eta.cl"], tolerance = 1e-8)
+  # several subjects AND several etas: each draw's (subject, eta) cell lands
+  # in its own row and column -- a swapped reshape would mix them
+  .ed <- .fit$etaDraws
+  .a <- rstan::extract(.fit$stanfit, pars = "eta", permuted = FALSE)
+  for (.i in 1:4) {
+    expect_equal(.ed$eta.cl[.ed$ID == .i], as.vector(.a[, , paste0("eta[", .i, ",1]")]))
+    expect_equal(.ed$eta.v[.ed$ID == .i], as.vector(.a[, , paste0("eta[", .i, ",2]")]))
+  }
 })
 
 test_that("iteration print + parameter history over the sampler", {
