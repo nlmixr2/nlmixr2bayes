@@ -1,3 +1,14 @@
+## Resubmission
+
+This is a resubmission.  In response to the CRAN review:
+
+* Removed the single quotes around `ini({})` in the Description field
+  (package and software names remain single-quoted).
+* Replaced the commented-out code in the `rxsInit()` example with a
+  runnable toy example (wrapped in `\donttest{}` because it compiles an
+  'rxode2' model); reworded an example comment in `nutsControl()` so it no
+  longer reads as commented-out code.
+
 ## Submission
 
 This is a new submission.

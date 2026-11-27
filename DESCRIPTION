@@ -13,7 +13,7 @@ Description: Bayesian estimation for 'nlmixr2' models by linking 'Stan' (via
     differential equation solving, residual-error models and censoring stay in
     one place ('rxode2'/'nlmixr2est'), and 'Stan' consumes the likelihood and its
     analytically-supplied gradients as an external function.  Prior
-    distributions come from the model's 'ini({})' block, whose distribution
+    distributions come from the model's ini({}) block, whose distribution
     catalog is one-to-one with that of 'Stan'.
 License: MIT + file LICENSE
 URL: https://github.com/nlmixr2/nlmixr2bayes

@@ -33,10 +33,34 @@ prior mean of the non-centered parameterization.
 }
 \examples{
 \donttest{
-if (requireNamespace("nlmixr2", quietly = TRUE)) {
-  # gen <- rxsStanFromUi(model, data)
-  # fit <- rstan::sampling(sm, data = gen$standata, init = rxsInit(gen))
+mod <- function() {
+  ini({
+    tka <- 0.5
+    tcl <- 1
+    tv <- 3.4
+    eta.cl ~ 0.1
+    add.sd <- 0.2
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv)
+    d/dt(depot) <- -ka * depot
+    d/dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd)
+  })
 }
+ev <- rxode2::et(amt = 100, cmt = "depot")
+ev <- as.data.frame(rxode2::et(ev, c(0.5, 1, 2, 4, 8, 12, 24)))
+d <- rbind(cbind(ev, id = 1L), cbind(ev, id = 2L))
+d$dv <- 1
+gen <- rxsStanFromUi(mod, d)
+# one init list per chain; the fixed effects are jittered
+init <- rxsInit(gen)
+str(init(chain_id = 1))
+# jitter = 0 starts every chain at the ini() values
+str(rxsInit(gen, jitter = 0)(chain_id = 2))
 }
 }
 \author{
