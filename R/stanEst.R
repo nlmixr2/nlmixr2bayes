@@ -1423,6 +1423,60 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   .fit
 }
 
+#' Posterior draws of every subject's etas, one row per draw and subject
+#'
+#' The `eta` matrix the program samples, reshaped long so each draw of each
+#' subject is one row: `.chain`, `.iteration` and `.draw` follow the
+#' `posterior::draws_df()` convention (warmup excluded), `ID` is the
+#' subject in the fit's own ID levels, and one column per eta follows.  A
+#' finite mixture's etas are component-specific, so its draws carry a
+#' `.component` column too.  Pathfinder draws are resampled and have no
+#' chain structure: `.chain` is `NA` there.
+#' @param sf the stanfit (or Pathfinder result)
+#' @param map the model map
+#' @param idLvl the fit's subject ID levels
+#' @return a data.frame
+#' @noRd
+.stanEtaDraws <- function(sf, map, idLvl) {
+  .nEta <- nrow(map$eta)
+  if (inherits(sf, "nlmixr2bayesPathfinder")) {
+    .e <- .stanExtract(sf, pars = "eta")$eta # draws x rows x neta
+    .nd <- dim(.e)[1]
+    .chain <- rep(NA_integer_, .nd)
+    .iter <- seq_len(.nd)
+  } else {
+    # permuted = FALSE keeps the chain/iteration order; the flattened
+    # eta[i,j] columns are column-major (i fastest), as Stan writes them
+    .a <- rstan::extract(sf, pars = "eta", permuted = FALSE)
+    .ni <- dim(.a)[1]
+    .nc <- dim(.a)[2]
+    .nRows <- dim(.a)[3] %/% .nEta
+    .nd <- .ni * .nc
+    .e <- array(NA_real_, c(.nd, .nRows, .nEta))
+    for (.c in seq_len(.nc)) {
+      .e[(.c - 1L) * .ni + seq_len(.ni), , ] <- array(.a[, .c, ], c(.ni, .nRows, .nEta))
+    }
+    .chain <- rep(seq_len(.nc), each = .ni)
+    .iter <- rep(seq_len(.ni), .nc)
+  }
+  .nRows <- dim(.e)[2]
+  .nid <- length(idLvl)
+  .row <- rep(seq_len(.nRows), each = .nd)
+  .ret <- data.frame(
+    .chain = rep(.chain, .nRows),
+    .iteration = rep(.iter, .nRows),
+    .draw = rep(seq_len(.nd), .nRows),
+    ID = factor(idLvl[(.row - 1L) %% .nid + 1L], levels = idLvl)
+  )
+  if (map$nMix > 1L) {
+    .ret$.component <- (.row - 1L) %/% .nid + 1L
+  }
+  for (.k in seq_len(.nEta)) {
+    .ret[[map$eta$name[.k]]] <- as.vector(.e[,, .k])
+  }
+  .ret
+}
+
 #' Posterior -> nlmixr2 fit (the .nonmemFinalizeEnv template)
 #' @noRd
 .stanFinalizeEnv <- function(ret, ui, env, sf, map, gen, dx, control) {
@@ -1580,6 +1634,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   env2$stanData <- gen$data
   env2$stanDiagnostics <- dx
   env2$posteriorSummary <- .posteriorSummary
+  env2$etaDraws <- .stanEtaDraws(sf, map, ret$idLvl)
   nlmixr2est::.nlmixr2FitUpdateParams(env2)
   .stanHandleControlObjects(env, env2)
   .stanControlToFoceiControl(env2)

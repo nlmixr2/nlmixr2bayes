@@ -33,6 +33,13 @@ test_that("nlmixr2(est='stan') returns a first-class nlmixr2 fit", {
   if (exists("etaObfFocei", .env)) {
     expect_false(isTRUE(all.equal(.fit$etaObf, get("etaObfFocei", .env))))
   }
+  # every subject's eta draws, long: 2 chains x 200 draws x 4 subjects; each
+  # subject's draws average to its reported posterior-mean eta (#22)
+  .ed <- .fit$etaDraws
+  expect_equal(nrow(.ed), 2L * 200L * 4L)
+  expect_equal(levels(.ed$ID), as.character(1:4))
+  expect_equal(unique(.ed$.draw), 1:400)
+  expect_equal(as.vector(tapply(.ed$eta.cl, .ed$ID, mean)), .fit$etaObf$eta.cl)
   # Bayesian accessors ride on the fit environment
   expect_s4_class(.env$stanfit, "stanfit")
   # the documented retrieval path: fit$stanfit reaches the rstan object
@@ -267,6 +274,14 @@ test_that("a correlated omega block fits and is summarized once per cell (#22)",
   expect_equal(dim(.fit$omega), c(2L, 2L))
   expect_true(isSymmetric(.fit$omega))
   expect_equal(.fit$posteriorSummary["cov.eta.v.eta.cl", "mean"], .fit$omega["eta.v", "eta.cl"], tolerance = 1e-8)
+  # several subjects AND several etas: each draw's (subject, eta) cell lands
+  # in its own row and column -- a swapped reshape would mix them
+  .ed <- .fit$etaDraws
+  .a <- rstan::extract(.fit$stanfit, pars = "eta", permuted = FALSE)
+  for (.i in 1:4) {
+    expect_equal(.ed$eta.cl[.ed$ID == .i], as.vector(.a[,, paste0("eta[", .i, ",1]")]))
+    expect_equal(.ed$eta.v[.ed$ID == .i], as.vector(.a[,, paste0("eta[", .i, ",2]")]))
+  }
 })
 
 test_that("iteration print + parameter history over the sampler", {

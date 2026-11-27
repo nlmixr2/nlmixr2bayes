@@ -271,6 +271,18 @@ test_that("all-population-fixed est=\"nuts\" recovers the exact individual poste
   # the posterior-mean etas are what the fit reports
   expect_equal(.fit$etaObf$eta.cl, mean(.eta[, 1, 1]))
   expect_equal(.fit$etaObf$eta.v, mean(.eta[, 1, 2]))
+  # fit$etaDraws: one row per post-warmup draw of the subject, in
+  # posterior::draws_df order
+  .ed <- .fit$etaDraws
+  expect_equal(names(.ed), c(".chain", ".iteration", ".draw", "ID", "eta.cl", "eta.v"))
+  expect_equal(nrow(.ed), 4000L)
+  expect_equal(.ed$.chain, rep(1:2, each = 2000L))
+  expect_equal(.ed$.iteration, rep(1:2000, 2L))
+  expect_equal(.ed$.draw, 1:4000)
+  expect_equal(levels(.ed$ID), "1")
+  .a <- rstan::extract(.fit$stanfit, pars = "eta", permuted = FALSE)
+  expect_equal(.ed$eta.cl, as.vector(.a[,, "eta[1,1]"]))
+  expect_equal(.ed$eta.v, as.vector(.a[,, "eta[1,2]"]))
   # with no population parameter sampled, the etas are what gets diagnosed
   .dx <- .fit$env$stanDiagnostics
   .etaSum <- rstan::summary(.fit$stanfit)$summary[c("eta[1,1]", "eta[1,2]"), ]
