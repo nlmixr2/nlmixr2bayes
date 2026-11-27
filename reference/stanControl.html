@@ -90,6 +90,7 @@ infer `est="stan"`.</p>
 <span>  sumProd <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  optExpression <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  literalFix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  literalFixRes <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  calcTables <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  compress <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  ci <span class="op">=</span> <span class="fl">0.95</span>,</span>
@@ -314,6 +315,14 @@ fallback when the system turns stiff</p></dd>
 
 <dt id="arg-addprop-sumprod-optexpression-literalfix-calctables-compress-ci-sigdigtable">addProp, sumProd, optExpression, literalFix, calcTables, compress, ci, sigdigTable<a class="anchor" aria-label="anchor" href="#arg-addprop-sumprod-optexpression-literalfix-calctables-compress-ci-sigdigtable"></a></dt>
 <dd><p>standard nlmixr2 passthroughs for the output machinery</p></dd>
+
+
+<dt id="arg-literalfixres">literalFixRes<a class="anchor" aria-label="anchor" href="#arg-literalfixres"></a></dt>
+<dd><p>inline `fix()`ed residual-error parameters as model
+literals (nlmixr2est's literal-fix hook).  The linked FOCEi likelihood
+always inlines them, so this is `TRUE` by default to keep the model's
+parameter map in step with the linked problem; with `FALSE`, a mixed
+model with a fixed residual-error parameter is refused</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
