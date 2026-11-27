@@ -349,6 +349,26 @@
   rstan::extract(sf, pars = pars)
 }
 
+#' rstan's flat cell names for one parameter of a Pathfinder result
+#'
+#' From the DECLARED shape, the way rstan names them: a `vector[1]` (or a
+#' 1 x 1 matrix) is `theta[1]` / `eta[1,1]`, not a scalar, and a matrix's
+#' cells carry both indices, column-major.
+#' @param fit0 the zero-iteration stanfit carrying `par_dims`
+#' @param nm the parameter name
+#' @param dims the draws array's dim (draws first)
+#' @noRd
+.pathfinderCellNames <- function(fit0, nm, dims) {
+  .pd <- fit0@par_dims[[nm]]
+  if (is.null(.pd)) {
+    .pd <- if (length(dims) <= 2L && prod(dims[-1]) == 1L) integer(0) else dims[-1]
+  }
+  if (length(.pd) == 0L) {
+    return(nm)
+  }
+  paste0(nm, "[", apply(expand.grid(lapply(.pd, seq_len)), 1, paste, collapse = ","), "]")
+}
+
 #' generated quantities for Pathfinder draws via rstan::gqs (the flat
 #' free-parameter draws matrix feeds the model's own GQ block)
 #' @noRd
@@ -373,14 +393,8 @@
       # no flat column; paste0() would still name one ("theta[]")
       next
     }
-    if (length(.dims) == 2L) {
-      .m <- .v
-      .cn <- if (.dims[2] == 1L) .nm else paste0(.nm, "[", seq_len(.dims[2]), "]")
-    } else {
-      .m <- matrix(.v, .nd, prod(.dims[-1]))
-      .cn <- paste0(.nm, "[", apply(expand.grid(lapply(.dims[-1], seq_len)), 1, paste, collapse = ","), "]")
-    }
-    colnames(.m) <- .cn
+    .m <- matrix(.v, .nd, prod(.dims[-1]))
+    colnames(.m) <- .pathfinderCellNames(.f0, .nm, .dims)
     .flat <- if (is.null(.flat)) .m else cbind(.flat, .m)
     .fn <- c(.fn, .cn)
   }
@@ -408,18 +422,7 @@
     if (ncol(.m) == 0L) {
       next
     }
-    # name the cells the way rstan does, from the DECLARED shape: a
-    # vector[1] (or a 1 x 1 matrix) is theta[1] / eta[1,1], not a scalar,
-    # and a matrix's cells carry both indices
-    .pd <- sf$fit0@par_dims[[.nm]]
-    if (is.null(.pd)) {
-      .pd <- if (length(.dims) <= 2L && ncol(.m) == 1L) integer(0) else .dims[-1]
-    }
-    .cn <- if (length(.pd) == 0L) {
-      .nm
-    } else {
-      paste0(.nm, "[", apply(expand.grid(lapply(.pd, seq_len)), 1, paste, collapse = ","), "]")
-    }
+    .cn <- .pathfinderCellNames(sf$fit0, .nm, .dims)
     for (.k in seq_len(ncol(.m))) {
       .x <- .m[, .k]
       .rows[[.cn[.k]]] <- c(

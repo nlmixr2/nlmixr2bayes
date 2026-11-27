@@ -124,6 +124,36 @@ test_that("all-population-fixed codegen: constant L, eta-only conditional, no pr
   }
 })
 
+test_that("all thetas fixed but an estimated omega: the eta-only conditional with a sampled block", {
+  skip_on_cran()
+  .omEst <- function() {
+    ini({
+      tcl <- fix(log(0.5))
+      tv <- fix(log(5))
+      eta.cl + eta.v ~ c(0.09, 0.03, 0.04)
+      add.sd <- fix(0.2)
+      prop.sd <- fix(0.1)
+      prior(eta.cl) ~ invWishart(5)
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      d/dt(centr) <- -cl / v * centr
+      cp <- centr / v
+      cp ~ add(add.sd) + prop(prop.sd)
+    })
+  }
+  .code <- suppressMessages(
+    nlmixr2est::nlmixr2(.omEst, .mapBayesData(), est = "nuts", control = stanControl(run = FALSE))
+  )
+  .lines <- strsplit(.code$code, "\n")[[1]]
+  expect_true(any(grepl("vector nlmixr2_cond_all(matrix etaMat);", .lines, fixed = TRUE)))
+  expect_true(any(grepl("cov_matrix[2] omega_eta_cl_eta_v;", .lines, fixed = TRUE)))
+  if (requireNamespace("rstan", quietly = TRUE)) {
+    expect_silent(rstan::stanc(model_code = .code$code, allow_undefined = TRUE))
+  }
+})
+
 test_that("a correlated block with only some elements fixed is refused, off-diagonal included", {
   skip_on_cran()
   .run <- function(f) {
@@ -247,4 +277,40 @@ test_that("all-population-fixed est=\"nuts\" recovers the exact individual poste
   expect_equal(.dx$maxRhat, max(.etaSum[, "Rhat"]))
   expect_equal(.dx$minEss, min(.etaSum[, "n_eff"]))
   expect_true(.dx$minEss > 100)
+})
+
+test_that("all-population-fixed est=\"nuts\" samples each of several subjects on its own", {
+  skip_on_cran()
+  skip_if_not_installed("rstan")
+  # the reprex subject twice, as IDs 7 and 3: each gets the reference
+  # posterior, wherever it lands in the eta matrix
+  .d1 <- .mapBayesData()
+  .d <- rbind(transform(.d1, id = 7), transform(.d1, id = 3))
+  .fit <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
+    .mapBayesMod,
+    .d,
+    est = "nuts",
+    control = stanControl(
+      chains = 2L,
+      iter = 3000L,
+      warmup = 1000L,
+      seed = 23L,
+      chainCores = 1L,
+      cores = 1L,
+      print = 0L,
+      calcTables = FALSE,
+      ofv = "none",
+      onDiagnostic = "none"
+    )
+  )))
+  .eta <- rstan::extract(.fit$stanfit, pars = "eta")$eta # draws x subject x eta
+  # the eta rows follow the fit's ID levels
+  .lvl <- .fit$env$idLvl
+  expect_setequal(.lvl, c("3", "7"))
+  for (.i in match(c("7", "3"), .lvl)) {
+    expect_equal(mean(.eta[, .i, 1]), 0.070, tolerance = 0.01 / 0.070)
+    expect_equal(stats::sd(.eta[, .i, 1]), 0.072, tolerance = 0.1)
+    expect_equal(mean(.eta[, .i, 2]), 0.046, tolerance = 0.01 / 0.046)
+    expect_equal(stats::sd(.eta[, .i, 2]), 0.085, tolerance = 0.1)
+  }
 })
