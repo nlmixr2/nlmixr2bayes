@@ -46,6 +46,7 @@ stanControl(
   sumProd = FALSE,
   optExpression = TRUE,
   literalFix = TRUE,
+  literalFixRes = TRUE,
   calcTables = TRUE,
   compress = TRUE,
   ci = 0.95,
@@ -197,6 +198,12 @@ lsoda on typical PK models -- with an automatic dense Rosenbrock
 fallback when the system turns stiff}
 
 \item{addProp, sumProd, optExpression, literalFix, calcTables, compress, ci, sigdigTable}{standard nlmixr2 passthroughs for the output machinery}
+
+\item{literalFixRes}{inline `fix()`ed residual-error parameters as model
+literals (nlmixr2est's literal-fix hook).  The linked FOCEi likelihood
+always inlines them, so this is `TRUE` by default to keep the model's
+parameter map in step with the linked problem; with `FALSE`, a mixed
+model with a fixed residual-error parameter is refused}
 
 \item{...}{only `genRxControl`}
 }
