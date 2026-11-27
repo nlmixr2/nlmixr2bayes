@@ -186,7 +186,7 @@
 <span><span class="co">#&gt; # ℹ 129 more rows</span></span>
 <span><span class="co">#&gt; # ℹ 6 more variables: central &lt;dbl&gt;, ka &lt;dbl&gt;, cl &lt;dbl&gt;, v &lt;dbl&gt;, tad &lt;dbl&gt;,</span></span>
 <span><span class="co">#&gt; #   dosenum &lt;int&gt;</span></span></code></pre></div>
-<p>On top of the usual fit contents it carries <code>$stanfit</code>, <code>$posteriorSummary</code>, <code>$loo</code>, <code>$waic</code> and <code>$stanDiagnostics</code>.</p>
+<p>On top of the usual fit contents it carries <code>$stanfit</code>, <code>$posteriorSummary</code>, <code>$etaDraws</code>, <code>$loo</code>, <code>$waic</code> and <code>$stanDiagnostics</code>. <code>$etaDraws</code> holds the posterior draws of every subject’s etas, one row per draw and subject, with <code><a href="https://mc-stan.org/posterior/reference/draws_df.html" class="external-link">posterior::draws_df()</a></code>-style <code>.chain</code>/<code>.iteration</code>/<code>.draw</code> columns.</p>
 <p><code>$stanfit</code> is the <code><a href="https://mc-stan.org/rstan/reference/stanfit-class.html" class="external-link">rstan::stanfit</a></code> itself, so everything in the rstan/bayesplot/posterior ecosystem works from it:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">stanfit</span></span>

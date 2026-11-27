@@ -45,8 +45,8 @@ Matthew L Fidler
 ## Examples
 
 ``` r
-# nutsControl() is stanControl() with algorithm pinned to NUTS, so
-# nlmixr2(model, data, nutsControl()) needs no est= argument
+# nutsControl() is stanControl() with algorithm pinned to NUTS, so a fit
+# given this control needs no separate est argument
 ct <- nutsControl(iter = 500L)
 ct$algorithm
 #> [1] "NUTS"

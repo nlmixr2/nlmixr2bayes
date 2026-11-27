@@ -45,10 +45,58 @@ Lukas A. Widmer
 
 ``` r
 # \donttest{
-if (requireNamespace("nlmixr2", quietly = TRUE)) {
-  # gen <- rxsStanFromUi(model, data)
-  # fit <- rstan::sampling(sm, data = gen$standata, init = rxsInit(gen))
+mod <- function() {
+  ini({
+    tka <- 0.5
+    tcl <- 1
+    tv <- 3.4
+    eta.cl ~ 0.1
+    add.sd <- 0.2
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv)
+    d/dt(depot) <- -ka * depot
+    d/dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd)
+  })
 }
-#> NULL
+ev <- rxode2::et(amt = 100, cmt = "depot")
+ev <- as.data.frame(rxode2::et(ev, c(0.5, 1, 2, 4, 8, 12, 24)))
+d <- rbind(cbind(ev, id = 1L), cbind(ev, id = 2L))
+d$dv <- 1
+gen <- rxsStanFromUi(mod, d)
+#>  
+#>  
+#> ℹ parameter labels from comments are typically ignored in non-interactive mode
+#> ℹ Need to run with the source intact to parse comments
+#>  
+#>  
+#>  
+#>  
+#>  
+#>  
+#> → calculate sensitivities
+# one init list per chain; the fixed effects are jittered
+init <- rxsInit(gen)
+str(init(chain_id = 1))
+#> List of 6
+#>  $ tka         : num 0.694
+#>  $ tcl         : num 0.799
+#>  $ tv          : num 3.38
+#>  $ omega_eta_cl: num 0.316
+#>  $ z           : num [1, 1:2] 0 0
+#>  $ add_sd      : num 0.2
+# jitter = 0 starts every chain at the ini() values
+str(rxsInit(gen, jitter = 0)(chain_id = 2))
+#> List of 6
+#>  $ tka         : num 0.5
+#>  $ tcl         : num 1
+#>  $ tv          : num 3.4
+#>  $ omega_eta_cl: num 0.316
+#>  $ z           : num [1, 1:2] 0 0
+#>  $ add_sd      : num 0.2
 # }
 ```

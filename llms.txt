@@ -218,7 +218,11 @@ print(fit)
 ```
 
 On top of the usual fit contents it carries `$stanfit`,
-`$posteriorSummary`, `$loo`, `$waic` and `$stanDiagnostics`.
+`$posteriorSummary`, `$etaDraws`, `$loo`, `$waic` and
+`$stanDiagnostics`. `$etaDraws` holds the posterior draws of every
+subject’s etas, one row per draw and subject, with
+[`posterior::draws_df()`](https://mc-stan.org/posterior/reference/draws_df.html)-style
+`.chain`/`.iteration`/`.draw` columns.
 
 `$stanfit` is the
 [`rstan::stanfit`](https://mc-stan.org/rstan/reference/stanfit-class.html)

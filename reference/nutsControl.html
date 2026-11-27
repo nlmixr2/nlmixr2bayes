@@ -97,8 +97,8 @@ rather than a silent override.</p>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># nutsControl() is stanControl() with algorithm pinned to NUTS, so</span></span></span>
-<span class="r-in"><span><span class="co"># nlmixr2(model, data, nutsControl()) needs no est= argument</span></span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># nutsControl() is stanControl() with algorithm pinned to NUTS, so a fit</span></span></span>
+<span class="r-in"><span><span class="co"># given this control needs no separate est argument</span></span></span>
 <span class="r-in"><span><span class="va">ct</span> <span class="op">&lt;-</span> <span class="fu">nutsControl</span><span class="op">(</span>iter <span class="op">=</span> <span class="fl">500L</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">ct</span><span class="op">$</span><span class="va">algorithm</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "NUTS"</span>
