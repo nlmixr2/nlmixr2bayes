@@ -349,6 +349,26 @@
   rstan::extract(sf, pars = pars)
 }
 
+#' rstan's flat cell names for one parameter of a Pathfinder result
+#'
+#' From the DECLARED shape, the way rstan names them: a `vector[1]` (or a
+#' 1 x 1 matrix) is `theta[1]` / `eta[1,1]`, not a scalar, and a matrix's
+#' cells carry both indices, column-major.
+#' @param fit0 the zero-iteration stanfit carrying `par_dims`
+#' @param nm the parameter name
+#' @param dims the draws array's dim (draws first)
+#' @noRd
+.pathfinderCellNames <- function(fit0, nm, dims) {
+  .pd <- fit0@par_dims[[nm]]
+  if (is.null(.pd)) {
+    .pd <- if (length(dims) <= 2L && prod(dims[-1]) == 1L) integer(0) else dims[-1]
+  }
+  if (length(.pd) == 0L) {
+    return(nm)
+  }
+  paste0(nm, "[", apply(expand.grid(lapply(.pd, seq_len)), 1, paste, collapse = ","), "]")
+}
+
 #' generated quantities for Pathfinder draws via rstan::gqs (the flat
 #' free-parameter draws matrix feeds the model's own GQ block)
 #' @noRd
@@ -361,23 +381,20 @@
   # rebuild the flat matrix from the unconstrained draws directly: the
   # constrained parameter values with stan's flat naming
   .flat <- NULL
-  .fn <- character(0)
   for (.nm in .parNames) {
     .v <- .con[[.nm]]
     if (is.null(.v)) {
       next
     } # transformed/gq names resolve later
     .dims <- dim(.v)
-    if (length(.dims) == 2L) {
-      .m <- .v
-      .cn <- if (.dims[2] == 1L) .nm else paste0(.nm, "[", seq_len(.dims[2]), "]")
-    } else {
-      .m <- matrix(.v, .nd, prod(.dims[-1]))
-      .cn <- paste0(.nm, "[", apply(expand.grid(lapply(.dims[-1], seq_len)), 1, paste, collapse = ","), "]")
+    if (prod(.dims[-1]) == 0L) {
+      # a zero-length parameter (every theta fix()ed and inlined, #22) has
+      # no flat column; paste0() would still name one ("theta[]")
+      next
     }
-    colnames(.m) <- .cn
+    .m <- matrix(.v, .nd, prod(.dims[-1]))
+    colnames(.m) <- .pathfinderCellNames(.f0, .nm, .dims)
     .flat <- if (is.null(.flat)) .m else cbind(.flat, .m)
-    .fn <- c(.fn, .cn)
   }
   .gq <- rstan::gqs(rstan::get_stanmodel(.f0), data = pf$gen$data, draws = .flat)
   rstan::extract(.gq)
@@ -391,12 +408,19 @@
     return(rstan::summary(sf)$summary)
   }
   .con <- .pathfinderConstrain(sf)
+  # the generated quantities (omegaOut, ...) as well, when the prefetch
+  # computed them while the link was up -- the omega rows come from them
+  .gq <- sf$cache$gq
+  .con <- c(.con, .gq[setdiff(names(.gq), c(names(.con), "lp__"))])
   .rows <- list()
   for (.nm in names(.con)) {
     .v <- .con[[.nm]]
     .dims <- dim(.v)
-    .m <- if (length(.dims) == 2L) .v else matrix(.v, .dims[1], prod(.dims[-1]))
-    .cn <- if (ncol(.m) == 1L) .nm else paste0(.nm, "[", seq_len(ncol(.m)), "]")
+    .m <- matrix(.v, .dims[1], prod(.dims[-1]))
+    if (ncol(.m) == 0L) {
+      next
+    }
+    .cn <- .pathfinderCellNames(sf$fit0, .nm, .dims)
     for (.k in seq_len(ncol(.m))) {
       .x <- .m[, .k]
       .rows[[.cn[.k]]] <- c(

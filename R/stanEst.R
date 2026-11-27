@@ -205,6 +205,27 @@
   c(.v, 0)
 }
 
+#' Refuse an omega block that fixes some of its elements but not all
+#'
+#' A wholly fixed block is a constant Cholesky factor and a block with
+#' nothing fixed is sampled; one that mixes the two -- a fixed covariance
+#' between free variances, or the reverse -- has no such parameterization,
+#' and must error rather than be sampled with the fix() ignored.
+#' @param block one block of the model map
+#' @noRd
+.stanAssertBlockFix <- function(block) {
+  if (block$k > 1L && (isTRUE(block$fixAny) || any(block$fix)) && !isTRUE(block$fixAll)) {
+    stop(
+      "the omega block over ",
+      paste(block$members, collapse = ", "),
+      " mixes fixed and estimated eta(s) with modeled correlations; ",
+      "est=\"stan\" supports fixed diagonal etas and wholly fixed blocks only",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 #' Capability assertions + prior triage for est="stan"
 #' @noRd
 .stanAssert <- function(ui) {
@@ -290,17 +311,35 @@
       call. = FALSE
     )
   }
-  # D10: no priors at all is an error, with the exact lines to add --
-  # Bayesian inference with silently-invented priors produces a
-  # publishable-looking wrong answer
+  # a partly fixed omega block first: the prior advice below cannot fix it
+  # (rxode2 refuses a prior on such a block)
+  for (.b in .stanMap(ui)$blocks) {
+    .stanAssertBlockFix(.b)
+  }
   .pri <- .stanUiPriors(ui)
   if (nrow(.pri) == 0L) {
-    stop(
-      "est=\"stan\" needs prior distributions in the ini({}) block and ",
-      "this model declares none; for example:\n  ",
-      paste(.stanSuggestPriors(ui), collapse = "\n  "),
-      call. = FALSE
-    )
+    # D10: no priors at all is an error, with the exact lines to add --
+    # Bayesian inference with silently-invented priors produces a
+    # publishable-looking wrong answer.  The one model that needs none has every population parameter fix()ed but
+    # random effects to sample: the individual (MAP-Bayes) posterior
+    # p(eta | y, theta, Omega, sigma) under the fixed N(0, Omega) (#22) --
+    # exactly the case with no prior to suggest and etas present
+    .sug <- .stanSuggestPriors(ui)
+    if (length(.sug) > 0L) {
+      stop(
+        "est=\"stan\" needs prior distributions in the ini({}) block and ",
+        "this model declares none; for example:\n  ",
+        paste(.sug, collapse = "\n  "),
+        call. = FALSE
+      )
+    }
+    if (.noEta) {
+      stop(
+        "est=\"stan\" has nothing to sample: every parameter is fix()ed ",
+        "and the model has no random effects",
+        call. = FALSE
+      )
+    }
   }
   invisible(TRUE)
 }
@@ -310,7 +349,9 @@
 #' Dispatched by `nlmixr2(model, data, est="stan", stanControl(...))`.  The
 #' first nlmixr2 estimation method to declare `nlmixr2Priors = "all"`: prior
 #' distributions come from the model's `ini({})` block and are required
-#' (a model without any errors, printing the lines to add).
+#' (a model without any errors, printing the lines to add) -- unless every
+#' population parameter is `fix()`ed, when the etas are sampled from the
+#' exact individual posterior under the fixed `N(0, Omega)` prior.
 #'
 #' @param env nlmixr2 estimation environment
 #' @param ... passed through
@@ -550,7 +591,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
       )
     }
     .sf <- .stanRunInference(.sm, .gen, .map, .nid, control)
-    .dx <- .stanDiagnostics(.sf, control)
+    .dx <- .stanDiagnostics(.sf, control, .map)
     # the nlm objective (-2 log-likelihood) at the posterior point estimate,
     # evaluated while the link is still up
     .pf <- if (identical(control$point, "median")) stats::median else mean
@@ -695,7 +736,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     .ph <- tryCatch(nlmixr2est::foceiLikIterPrintEnd(), error = function(e) NULL)
     if (is.data.frame(.ph)) .ret$parHistData <- .ph
   }
-  .dx <- .stanDiagnostics(.sf, control)
+  .dx <- .stanDiagnostics(.sf, control, .map)
   if (inherits(.sf, "nlmixr2bayesPathfinder")) {
     # the generated-quantities pass (rstan::gqs -> nlmixr2_cond_all2)
     # needs the linked likelihood, so it must run BEFORE the teardown
@@ -939,7 +980,7 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
 
 #' Sampler diagnostics with actionable, loud messages
 #' @noRd
-.stanDiagnostics <- function(sf, control) {
+.stanDiagnostics <- function(sf, control, map) {
   if (identical(control$algorithm, "pathfinder")) {
     return(.stanDiagnosticsPathfinder(sf, control))
   }
@@ -956,7 +997,26 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
     numeric(1)
   ))
   .sum <- .stanSummaryDf(sf)
-  .keep <- !grepl("^(z_|etaP_|eta\\[|omegaOut|logLikSubj|mixProbOut|lp__)", rownames(.sum))
+  .rn <- rownames(.sum)
+  # diagnosed: the declared population parameters.  Left out: the per-
+  # subject draws (each block's z<id>/etaP<id>, eta), each block's Cholesky
+  # factor L<id> (a function of the sd/Lcorr/omega it is built from, which
+  # are diagnosed themselves -- and a CONSTANT for a fixed block, whose
+  # Rhat/ESS are floating-point noise), the assembled theta[] vector (the
+  # declared thetas plus fixed literals) and the generated quantities.
+  # Matched by exact base name, never a prefix: a theta may well be called
+  # z.cl (Stan name z_cl)
+  .internal <- unlist(
+    lapply(map$blocks, function(b) paste0(c("L", "z", "etaP"), .stanBlockId(b$members))),
+    use.names = FALSE
+  )
+  .base <- sub("\\[.*\\]$", "", .rn)
+  .keep <- !(.base %in% c(.internal, "eta", "theta", "omegaOut", "logLikSubj", "mixProbOut", "lp__"))
+  if (!any(.keep)) {
+    # every population parameter fix()ed (the individual posterior, #22):
+    # the etas are all there is to diagnose
+    .keep <- grepl("^eta\\[", .rn)
+  }
   .maxRhat <- suppressWarnings(max(.sum[.keep, "Rhat"], na.rm = TRUE))
   .minEss <- suppressWarnings(min(.sum[.keep, "n_eff"], na.rm = TRUE))
   .msg <- character(0)
@@ -1368,9 +1428,12 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
 .stanFinalizeEnv <- function(ret, ui, env, sf, map, gen, dx, control) {
   # est="nuts"/"advi"/"pathfinder" sugar records its own name on the fit
   .estName <- if (is.null(env$stanEstName)) "stan" else env$stanEstName
-  .ex <- .stanExtract(sf, pars = c("theta", "eta", "omegaOut", "logLikSubj"))
+  .hasTheta <- nrow(map$theta) > 0L
+  .ex <- .stanExtract(sf, pars = c(if (.hasTheta) "theta", "eta", "omegaOut", "logLikSubj"))
   .pointFun <- if (identical(control$point, "median")) stats::median else mean
-  .thDraw <- .ex$theta # draws x ntheta
+  # draws x ntheta; with every population parameter fix()ed and inlined
+  # (#22) there are no thetas, and Stan reports no zero-length draws
+  .thDraw <- if (.hasTheta) .ex$theta else matrix(numeric(0), dim(.ex$eta)[1], 0L)
   .fullTheta <- apply(.thDraw, 2, .pointFun)
   names(.fullTheta) <- map$theta$name
   .omega <- apply(.ex$omegaOut, c(2, 3), .pointFun)
@@ -1450,8 +1513,12 @@ attr(nlmixr2Est.stan, "iov") <- function(control) .stanHasIovSens()
   env2$omega <- .omega
   env2$etaObf <- .etaObf
   env2$etaMat <- as.matrix(.etaObf[, map$eta$name, drop = FALSE])
-  env2$cov <- .cov
-  env2$covMethod <- "stan.posterior"
+  if (any(.free)) {
+    # with every population parameter fix()ed (#22) there is no posterior
+    # covariance to report; a 0 x 0 matrix would read as a malformed one
+    env2$cov <- .cov
+    env2$covMethod <- "stan.posterior"
+  }
   env2$objective <- NA_real_
   env2$adjObf <- TRUE
   env2$extra <- if (identical(control$algorithm, "NUTS")) {

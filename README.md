@@ -105,7 +105,13 @@ the algorithm with no `est=` argument at all.
 Prior distributions come from the `ini({})` block (lotri/rxode2), whose
 distribution catalog is deliberately one-to-one with Stan’s – see
 `lotri::lotriPriorDists()` and `rxode2::rxUiPriors()`. A model without
-priors is refused, printing the exact `prior()` lines to add.
+priors is refused, printing the exact `prior()` lines to add. The one
+exception is a model whose population parameters – thetas, every omega
+element and the residual error – are all `fix()`ed: there `est="nuts"`
+samples each subject’s etas from the exact individual posterior
+`p(eta | y, theta, Omega, sigma)`, the distribution MAP-Bayes (Bayesian
+forecasting) dosing approximates with its mode, and the eta prior is the
+fixed `N(0, Omega)`.
 
 ## Installation
 

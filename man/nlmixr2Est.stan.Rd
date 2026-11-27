@@ -19,7 +19,9 @@ an nlmixr2 fit (or an `nlmixr2bayesCode` when
 Dispatched by `nlmixr2(model, data, est="stan", stanControl(...))`.  The
 first nlmixr2 estimation method to declare `nlmixr2Priors = "all"`: prior
 distributions come from the model's `ini({})` block and are required
-(a model without any errors, printing the lines to add).
+(a model without any errors, printing the lines to add) -- unless every
+population parameter is `fix()`ed, when the etas are sampled from the
+exact individual posterior under the fixed `N(0, Omega)` prior.
 }
 \author{
 Matthew L Fidler
