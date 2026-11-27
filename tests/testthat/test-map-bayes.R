@@ -282,10 +282,13 @@ test_that("all-population-fixed est=\"nuts\" recovers the exact individual poste
 test_that("all-population-fixed est=\"nuts\" samples each of several subjects on its own", {
   skip_on_cran()
   skip_if_not_installed("rstan")
-  # the reprex subject twice, as IDs 7 and 3: each gets the reference
-  # posterior, wherever it lands in the eta matrix
+  # the reprex subject as ID 7, and as ID 3 a subject whose concentrations
+  # run at twice the reprex's (so its clearance/volume posterior moves
+  # well away): ID 7 must recover the reference posterior wherever it lands
+  # in the eta matrix, and ID 3 must not
   .d1 <- .mapBayesData()
-  .d <- rbind(transform(.d1, id = 7), transform(.d1, id = 3))
+  .d3 <- transform(.d1, id = 3, dv = 2 * dv)
+  .d <- rbind(transform(.d1, id = 7), .d3)
   .fit <- suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
     .mapBayesMod,
     .d,
@@ -297,7 +300,8 @@ test_that("all-population-fixed est=\"nuts\" samples each of several subjects on
       seed = 23L,
       chainCores = 1L,
       cores = 1L,
-      print = 0L,
+      # the iteration table runs with no theta to show (only nEval)
+      print = 100L,
       calcTables = FALSE,
       ofv = "none",
       onDiagnostic = "none"
@@ -307,10 +311,13 @@ test_that("all-population-fixed est=\"nuts\" samples each of several subjects on
   # the eta rows follow the fit's ID levels
   .lvl <- .fit$env$idLvl
   expect_setequal(.lvl, c("3", "7"))
-  for (.i in match(c("7", "3"), .lvl)) {
-    expect_equal(mean(.eta[, .i, 1]), 0.070, tolerance = 0.01 / 0.070)
-    expect_equal(stats::sd(.eta[, .i, 1]), 0.072, tolerance = 0.1)
-    expect_equal(mean(.eta[, .i, 2]), 0.046, tolerance = 0.01 / 0.046)
-    expect_equal(stats::sd(.eta[, .i, 2]), 0.085, tolerance = 0.1)
-  }
+  .i <- match("7", .lvl)
+  expect_equal(mean(.eta[, .i, 1]), 0.070, tolerance = 0.01 / 0.070)
+  expect_equal(stats::sd(.eta[, .i, 1]), 0.072, tolerance = 0.1)
+  expect_equal(mean(.eta[, .i, 2]), 0.046, tolerance = 0.01 / 0.046)
+  expect_equal(stats::sd(.eta[, .i, 2]), 0.085, tolerance = 0.1)
+  # doubled concentrations mean a smaller volume: ID 3's eta.v sits well
+  # below ID 7's
+  .j <- match("3", .lvl)
+  expect_lt(mean(.eta[, .j, 2]), mean(.eta[, .i, 2]) - 0.1)
 })

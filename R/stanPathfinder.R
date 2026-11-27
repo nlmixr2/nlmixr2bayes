@@ -381,7 +381,6 @@
   # rebuild the flat matrix from the unconstrained draws directly: the
   # constrained parameter values with stan's flat naming
   .flat <- NULL
-  .fn <- character(0)
   for (.nm in .parNames) {
     .v <- .con[[.nm]]
     if (is.null(.v)) {
@@ -396,7 +395,6 @@
     .m <- matrix(.v, .nd, prod(.dims[-1]))
     colnames(.m) <- .pathfinderCellNames(.f0, .nm, .dims)
     .flat <- if (is.null(.flat)) .m else cbind(.flat, .m)
-    .fn <- c(.fn, .cn)
   }
   .gq <- rstan::gqs(rstan::get_stanmodel(.f0), data = pf$gen$data, draws = .flat)
   rstan::extract(.gq)
